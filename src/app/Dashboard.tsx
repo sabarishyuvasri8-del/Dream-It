@@ -1696,21 +1696,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     )}
                   </div>
 
-                  {/* Quick Prompts Bar */}
-                  <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-2 shrink-0">
-                    <div className="flex flex-wrap gap-2 justify-center">
-                      {[
-                        { emoji: "📐", text: "Solve Step-by-Step", prompt: "Solve 2x - 1 = 0 step by step with explanations" },
-                        { emoji: "💡", text: "Generate Study Schedule", prompt: `Create a structured study plan for my subjects: ${subjects.map((s) => s.name).join(", ") || "my courses"}` },
-                        { emoji: "🃏", text: "Create Revision Flashcards", prompt: `Generate 5 flashcards for studying ${subjects.length > 0 ? subjects[0].name : "my course"}` },
-                        { emoji: "📝", text: "Summarize Study Notes", prompt: "Summarize key study concepts and main takeaways" },
-                      ].map(({ emoji, text, prompt }) => (
-                        <button key={text} onClick={() => askCoach(undefined, prompt)} className="rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                          {emoji} {text}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
+
 
                   {/* Fullscreen Input Bar */}
                   <form onSubmit={askCoach} className="w-full max-w-6xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
