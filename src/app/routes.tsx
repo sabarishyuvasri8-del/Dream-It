@@ -1,0 +1,423 @@
+import { useState } from "react";
+import { createBrowserRouter } from "react-router";
+import { useUser, useClerk, SignIn, SignUp } from "@clerk/clerk-react";
+import {
+  AlertTriangle,
+  BookOpenCheck,
+  CheckCircle2,
+  LoaderCircle,
+  Palette,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react";
+import Dashboard from "./Dashboard";
+import LandingPage from "./LandingPage";
+import { useTheme } from "../lib/ThemeContext";
+import ThemeSelector from "./components/ThemeSelector";
+
+/* ─────────────── Clerk Auth Screen ─────────────── */
+function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
+  const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
+  const { themeConfig } = useTheme();
+
+  return (
+    <main
+      className={`dreamit-dash grid min-h-screen place-items-center p-4 sm:p-6 font-[DM_Sans] ${themeConfig.cssClass}`}
+      style={{
+        backgroundColor: "var(--m-bg)",
+        color: "var(--m-text)",
+      }}
+    >
+      {/* Top Floating Theme Switcher Button */}
+      <div className="absolute top-5 right-5 z-20">
+        <button
+          type="button"
+          onClick={() => setThemeSelectorOpen(true)}
+          className="liquid-glass flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition hover:scale-105 shadow-md"
+          style={{
+            color: "var(--m-text-heading)",
+          }}
+        >
+          <Palette size={15} style={{ color: "var(--m-primary)" }} />
+          <span>{themeConfig.name}</span>
+          <span className="flex items-center gap-1 ml-1">
+            {themeConfig.swatches.slice(0, 3).map((color, i) => (
+              <span
+                key={i}
+                className="inline-block size-2.5 rounded-full shadow-xs"
+                style={{ backgroundColor: color }}
+              />
+            ))}
+          </span>
+        </button>
+      </div>
+
+      {/* Back to Landing link */}
+      {onBack && (
+        <div className="absolute top-5 left-5 z-20">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition hover:scale-105"
+            style={{
+              background: "var(--m-surface)",
+              border: "1px solid var(--m-border)",
+              color: "var(--m-text-heading)",
+            }}
+          >
+            ← Back
+          </button>
+        </div>
+      )}
+
+      <div
+        className="liquid-glass anti-gravity grid w-full max-w-5xl overflow-hidden rounded-3xl shadow-2xl lg:grid-cols-[0.95fr_1.05fr]"
+        style={{
+          background: "var(--m-surface)",
+          border: "1px solid var(--m-border)",
+        }}
+      >
+        {/* Left Side Banner (Theme Responsive) */}
+        <section
+          className="relative overflow-hidden p-8 md:p-10 flex flex-col justify-between transition-colors duration-500"
+          style={{
+            background:
+              "linear-gradient(135deg, color-mix(in srgb, var(--m-primary) 92%, #000) 0%, color-mix(in srgb, var(--m-primary) 78%, #000) 100%)",
+            color: "var(--m-primary-text)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+            borderRight: "1px solid var(--m-border-light)",
+          }}
+        >
+          {/* Ambient liquid glow elements */}
+          <div
+            className="absolute -right-20 -top-20 size-64 rounded-full blur-3xl pointer-events-none transition-all duration-500"
+            style={{
+              backgroundColor: "color-mix(in srgb, var(--m-accent) 25%, transparent)",
+            }}
+          />
+          <div
+            className="absolute -left-20 -bottom-20 size-64 rounded-full blur-3xl pointer-events-none transition-all duration-500"
+            style={{
+              backgroundColor: "color-mix(in srgb, var(--m-primary) 20%, transparent)",
+            }}
+          />
+
+          <div className="relative flex items-center gap-3">
+            <div
+              className="grid size-9 place-items-center rounded-xl shadow-sm transition-colors duration-300"
+              style={{
+                backgroundColor: "var(--m-accent)",
+                color: "var(--m-accent-text)",
+              }}
+            >
+              <BookOpenCheck size={18} />
+            </div>
+            <span className="font-[Roboto_Slab] text-xl font-semibold tracking-tight">
+              Dream It
+            </span>
+          </div>
+
+          <div className="relative my-auto py-8">
+            <h1 className="font-[Roboto_Slab] text-2xl font-semibold leading-tight md:text-3xl">
+              Your intelligent study workspace.
+            </h1>
+            <p className="mt-4 text-sm leading-6 opacity-90">
+              AI-powered study companion with task management, focus timer,
+              flashcards, grade tracking, and smart study planning — all synced
+              to your personal account.
+            </p>
+
+            <div className="mt-6 space-y-2.5">
+              {[
+                "AI Study Companion & Tutor",
+                "Flashcards & Notes Journal",
+                "Pomodoro Focus Timer & Analytics",
+                "Smart Deadline Planning",
+              ].map((f) => (
+                <div key={f} className="flex items-center gap-2.5 text-xs opacity-95">
+                  <CheckCircle2
+                    size={15}
+                    className="shrink-0"
+                    style={{ color: "var(--m-accent)" }}
+                  />
+                  <span>{f}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <p className="relative flex items-center gap-2 text-xs opacity-85">
+            <ShieldCheck size={15} style={{ color: "var(--m-accent)" }} />
+            Secured with Clerk & Supabase Database
+          </p>
+        </section>
+
+        {/* Right Side Clerk Form */}
+        <section
+          className="flex flex-col items-center justify-center p-6 md:p-10 transition-colors duration-500"
+          style={{
+            background: "var(--m-surface-hover)",
+            backdropFilter: "blur(20px)",
+            WebkitBackdropFilter: "blur(20px)",
+          }}
+        >
+          <div className="w-full max-w-md flex flex-col items-center">
+            {/* Header & Tabs */}
+            <div className="w-full flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div
+                  className="grid size-8 place-items-center rounded-lg shadow-xs"
+                  style={{
+                    backgroundColor: "var(--m-primary)",
+                    color: "var(--m-primary-text)",
+                  }}
+                >
+                  <Sparkles size={18} />
+                </div>
+                <span className="text-sm font-bold" style={{ color: "var(--m-text-heading)" }}>
+                  {mode === "signin" ? "Sign In to Dream It" : "Create your Account"}
+                </span>
+              </div>
+              <div
+                className="flex rounded-lg p-0.5 text-xs font-semibold"
+                style={{
+                  backgroundColor: "var(--m-surface-alt)",
+                  border: "1px solid var(--m-border-light)",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setMode("signin")}
+                  className={`rounded-md px-3 py-1.5 transition ${
+                    mode === "signin"
+                      ? "shadow-xs font-bold"
+                      : "opacity-75 hover:opacity-100"
+                  }`}
+                  style={
+                    mode === "signin"
+                      ? {
+                          backgroundColor: "var(--m-surface-solid)",
+                          color: "var(--m-primary)",
+                        }
+                      : { color: "var(--m-text-sub)" }
+                  }
+                >
+                  Sign In
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMode("signup")}
+                  className={`rounded-md px-3 py-1.5 transition ${
+                    mode === "signup"
+                      ? "shadow-xs font-bold"
+                      : "opacity-75 hover:opacity-100"
+                  }`}
+                  style={
+                    mode === "signup"
+                      ? {
+                          backgroundColor: "var(--m-surface-solid)",
+                          color: "var(--m-primary)",
+                        }
+                      : { color: "var(--m-text-sub)" }
+                  }
+                >
+                  Sign Up
+                </button>
+              </div>
+            </div>
+
+            {/* Clerk Component Render */}
+            <div className="w-full flex justify-center py-2">
+              {mode === "signin" ? (
+                <SignIn
+                  appearance={{
+                    layout: {
+                      socialButtonsVariant: "hidden",
+                    },
+                    elements: {
+                      card: "shadow-none border-none bg-transparent w-full",
+                      headerTitle: "hidden",
+                      headerSubtitle: "hidden",
+                      footer: "hidden",
+                      socialButtons: "hidden",
+                      socialButtonsBlockButton: "hidden",
+                      socialButtonsBlockButtonText: "hidden",
+                      socialButtonsIconButton: "hidden",
+                      socialButtonsProviderIcon: "hidden",
+                      dividerRow: "hidden",
+                      dividerText: "hidden",
+                      dividerLine: "hidden",
+                      formFieldInput:
+                        "glass-input rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2",
+                      formButtonPrimary:
+                        "liquid-glass rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md",
+                      formFieldLabel: "text-xs font-bold",
+                    },
+                  }}
+                  routing="virtual"
+                />
+              ) : (
+                <SignUp
+                  appearance={{
+                    layout: {
+                      socialButtonsVariant: "hidden",
+                    },
+                    elements: {
+                      card: "shadow-none border-none bg-transparent w-full",
+                      headerTitle: "hidden",
+                      headerSubtitle: "hidden",
+                      footer: "hidden",
+                      socialButtons: "hidden",
+                      socialButtonsBlockButton: "hidden",
+                      socialButtonsBlockButtonText: "hidden",
+                      socialButtonsIconButton: "hidden",
+                      socialButtonsProviderIcon: "hidden",
+                      dividerRow: "hidden",
+                      dividerText: "hidden",
+                      dividerLine: "hidden",
+                      formFieldInput:
+                        "glass-input rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2",
+                      formButtonPrimary:
+                        "liquid-glass rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md",
+                      formFieldLabel: "text-xs font-bold",
+                    },
+                  }}
+                  routing="virtual"
+                />
+              )}
+            </div>
+          </div>
+        </section>
+      </div>
+
+      {/* ─── Theme Selector Modal ─── */}
+      <ThemeSelector
+        isOpen={themeSelectorOpen}
+        onClose={() => setThemeSelectorOpen(false)}
+      />
+    </main>
+  );
+}
+
+/* ─────────────── Root Component with Clerk Auth ─────────────── */
+function Root() {
+  const { isLoaded, isSignedIn, user } = useUser();
+  const { signOut } = useClerk();
+  const [showAuth, setShowAuth] = useState(false);
+
+  if (!isLoaded) {
+    return (
+      <main
+        className="grid min-h-screen place-items-center"
+        style={{ backgroundColor: "var(--m-bg, #f6f4ee)" }}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <LoaderCircle className="animate-spin text-[#315f48]" size={28} />
+          <p className="text-xs text-[#56725d] font-medium">Loading Dream It...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (isSignedIn && user) {
+    const userEmail = user.primaryEmailAddress?.emailAddress || "";
+    const userName =
+      user.fullName ||
+      user.firstName ||
+      user.username ||
+      userEmail.split("@")[0] ||
+      "Student";
+
+    return (
+      <Dashboard
+        key={user.id}
+        accessToken={user.id}
+        userId={user.id}
+        userEmail={userEmail}
+        userName={userName}
+        onSignOut={() => signOut()}
+      />
+    );
+  }
+
+  // Not signed in → show Landing Page or Auth Card
+  if (showAuth) {
+    return <ClerkAuthCard onBack={() => setShowAuth(false)} />;
+  }
+
+  return <LandingPage onGetStarted={() => setShowAuth(true)} />;
+}
+
+/* ─────────────── Error Boundary Component ─────────────── */
+function RouteErrorBoundary() {
+  const { themeConfig } = useTheme();
+
+  return (
+    <main
+      className={`grid min-h-screen place-items-center p-6 font-[DM_Sans] ${themeConfig.cssClass}`}
+      style={{
+        backgroundColor: "var(--m-bg)",
+        color: "var(--m-text)",
+      }}
+    >
+      <div
+        className="liquid-glass max-w-md w-full rounded-3xl p-8 text-center space-y-4 shadow-2xl"
+        style={{
+          background: "var(--m-surface)",
+          border: "1px solid var(--m-border)",
+        }}
+      >
+        <div
+          className="mx-auto grid size-16 place-items-center rounded-2xl shadow-sm"
+          style={{
+            backgroundColor: "color-mix(in srgb, var(--m-danger) 15%, transparent)",
+            color: "var(--m-danger)",
+          }}
+        >
+          <AlertTriangle size={32} />
+        </div>
+
+        <h1 className="font-[Roboto_Slab] text-2xl font-bold" style={{ color: "var(--m-text-heading)" }}>
+          Something went wrong
+        </h1>
+        <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-sub)" }}>
+          Dream It encountered an unexpected error. Your data is safely backed up in Supabase.
+        </p>
+
+        <div className="pt-4 flex justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
+            className="rounded-xl px-5 py-2.5 text-xs font-bold transition hover:scale-105 shadow-md"
+            style={{
+              backgroundColor: "var(--m-primary)",
+              color: "var(--m-primary-text)",
+            }}
+          >
+            Reload App
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.clear();
+              window.location.href = "/";
+            }}
+            className="rounded-xl px-5 py-2.5 text-xs font-bold border transition hover:opacity-80"
+            style={{
+              borderColor: "var(--m-border)",
+              color: "var(--m-text-sub)",
+            }}
+          >
+            Reset Cache
+          </button>
+        </div>
+      </div>
+    </main>
+  );
+}
+
+export const router = createBrowserRouter([
+  { path: "*", Component: Root, ErrorBoundary: RouteErrorBoundary },
+]);

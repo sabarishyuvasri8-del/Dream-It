@@ -1,0 +1,890 @@
+@custom-variant dark (&:is(.dark *));
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DREAM IT — Multi-Theme System
+   5 minimalist palettes, liquid glass effects, anti-gravity animations
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Theme 1: Ethereal Light ─────────────────────────────────────────────
+   Soft whites, muted grays, and a touch of icy blue.
+   A clean, airy, cloud-like aesthetic.
+   ──────────────────────────────────────────────────────────────────────── */
+:root,
+.theme-ethereal-light {
+  --font-size: 16px;
+  --background: #f4f6f9;
+  --foreground: #1a1d23;
+  --card: #ffffff;
+  --card-foreground: #1a1d23;
+  --popover: #ffffff;
+  --popover-foreground: #1a1d23;
+  --primary: #3b6b8a;
+  --primary-foreground: #f8fafc;
+  --secondary: #e8edf2;
+  --secondary-foreground: #3b6b8a;
+  --muted: #ebeef3;
+  --muted-foreground: #6b7280;
+  --accent: #a8c8e0;
+  --accent-foreground: #1a2a3a;
+  --destructive: #c44b4b;
+  --destructive-foreground: #ffffff;
+  --border: rgba(59, 107, 138, 0.12);
+  --input: transparent;
+  --input-background: #f8fafc;
+  --switch-background: #b8c5d0;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #7ba3be;
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 1rem;
+  --sidebar: #eaeff4;
+  --sidebar-foreground: #1a1d23;
+  --sidebar-primary: #3b6b8a;
+  --sidebar-primary-foreground: #f8fafc;
+  --sidebar-accent: #dae4ed;
+  --sidebar-accent-foreground: #3b6b8a;
+  --sidebar-border: #cdd6e0;
+  --sidebar-ring: #7ba3be;
+
+  /* Dream It Dashboard theme tokens */
+  --m-bg: #f4f6f9;
+  --m-surface: rgba(255, 255, 255, 0.72);
+  --m-surface-solid: #ffffff;
+  --m-surface-hover: rgba(240, 245, 250, 0.82);
+  --m-surface-alt: rgba(232, 237, 242, 0.7);
+  --m-border: rgba(180, 195, 210, 0.55);
+  --m-border-light: rgba(200, 212, 225, 0.45);
+  --m-glass-border: rgba(255, 255, 255, 0.55);
+  --m-glass-glow: rgba(59, 107, 138, 0.06);
+  --m-text: #1a1d23;
+  --m-text-heading: #111827;
+  --m-text-sub: #4b5563;
+  --m-text-muted: #6b7280;
+  --m-text-faint: #9ca3af;
+  --m-primary: #3b6b8a;
+  --m-primary-hover: #2d5570;
+  --m-primary-text: #ffffff;
+  --m-accent: #a8c8e0;
+  --m-accent-text: #1a2a3a;
+  --m-success: #22c55e;
+  --m-danger: #c44b4b;
+  --m-danger-bg: rgba(255, 235, 235, 0.85);
+  --m-danger-border: #f5c6c6;
+  --m-danger-text: #991b1b;
+  --m-warning: #d97706;
+  --m-input-bg: rgba(255, 255, 255, 0.75);
+  --m-chat-bot-bg: rgba(232, 237, 242, 0.75);
+  --m-chat-bot-text: #2d5570;
+  --m-chat-user-bg: #3b6b8a;
+  --m-chat-user-text: #ffffff;
+  --m-sidebar-bg: rgba(255, 255, 255, 0.7);
+  --m-sidebar-pill-bg: rgba(232, 237, 242, 0.8);
+  --m-sidebar-card-bg: rgba(218, 228, 237, 0.6);
+  --m-sidebar-card-border: rgba(190, 205, 220, 0.5);
+  --m-selection: #a8c8e0;
+  --m-modal-overlay: rgba(20, 30, 45, 0.45);
+  --m-glass-blur: 8px;
+  --m-is-dark: 0;
+
+  /* Liquid Glass tokens */
+  --liquid-glass-bg: rgba(255, 255, 255, 0.18);
+  --liquid-glass-border: rgba(255, 255, 255, 0.35);
+  --liquid-glass-shadow: rgba(59, 107, 138, 0.08);
+  --liquid-glass-hover-bg: rgba(255, 255, 255, 0.28);
+  --liquid-glass-glow: rgba(168, 200, 224, 0.15);
+
+  /* Anti-Gravity tokens */
+  --ag-bob-distance: 6px;
+  --ag-hover-lift: -8px;
+  --ag-hover-shadow: rgba(59, 107, 138, 0.15);
+}
+
+/* ─── Theme 2: Midnight Void ──────────────────────────────────────────────
+   Deep charcoal, soft blacks, and muted silver.
+   A sophisticated, immersive dark experience.
+   ──────────────────────────────────────────────────────────────────────── */
+.theme-midnight-void {
+  --background: #0a0c10;
+  --foreground: #e4e7ec;
+  --card: #12141a;
+  --card-foreground: #e4e7ec;
+  --popover: #12141a;
+  --popover-foreground: #e4e7ec;
+  --primary: #a78bfa;
+  --primary-foreground: #0a0c10;
+  --secondary: #1e2028;
+  --secondary-foreground: #e4e7ec;
+  --muted: #1e2028;
+  --muted-foreground: #9ca3af;
+  --accent: #a78bfa;
+  --accent-foreground: #0a0c10;
+  --destructive: #f87171;
+  --destructive-foreground: #0a0c10;
+  --border: rgba(148, 163, 184, 0.12);
+  --input: rgba(148, 163, 184, 0.08);
+  --ring: #7c5cc5;
+  --sidebar: #0e1015;
+  --sidebar-foreground: #e4e7ec;
+  --sidebar-primary: #a78bfa;
+  --sidebar-primary-foreground: #0a0c10;
+  --sidebar-accent: #1e2028;
+  --sidebar-accent-foreground: #e4e7ec;
+  --sidebar-border: rgba(148, 163, 184, 0.1);
+  --sidebar-ring: #7c5cc5;
+
+  --m-bg: #0a0c10;
+  --m-surface: rgba(18, 20, 26, 0.72);
+  --m-surface-solid: #12141a;
+  --m-surface-hover: rgba(24, 26, 34, 0.8);
+  --m-surface-alt: rgba(30, 32, 40, 0.7);
+  --m-border: rgba(55, 60, 75, 0.65);
+  --m-border-light: rgba(45, 48, 62, 0.5);
+  --m-glass-border: rgba(255, 255, 255, 0.06);
+  --m-glass-glow: rgba(167, 139, 250, 0.08);
+  --m-text: #e4e7ec;
+  --m-text-heading: #f1f3f7;
+  --m-text-sub: #9ca3af;
+  --m-text-muted: #6b7280;
+  --m-text-faint: #4b5563;
+  --m-primary: #a78bfa;
+  --m-primary-hover: #8b5cf6;
+  --m-primary-text: #0a0c10;
+  --m-accent: #c4b5fd;
+  --m-accent-text: #1e1033;
+  --m-success: #34d399;
+  --m-danger: #f87171;
+  --m-danger-bg: rgba(41, 16, 16, 0.8);
+  --m-danger-border: #5c1f1f;
+  --m-danger-text: #fca5a5;
+  --m-warning: #fbbf24;
+  --m-input-bg: rgba(18, 20, 26, 0.8);
+  --m-chat-bot-bg: rgba(24, 26, 34, 0.8);
+  --m-chat-bot-text: #d4d9e2;
+  --m-chat-user-bg: #7c3aed;
+  --m-chat-user-text: #ffffff;
+  --m-sidebar-bg: rgba(14, 16, 21, 0.82);
+  --m-sidebar-pill-bg: rgba(30, 32, 40, 0.85);
+  --m-sidebar-card-bg: rgba(24, 26, 34, 0.75);
+  --m-sidebar-card-border: rgba(55, 60, 75, 0.5);
+  --m-selection: #a78bfa;
+  --m-modal-overlay: rgba(0, 0, 0, 0.7);
+  --m-glass-blur: 10px;
+  --m-is-dark: 1;
+
+  --liquid-glass-bg: rgba(167, 139, 250, 0.06);
+  --liquid-glass-border: rgba(167, 139, 250, 0.12);
+  --liquid-glass-shadow: rgba(0, 0, 0, 0.25);
+  --liquid-glass-hover-bg: rgba(167, 139, 250, 0.12);
+  --liquid-glass-glow: rgba(167, 139, 250, 0.2);
+
+  --ag-bob-distance: 5px;
+  --ag-hover-lift: -10px;
+  --ag-hover-shadow: rgba(167, 139, 250, 0.2);
+}
+
+/* ─── Theme 3: Sage Harmony ───────────────────────────────────────────────
+   Minimalist soft greens and earthy off-whites.
+   The closest successor to the original Dream It look.
+   ──────────────────────────────────────────────────────────────────────── */
+.theme-sage-harmony {
+  --background: #f6f4ee;
+  --foreground: #17211d;
+  --card: #fffefb;
+  --card-foreground: #17211d;
+  --popover: #fffefb;
+  --popover-foreground: #17211d;
+  --primary: #264d3d;
+  --primary-foreground: #fffdf6;
+  --secondary: #e6ede4;
+  --secondary-foreground: #264d3d;
+  --muted: #eeebe3;
+  --muted-foreground: #6d746e;
+  --accent: #f2c77f;
+  --accent-foreground: #352812;
+  --destructive: #bd4b42;
+  --destructive-foreground: #ffffff;
+  --border: rgba(38, 77, 61, 0.14);
+  --input: transparent;
+  --input-background: #f9f7f1;
+  --switch-background: #b9c5b9;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #7da28a;
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 1rem;
+  --sidebar: #e7eee4;
+  --sidebar-foreground: #17211d;
+  --sidebar-primary: #264d3d;
+  --sidebar-primary-foreground: #fffdf6;
+  --sidebar-accent: #d6e5d4;
+  --sidebar-accent-foreground: #264d3d;
+  --sidebar-border: #cbd8ca;
+  --sidebar-ring: #7da28a;
+
+  --m-bg: #f6f4ee;
+  --m-surface: rgba(255, 254, 251, 0.78);
+  --m-surface-solid: #fffefb;
+  --m-surface-hover: rgba(248, 251, 246, 0.85);
+  --m-surface-alt: rgba(238, 244, 236, 0.75);
+  --m-border: rgba(203, 216, 202, 0.65);
+  --m-border-light: rgba(220, 229, 219, 0.55);
+  --m-glass-border: rgba(255, 255, 255, 0.6);
+  --m-glass-glow: rgba(36, 76, 59, 0.06);
+  --m-text: #17211d;
+  --m-text-heading: #172b20;
+  --m-text-sub: #56725d;
+  --m-text-muted: #78887c;
+  --m-text-faint: #829087;
+  --m-primary: #244c3b;
+  --m-primary-hover: #1b3b2d;
+  --m-primary-text: #ffffff;
+  --m-accent: #f2cf91;
+  --m-accent-text: #3b2b12;
+  --m-success: #27ae60;
+  --m-danger: #8b3a30;
+  --m-danger-bg: rgba(255, 240, 233, 0.85);
+  --m-danger-border: #f5c6cb;
+  --m-danger-text: #9a463f;
+  --m-warning: #d97706;
+  --m-input-bg: rgba(255, 255, 255, 0.8);
+  --m-chat-bot-bg: rgba(238, 244, 236, 0.8);
+  --m-chat-bot-text: #244c3b;
+  --m-chat-user-bg: #244c3b;
+  --m-chat-user-text: #ffffff;
+  --m-sidebar-bg: rgba(255, 254, 251, 0.75);
+  --m-sidebar-pill-bg: rgba(238, 244, 236, 0.85);
+  --m-sidebar-card-bg: rgba(219, 233, 218, 0.65);
+  --m-sidebar-card-border: rgba(191, 209, 192, 0.6);
+  --m-selection: #f2cf91;
+  --m-modal-overlay: rgba(18, 38, 29, 0.45);
+  --m-glass-blur: 8px;
+  --m-is-dark: 0;
+
+  --liquid-glass-bg: rgba(255, 255, 255, 0.2);
+  --liquid-glass-border: rgba(255, 255, 255, 0.4);
+  --liquid-glass-shadow: rgba(36, 76, 59, 0.08);
+  --liquid-glass-hover-bg: rgba(255, 255, 255, 0.32);
+  --liquid-glass-glow: rgba(242, 207, 145, 0.18);
+
+  --ag-bob-distance: 6px;
+  --ag-hover-lift: -8px;
+  --ag-hover-shadow: rgba(36, 76, 59, 0.14);
+}
+
+/* ─── Theme 4: Rose Quartz ────────────────────────────────────────────────
+   Blush pinks, warm grays, dusty mauve.
+   Soft, warm, and refined.
+   ──────────────────────────────────────────────────────────────────────── */
+.theme-rose-quartz {
+  --background: #faf5f5;
+  --foreground: #2d1f2b;
+  --card: #fffbfb;
+  --card-foreground: #2d1f2b;
+  --popover: #fffbfb;
+  --popover-foreground: #2d1f2b;
+  --primary: #8b5a6b;
+  --primary-foreground: #fdf8f9;
+  --secondary: #f0e4e8;
+  --secondary-foreground: #8b5a6b;
+  --muted: #f0e8eb;
+  --muted-foreground: #7a6972;
+  --accent: #d4a0b0;
+  --accent-foreground: #3a1a28;
+  --destructive: #c44b4b;
+  --destructive-foreground: #ffffff;
+  --border: rgba(139, 90, 107, 0.14);
+  --input: transparent;
+  --input-background: #fdf8f9;
+  --switch-background: #d4b8c2;
+  --font-weight-medium: 500;
+  --font-weight-normal: 400;
+  --ring: #b88a9a;
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --radius: 1rem;
+  --sidebar: #f2e8ec;
+  --sidebar-foreground: #2d1f2b;
+  --sidebar-primary: #8b5a6b;
+  --sidebar-primary-foreground: #fdf8f9;
+  --sidebar-accent: #e8d4dc;
+  --sidebar-accent-foreground: #8b5a6b;
+  --sidebar-border: #dcc8d0;
+  --sidebar-ring: #b88a9a;
+
+  --m-bg: #faf5f5;
+  --m-surface: rgba(255, 251, 251, 0.75);
+  --m-surface-solid: #fffbfb;
+  --m-surface-hover: rgba(252, 245, 247, 0.83);
+  --m-surface-alt: rgba(240, 228, 232, 0.7);
+  --m-border: rgba(212, 184, 194, 0.6);
+  --m-border-light: rgba(225, 205, 214, 0.5);
+  --m-glass-border: rgba(255, 255, 255, 0.55);
+  --m-glass-glow: rgba(139, 90, 107, 0.06);
+  --m-text: #2d1f2b;
+  --m-text-heading: #1f1220;
+  --m-text-sub: #6b4d5a;
+  --m-text-muted: #7a6972;
+  --m-text-faint: #9a8990;
+  --m-primary: #8b5a6b;
+  --m-primary-hover: #724558;
+  --m-primary-text: #ffffff;
+  --m-accent: #d4a0b0;
+  --m-accent-text: #3a1a28;
+  --m-success: #22c55e;
+  --m-danger: #c44b4b;
+  --m-danger-bg: rgba(255, 235, 235, 0.85);
+  --m-danger-border: #f0c0c0;
+  --m-danger-text: #991b1b;
+  --m-warning: #d97706;
+  --m-input-bg: rgba(255, 251, 251, 0.8);
+  --m-chat-bot-bg: rgba(240, 228, 232, 0.75);
+  --m-chat-bot-text: #6b4d5a;
+  --m-chat-user-bg: #8b5a6b;
+  --m-chat-user-text: #ffffff;
+  --m-sidebar-bg: rgba(255, 251, 251, 0.72);
+  --m-sidebar-pill-bg: rgba(240, 228, 232, 0.82);
+  --m-sidebar-card-bg: rgba(232, 212, 220, 0.6);
+  --m-sidebar-card-border: rgba(212, 184, 194, 0.5);
+  --m-selection: #d4a0b0;
+  --m-modal-overlay: rgba(45, 31, 43, 0.45);
+  --m-glass-blur: 8px;
+  --m-is-dark: 0;
+
+  --liquid-glass-bg: rgba(255, 255, 255, 0.2);
+  --liquid-glass-border: rgba(255, 240, 245, 0.4);
+  --liquid-glass-shadow: rgba(139, 90, 107, 0.08);
+  --liquid-glass-hover-bg: rgba(255, 245, 248, 0.3);
+  --liquid-glass-glow: rgba(212, 160, 176, 0.18);
+
+  --ag-bob-distance: 6px;
+  --ag-hover-lift: -8px;
+  --ag-hover-shadow: rgba(139, 90, 107, 0.15);
+}
+
+/* ─── Theme 5: Arctic Dusk ────────────────────────────────────────────────
+   Deep navy, frost blue, pale lavender.
+   Cool, calming, twilight-inspired dark theme.
+   ──────────────────────────────────────────────────────────────────────── */
+.theme-arctic-dusk {
+  --background: #0c1020;
+  --foreground: #dde3f0;
+  --card: #141830;
+  --card-foreground: #dde3f0;
+  --popover: #141830;
+  --popover-foreground: #dde3f0;
+  --primary: #60a5fa;
+  --primary-foreground: #0c1020;
+  --secondary: #1c2240;
+  --secondary-foreground: #dde3f0;
+  --muted: #1c2240;
+  --muted-foreground: #8896b5;
+  --accent: #93c5fd;
+  --accent-foreground: #0c1020;
+  --destructive: #fb7185;
+  --destructive-foreground: #0c1020;
+  --border: rgba(96, 165, 250, 0.1);
+  --input: rgba(96, 165, 250, 0.06);
+  --ring: #3b82f6;
+  --sidebar: #101428;
+  --sidebar-foreground: #dde3f0;
+  --sidebar-primary: #60a5fa;
+  --sidebar-primary-foreground: #0c1020;
+  --sidebar-accent: #1c2240;
+  --sidebar-accent-foreground: #dde3f0;
+  --sidebar-border: rgba(96, 165, 250, 0.08);
+  --sidebar-ring: #3b82f6;
+
+  --m-bg: #0c1020;
+  --m-surface: rgba(20, 24, 48, 0.72);
+  --m-surface-solid: #141830;
+  --m-surface-hover: rgba(28, 34, 64, 0.78);
+  --m-surface-alt: rgba(28, 34, 64, 0.65);
+  --m-border: rgba(50, 65, 105, 0.55);
+  --m-border-light: rgba(40, 52, 85, 0.45);
+  --m-glass-border: rgba(96, 165, 250, 0.08);
+  --m-glass-glow: rgba(96, 165, 250, 0.08);
+  --m-text: #dde3f0;
+  --m-text-heading: #edf0f8;
+  --m-text-sub: #8896b5;
+  --m-text-muted: #6674a0;
+  --m-text-faint: #4a5580;
+  --m-primary: #60a5fa;
+  --m-primary-hover: #3b82f6;
+  --m-primary-text: #0c1020;
+  --m-accent: #93c5fd;
+  --m-accent-text: #0a1530;
+  --m-success: #34d399;
+  --m-danger: #fb7185;
+  --m-danger-bg: rgba(50, 15, 25, 0.8);
+  --m-danger-border: #5c1a2a;
+  --m-danger-text: #fda4af;
+  --m-warning: #fbbf24;
+  --m-input-bg: rgba(20, 24, 48, 0.8);
+  --m-chat-bot-bg: rgba(28, 34, 64, 0.8);
+  --m-chat-bot-text: #b8c5e0;
+  --m-chat-user-bg: #2563eb;
+  --m-chat-user-text: #ffffff;
+  --m-sidebar-bg: rgba(16, 20, 40, 0.82);
+  --m-sidebar-pill-bg: rgba(28, 34, 64, 0.85);
+  --m-sidebar-card-bg: rgba(24, 30, 55, 0.75);
+  --m-sidebar-card-border: rgba(50, 65, 105, 0.45);
+  --m-selection: #60a5fa;
+  --m-modal-overlay: rgba(0, 0, 10, 0.72);
+  --m-glass-blur: 22px;
+  --m-is-dark: 1;
+
+  --liquid-glass-bg: rgba(96, 165, 250, 0.06);
+  --liquid-glass-border: rgba(96, 165, 250, 0.12);
+  --liquid-glass-shadow: rgba(0, 0, 20, 0.3);
+  --liquid-glass-hover-bg: rgba(96, 165, 250, 0.1);
+  --liquid-glass-glow: rgba(96, 165, 250, 0.22);
+
+  --ag-bob-distance: 5px;
+  --ag-hover-lift: -10px;
+  --ag-hover-shadow: rgba(96, 165, 250, 0.2);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   BASE STYLES
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
+
+  html {
+    font-size: var(--font-size);
+  }
+
+  h1 {
+    font-size: var(--text-2xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h2 {
+    font-size: var(--text-xl);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h3 {
+    font-size: var(--text-lg);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  h4 {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  label {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  button {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-medium);
+    line-height: 1.5;
+  }
+
+  input {
+    font-size: var(--text-base);
+    font-weight: var(--font-weight-normal);
+    line-height: 1.5;
+  }
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   DREAM IT DASHBOARD — Theme-Aware Overrides
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dreamit-dash,
+.morrow-dash {
+  background-color: var(--m-bg);
+  color: var(--m-text);
+  transition: background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              color 0.4s ease;
+}
+
+.dreamit-dash *::selection,
+.morrow-dash *::selection {
+  background-color: var(--m-selection);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MINIMAL SURFACES — flat, clean content areas (no glass)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.minimal-surface {
+  background: var(--m-surface-solid);
+  border: 1px solid var(--m-border-light);
+}
+
+.minimal-inset {
+  background: var(--m-surface-alt);
+  border: 1px solid var(--m-border-light);
+}
+
+/* Legacy alias — now flat/minimal, not glass */
+.glass-panel {
+  background: var(--m-surface-solid);
+  border: 1px solid var(--m-border-light);
+}
+
+.glass-panel-solid {
+  background: var(--m-surface-solid);
+  border: 1px solid var(--m-border-light);
+}
+
+.glass-input {
+  background: var(--m-input-bg);
+  border: 1px solid var(--m-border-light);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LIQUID GLASS — selective use on floating / nav layers only
+   Sidebar, header, chat panel, modals, theme picker.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.liquid-glass {
+  background: var(--liquid-glass-bg);
+  backdrop-filter: blur(var(--m-glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--m-glass-blur)) saturate(180%);
+  border: 1px solid var(--liquid-glass-border);
+  box-shadow:
+    0 8px 32px -8px var(--liquid-glass-shadow),
+    inset 0 1px 0 0 rgba(255, 255, 255, calc(0.06 + var(--m-is-dark) * -0.04));
+  transition:
+    background 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.35s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Nav layers — sidebar & top bar */
+.glass-sidebar,
+.liquid-glass-nav {
+  background: var(--m-sidebar-bg);
+  backdrop-filter: blur(var(--m-glass-blur)) saturate(190%);
+  -webkit-backdrop-filter: blur(var(--m-glass-blur)) saturate(190%);
+  border-right: 1px solid var(--liquid-glass-border);
+  box-shadow:
+    4px 0 24px -6px var(--liquid-glass-shadow),
+    inset -1px 0 0 0 rgba(255, 255, 255, calc(0.04 + var(--m-is-dark) * -0.02));
+}
+
+.glass-header,
+.liquid-glass-header {
+  background: var(--m-sidebar-bg);
+  backdrop-filter: blur(var(--m-glass-blur)) saturate(180%);
+  -webkit-backdrop-filter: blur(var(--m-glass-blur)) saturate(180%);
+  border-bottom: 1px solid var(--liquid-glass-border);
+  box-shadow:
+    0 4px 20px -6px var(--liquid-glass-shadow),
+    inset 0 1px 0 0 rgba(255, 255, 255, calc(0.06 + var(--m-is-dark) * -0.04));
+}
+
+/* Floating panels — chat, modals */
+.liquid-glass-float {
+  background: var(--m-surface);
+  backdrop-filter: blur(calc(var(--m-glass-blur) + 4px)) saturate(200%);
+  -webkit-backdrop-filter: blur(calc(var(--m-glass-blur) + 4px)) saturate(200%);
+  border: 1px solid var(--liquid-glass-border);
+  box-shadow:
+    0 16px 48px -12px var(--liquid-glass-shadow),
+    inset 0 1px 0 0 rgba(255, 255, 255, calc(0.08 + var(--m-is-dark) * -0.04));
+}
+
+.liquid-glass-float:hover,
+.liquid-glass-nav:hover {
+  background: var(--liquid-glass-hover-bg);
+}
+
+/* Interactive cards only (theme picker) */
+.liquid-glass.interactive:hover,
+.liquid-glass.anti-gravity:hover {
+  background: var(--liquid-glass-hover-bg);
+  border-color: var(--liquid-glass-glow);
+  box-shadow:
+    0 16px 48px -8px var(--liquid-glass-shadow),
+    inset 0 1px 0 0 rgba(255, 255, 255, calc(0.1 + var(--m-is-dark) * -0.04)),
+    0 0 24px -6px var(--liquid-glass-glow);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ANTI-GRAVITY EFFECT — Weightless Motion
+   Continuous idle bobbing + smooth hover float-up.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes anti-gravity-bob {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(calc(-1 * var(--ag-bob-distance)));
+  }
+}
+
+@keyframes anti-gravity-shimmer {
+  0%, 100% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.anti-gravity {
+  animation: anti-gravity-bob 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform;
+  transition: 
+    transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Stagger animations for multiple items so they don't bob in unison */
+.anti-gravity:nth-child(2) { animation-delay: -1.2s; }
+.anti-gravity:nth-child(3) { animation-delay: -2.4s; }
+.anti-gravity:nth-child(4) { animation-delay: -3.6s; }
+.anti-gravity:nth-child(5) { animation-delay: -4.8s; }
+
+.anti-gravity:hover {
+  animation-play-state: paused;
+  transform: translateY(var(--ag-hover-lift)) scale(1.02);
+  box-shadow: 
+    0 20px 50px -8px var(--ag-hover-shadow),
+    0 8px 24px -4px rgba(0, 0, 0, 0.08);
+}
+
+/* Combined liquid-glass + anti-gravity for theme cards only */
+.liquid-glass.anti-gravity:hover {
+  transform: translateY(var(--ag-hover-lift)) scale(1.02);
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME TRANSITION — Smooth palette morphing
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: 
+    background-color 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    color 0.4s cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SLEEK CUSTOM SCROLLBARS
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--m-border);
+  border-radius: 9999px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--m-text-sub);
+}
+
+/* Firefox custom scrollbar */
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--m-border) transparent;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME-AWARE CLERK AUTH FORM STYLING (First Name, Last Name, Inputs & Labels)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.cl-card,
+.cl-rootBox {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Form labels (First name, Last name, Email address, Password, etc.) */
+.cl-formFieldLabel,
+.cl-headerTitle,
+.cl-formHeaderTitle,
+.cl-formHeaderSubtitle,
+.cl-identityPreviewText,
+.cl-formFieldRow label {
+  color: var(--m-text-heading) !important;
+  font-weight: 600 !important;
+}
+
+/* Input Fields (First name, Last name, Email, Password, OTP) */
+.cl-formFieldInput,
+.cl-otpCodeFieldInput {
+  background: var(--m-input-bg) !important;
+  color: var(--m-text) !important;
+  border: 1px solid var(--m-border) !important;
+  border-radius: 0.75rem !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  transition: all 0.2s ease !important;
+}
+
+.cl-formFieldInput::placeholder {
+  color: var(--m-text-muted) !important;
+  opacity: 0.7 !important;
+}
+
+.cl-formFieldInput:focus,
+.cl-otpCodeFieldInput:focus {
+  border-color: var(--m-primary) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--m-primary) 22%, transparent) !important;
+  background: var(--m-surface-solid) !important;
+}
+
+/* Action Links & Password Toggle Buttons */
+.cl-formFieldAction,
+.cl-formResendCodeLink,
+.cl-footerActionLink {
+  color: var(--m-primary) !important;
+  font-weight: 600 !important;
+}
+
+.cl-formFieldAction:hover,
+.cl-formResendCodeLink:hover,
+.cl-footerActionLink:hover {
+  color: var(--m-primary-hover) !important;
+}
+
+/* Hints & Subtext */
+.cl-formFieldHintText,
+.cl-formHeaderSubtitle {
+  color: var(--m-text-muted) !important;
+}
+
+/* Primary Action Button */
+.cl-formButtonPrimary {
+  background-color: var(--m-primary) !important;
+  color: var(--m-primary-text) !important;
+  border-radius: 0.75rem !important;
+  font-weight: 700 !important;
+  box-shadow: 0 4px 15px color-mix(in srgb, var(--m-primary) 30%, transparent) !important;
+  transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease !important;
+}
+
+.cl-formButtonPrimary:hover {
+  background-color: var(--m-primary-hover) !important;
+  transform: translateY(-1px) !important;
+}
+
+/* Identity Preview Box */
+.cl-identityPreview {
+  background: var(--m-surface-alt) !important;
+  border: 1px solid var(--m-border-light) !important;
+  border-radius: 0.75rem !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   THEME-AWARE CLERK OTP VERIFICATION CODE STYLING
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* OTP Code Field Container */
+.cl-otpCodeField,
+.cl-otpCodeFieldInputs {
+  gap: 0.5rem !important;
+  justify-content: center !important;
+  margin: 1rem 0 !important;
+}
+
+/* Individual OTP Digit Box */
+.cl-otpCodeFieldInput {
+  width: 2.75rem !important;
+  height: 3.25rem !important;
+  font-size: 1.25rem !important;
+  font-weight: 700 !important;
+  text-align: center !important;
+  background: var(--m-input-bg) !important;
+  color: var(--m-text-heading) !important;
+  border: 1.5px solid var(--m-border) !important;
+  border-radius: 0.75rem !important;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--m-primary) 6%, transparent) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.cl-otpCodeFieldInput:focus,
+.cl-otpCodeFieldInput--focused,
+.cl-otpCodeFieldInput[data-status="focused"] {
+  border-color: var(--m-primary) !important;
+  background: var(--m-surface-solid) !important;
+  color: var(--m-primary) !important;
+  box-shadow: 
+    0 0 0 4px color-mix(in srgb, var(--m-primary) 22%, transparent),
+    0 6px 20px -4px var(--liquid-glass-glow) !important;
+  transform: translateY(-2px) scale(1.05) !important;
+}
+
+.cl-otpCodeFieldInput[data-status="filled"] {
+  border-color: var(--m-primary) !important;
+  background: color-mix(in srgb, var(--m-primary) 8%, var(--m-surface)) !important;
+}
+
+/* Identity Preview Box (e.g. "Verifying code sent to email@example.com") */
+.cl-identityPreviewText {
+  color: var(--m-text-heading) !important;
+  font-weight: 600 !important;
+}
+
+.cl-identityPreviewEditButton,
+.cl-identityPreviewEditButtonIcon {
+  color: var(--m-primary) !important;
+}
+
+/* Resend Code Link */
+.cl-formResendCodeLink,
+.cl-verificationLink {
+  color: var(--m-primary) !important;
+  font-weight: 700 !important;
+  transition: color 0.2s ease !important;
+}
+
+.cl-formResendCodeLink:hover,
+.cl-verificationLink:hover {
+  color: var(--m-primary-hover) !important;
+}
