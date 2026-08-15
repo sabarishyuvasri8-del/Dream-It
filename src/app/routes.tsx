@@ -34,7 +34,7 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
         <button
           type="button"
           onClick={() => setThemeSelectorOpen(true)}
-          className="liquid-glass flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition hover:scale-105 shadow-md"
+          className="minimal-surface flex items-center gap-2 rounded-2xl px-4 py-2.5 text-xs font-bold transition hover:scale-105 shadow-md"
           style={{
             color: "var(--m-text-heading)",
           }}
@@ -72,9 +72,9 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
       )}
 
       <div
-        className="liquid-glass anti-gravity grid w-full max-w-5xl overflow-hidden rounded-3xl shadow-2xl lg:grid-cols-[0.95fr_1.05fr]"
+        className="grid w-full max-w-5xl overflow-hidden rounded-3xl shadow-2xl lg:grid-cols-[0.95fr_1.05fr] minimal-surface"
         style={{
-          background: "var(--m-surface)",
+          backgroundColor: "var(--m-surface-solid)",
           border: "1px solid var(--m-border)",
         }}
       >
@@ -85,25 +85,9 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
             background:
               "linear-gradient(135deg, color-mix(in srgb, var(--m-primary) 92%, #000) 0%, color-mix(in srgb, var(--m-primary) 78%, #000) 100%)",
             color: "var(--m-primary-text)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
             borderRight: "1px solid var(--m-border-light)",
           }}
         >
-          {/* Ambient liquid glow elements */}
-          <div
-            className="absolute -right-20 -top-20 size-64 rounded-full blur-3xl pointer-events-none transition-all duration-500"
-            style={{
-              backgroundColor: "color-mix(in srgb, var(--m-accent) 25%, transparent)",
-            }}
-          />
-          <div
-            className="absolute -left-20 -bottom-20 size-64 rounded-full blur-3xl pointer-events-none transition-all duration-500"
-            style={{
-              backgroundColor: "color-mix(in srgb, var(--m-primary) 20%, transparent)",
-            }}
-          />
-
           <div className="relative flex items-center gap-3">
             <div
               className="grid size-9 place-items-center rounded-xl shadow-sm transition-colors duration-300"
@@ -158,9 +142,7 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
         <section
           className="flex flex-col items-center justify-center p-6 md:p-10 transition-colors duration-500"
           style={{
-            background: "var(--m-surface-hover)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
+            background: "var(--m-surface-solid)"
           }}
         >
           <div className="w-full max-w-md flex flex-col items-center">
@@ -250,9 +232,9 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
                       dividerText: "hidden",
                       dividerLine: "hidden",
                       formFieldInput:
-                        "glass-input rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2",
+                        "rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border",
                       formButtonPrimary:
-                        "liquid-glass rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md",
+                        "rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md",
                       formFieldLabel: "text-xs font-bold",
                     },
                   }}
@@ -278,9 +260,9 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
                       dividerText: "hidden",
                       dividerLine: "hidden",
                       formFieldInput:
-                        "glass-input rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2",
+                        "rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border",
                       formButtonPrimary:
-                        "liquid-glass rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md",
+                        "rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md",
                       formFieldLabel: "text-xs font-bold",
                     },
                   }}
@@ -363,9 +345,9 @@ function RouteErrorBoundary() {
       }}
     >
       <div
-        className="liquid-glass max-w-md w-full rounded-3xl p-8 text-center space-y-4 shadow-2xl"
+        className="minimal-surface max-w-md w-full rounded-3xl p-8 text-center space-y-4 shadow-2xl"
         style={{
-          background: "var(--m-surface)",
+          backgroundColor: "var(--m-surface-solid)",
           border: "1px solid var(--m-border)",
         }}
       >

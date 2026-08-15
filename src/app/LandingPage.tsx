@@ -2,7 +2,7 @@
  * Dream It — Premium Landing Page
  *
  * A bento-grid-based, theme-aware landing page with scroll animations,
- * glassmorphism, micro-interactions, and a premium SaaS aesthetic.
+ * micro-interactions, and a premium SaaS aesthetic.
  */
 
 import { useState, useEffect, useRef } from "react";
@@ -87,7 +87,16 @@ function BentoCard({
       initial={{ opacity: 0, y: 30, scale: 0.97 }}
       animate={isInView ? { opacity: 1, y: 0, scale: 1 } : {}}
       transition={{ duration: 0.6, delay, ease: [0.25, 0.46, 0.45, 0.94] }}
-      className={`group relative overflow-hidden rounded-2xl p-6 md:p-8 transition-all duration-300 hover:-translate-y-1 ${
+      whileHover={{ scale: 1.02, y: -5 }}
+      onMouseMove={(e) => {
+        if (!ref.current) return;
+        const rect = ref.current.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        ref.current.style.setProperty("--mouse-x", `${x}px`);
+        ref.current.style.setProperty("--mouse-y", `${y}px`);
+      }}
+      className={`group relative overflow-hidden rounded-2xl p-6 md:p-8 transition-all duration-300 ${
         large ? "md:col-span-2" : ""
       }`}
       style={{
@@ -200,8 +209,10 @@ function JourneyStep({
       transition={{ duration: 0.5, delay: index * 0.1 }}
       className="flex flex-col items-center gap-3"
     >
-      <div
-        className="size-16 md:size-20 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-110 hover:-translate-y-1"
+      <motion.div
+        animate={{ y: [0, -8, 0] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: index * 0.2 }}
+        className="size-16 md:size-20 rounded-2xl flex items-center justify-center transition-all duration-300 hover:scale-110"
         style={{
           background: "var(--m-surface)",
           border: "1px solid var(--m-border)",
@@ -210,7 +221,7 @@ function JourneyStep({
         }}
       >
         {icon}
-      </div>
+      </motion.div>
       <span
         className="text-xs font-bold uppercase tracking-wider"
         style={{ color: "var(--m-text-heading)" }}
@@ -302,6 +313,10 @@ export default function LandingPage({
   const heroY = useTransform(scrollYProgress, [0, 1], [0, 150]);
   const heroOpacity = useTransform(scrollYProgress, [0, 0.7], [1, 0]);
 
+  /* ─── Dashboard 3D Scroll Effect ─── */
+  const dashRotateX = useTransform(scrollYProgress, [0, 0.5], [15, 0]);
+  const dashScale = useTransform(scrollYProgress, [0, 0.5], [0.92, 1]);
+
   /* ─── Navbar scroll effect ─── */
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -333,11 +348,9 @@ export default function LandingPage({
         style={{
           backgroundColor: scrolled
             ? isDark
-              ? "rgba(10, 12, 16, 0.85)"
-              : "rgba(255, 255, 255, 0.8)"
+              ? "var(--m-surface-solid)"
+              : "var(--m-surface-solid)"
             : "transparent",
-          backdropFilter: scrolled ? "blur(20px) saturate(1.8)" : "none",
-          WebkitBackdropFilter: scrolled ? "blur(20px) saturate(1.8)" : "none",
           borderBottom: scrolled ? "1px solid var(--m-border)" : "none",
         }}
       >
@@ -401,26 +414,14 @@ export default function LandingPage({
 
       {/* ═══════════ HERO SECTION ═══════════ */}
       <section ref={heroRef} className="relative min-h-screen flex items-center pt-16">
-        {/* Background mesh gradient */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div
-            className="absolute top-[10%] left-[15%] size-[500px] rounded-full blur-[120px] opacity-30"
-            style={{ backgroundColor: "var(--m-primary)" }}
-          />
-          <div
-            className="absolute bottom-[20%] right-[10%] size-[400px] rounded-full blur-[100px] opacity-20"
-            style={{ backgroundColor: "var(--m-accent)" }}
-          />
-          <div
-            className="absolute top-[50%] left-[60%] size-[300px] rounded-full blur-[80px] opacity-15"
-            style={{ backgroundColor: "var(--m-primary)" }}
-          />
-        </div>
+        {/* Background – solid, no blur glow */}
+        <div className="absolute inset-0 pointer-events-none" style={{ backgroundColor: "var(--m-bg)" }} />
 
-        {/* Grid pattern overlay */}
-        <div
+        {/* Grid pattern overlay (with subtle scroll parallax) */}
+        <motion.div
           className="absolute inset-0 pointer-events-none opacity-[0.03]"
           style={{
+            y: useTransform(scrollYProgress, [0, 1], [0, -100]),
             backgroundImage: `linear-gradient(var(--m-text) 1px, transparent 1px), linear-gradient(90deg, var(--m-text) 1px, transparent 1px)`,
             backgroundSize: "60px 60px",
           }}
@@ -447,9 +448,9 @@ export default function LandingPage({
             </motion.div>
 
             <motion.h1
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.2 }}
+              initial={{ opacity: 0, filter: "blur(10px)", y: 40 }}
+              animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+              transition={{ duration: 0.9, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
               className="font-[Roboto_Slab] text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-extrabold tracking-tight leading-[0.95]"
               style={{ color: "var(--m-text-heading)" }}
             >
@@ -457,9 +458,9 @@ export default function LandingPage({
             </motion.h1>
 
             <motion.p
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.35 }}
+              initial={{ opacity: 0, filter: "blur(10px)", y: 30 }}
+              animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+              transition={{ duration: 0.9, delay: 0.35, ease: [0.16, 1, 0.3, 1] }}
               className="mt-4 font-[Roboto_Slab] text-xl sm:text-2xl md:text-3xl font-semibold tracking-tight"
               style={{ color: "var(--m-primary)" }}
             >
@@ -467,9 +468,9 @@ export default function LandingPage({
             </motion.p>
 
             <motion.p
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.5 }}
+              initial={{ opacity: 0, filter: "blur(10px)", y: 30 }}
+              animate={{ opacity: 1, filter: "blur(0px)", y: 0 }}
+              transition={{ duration: 0.9, delay: 0.5, ease: [0.16, 1, 0.3, 1] }}
               className="mt-6 text-base md:text-lg leading-relaxed max-w-xl mx-auto"
               style={{ color: "var(--m-text-sub)" }}
             >
@@ -525,12 +526,13 @@ export default function LandingPage({
 
           {/* ─── Dashboard Preview ─── */}
           <motion.div
-            initial={{ opacity: 0, y: 60, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            transition={{ duration: 1, delay: 0.9, ease: [0.25, 0.46, 0.45, 0.94] }}
-            className="mt-16 md:mt-24 max-w-5xl mx-auto"
+            style={{ rotateX: dashRotateX, scale: dashScale, perspective: 1200 }}
+            className="mt-16 md:mt-24 max-w-5xl mx-auto will-change-transform origin-top"
           >
-            <div
+            <motion.div
+              initial={{ opacity: 0, y: 60 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 1, delay: 0.9, ease: [0.25, 0.46, 0.45, 0.94] }}
               className="relative rounded-2xl overflow-hidden p-1"
               style={{
                 background:
@@ -692,12 +694,7 @@ export default function LandingPage({
                   </div>
                 </div>
               </div>
-            </div>
-            {/* Reflection / glow under dashboard */}
-            <div
-              className="mx-auto mt-1 h-20 w-[80%] rounded-b-full blur-3xl opacity-25"
-              style={{ backgroundColor: "var(--m-primary)" }}
-            />
+            </motion.div>
           </motion.div>
         </motion.div>
       </section>
@@ -914,7 +911,7 @@ export default function LandingPage({
               style={{ color: "var(--m-text-sub)" }}
             >
               Choose the aesthetic that matches your mood. Every theme features
-              Liquid Glass effects and carefully tuned color palettes.
+              Beautifully crafted themes with carefully tuned color palettes.
             </p>
           </AnimatedSection>
 
@@ -1344,15 +1341,7 @@ export default function LandingPage({
                 color: "var(--m-primary-text)",
               }}
             >
-              {/* Ambient glow */}
-              <div
-                className="absolute top-0 right-0 size-[400px] rounded-full blur-[120px] opacity-20 pointer-events-none"
-                style={{ backgroundColor: "var(--m-accent)" }}
-              />
-              <div
-                className="absolute bottom-0 left-0 size-[300px] rounded-full blur-[100px] opacity-15 pointer-events-none"
-                style={{ backgroundColor: "#fff" }}
-              />
+
 
               <div className="relative z-10">
                 <h2 className="font-[Roboto_Slab] text-3xl md:text-5xl font-extrabold tracking-tight leading-tight max-w-2xl mx-auto">
@@ -1373,11 +1362,10 @@ export default function LandingPage({
                   onClick={onGetStarted}
                   className="group mt-10 inline-flex items-center gap-3 rounded-full px-10 py-5 text-sm font-bold transition-all duration-300 hover:scale-105 hover:-translate-y-1"
                   style={{
-                    backgroundColor: "rgba(255,255,255,0.15)",
-                    backdropFilter: "blur(12px)",
-                    border: "1px solid rgba(255,255,255,0.2)",
-                    color: "inherit",
-                    boxShadow: "0 8px 40px rgba(0,0,0,0.2)",
+                    backgroundColor: "var(--m-primary)",
+                    color: "var(--m-primary-text)",
+                    border: "1px solid var(--m-primary)",
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.15)",
                   }}
                 >
                   Start Your Journey

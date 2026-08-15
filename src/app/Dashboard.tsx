@@ -1103,10 +1103,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
           mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
         }`}
         style={{
-          backgroundColor: "var(--m-surface)",
-          backdropFilter: "blur(20px)",
-          WebkitBackdropFilter: "blur(20px)",
-          borderColor: "var(--m-border)",
+          backgroundColor: "var(--m-sidebar-bg)",
+          borderColor: "var(--m-border-light)",
         }}
       >
         {/* Brand Header */}
@@ -1127,7 +1125,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
         {/* Scrollable Body of Sidebar */}
         <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-4 space-y-5">
           {/* User Info Card */}
-          <div className="rounded-xl p-3 minimal-inset">
+          <div className="rounded-xl p-3 minimal-inset feature-zoom">
             <div className="flex items-center gap-2.5">
               <div className="grid size-8 place-items-center rounded-full text-xs font-bold" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                 {userNameDisplay.charAt(0)}
@@ -1175,7 +1173,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 <button
                   key={label}
                   onClick={() => { setActiveNav(label); setMobileOpen(false); }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition duration-200"
+                  className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition duration-200 feature-chip"
                   style={
                     activeNav === label
                       ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", fontWeight: 600 }
@@ -1207,7 +1205,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
             <div className="mt-2 space-y-1 px-1 text-sm">
               <button
                 onClick={() => { setSelectedSubject("All subjects"); setActiveNav("Today"); setMobileOpen(false); }}
-                className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition hover:opacity-80"
+                className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition hover:opacity-80 feature-chip"
                 style={selectedSubject === "All subjects" ? { backgroundColor: "var(--m-surface-alt)", fontWeight: 700, color: "var(--m-primary)" } : { color: "var(--m-text-sub)" }}
               >
                 <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: "var(--m-primary)" }} />
@@ -1217,21 +1215,21 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 <button
                   key={sub.id}
                   onClick={() => { setSelectedSubject(sub.name); setActiveNav("Today"); setMobileOpen(false); }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition hover:opacity-80"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition hover:opacity-80 feature-chip"
                   style={selectedSubject === sub.name ? { backgroundColor: "var(--m-surface-alt)", fontWeight: 700, color: "var(--m-primary)" } : { color: "var(--m-text-sub)" }}
                 >
                   <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: sub.color }} />
                   <span className="truncate">{sub.name}</span>
                 </button>
               ))}
-              <button onClick={() => { setSubjectsOpen(true); setMobileOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs font-bold hover:opacity-80" style={{ color: "var(--m-primary)" }}>
+              <button onClick={() => { setSubjectsOpen(true); setMobileOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs font-bold hover:opacity-80 feature-chip" style={{ color: "var(--m-primary)" }}>
                 <FolderPlus size={14} /><span>+ Add / Manage Subjects</span>
               </button>
             </div>
           </div>
 
           {/* Streak & Export Card */}
-          <div className="rounded-xl p-3 text-xs minimal-inset">
+          <div className="rounded-xl p-3 text-xs minimal-inset feature-zoom">
             <div className="flex items-center gap-2 font-medium" style={{ color: "var(--m-text-heading)" }}>
               <Flame size={14} style={{ color: "var(--m-warning)" }} />
               <span>{streak.currentStreak} day streak</span>
@@ -1249,7 +1247,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
           {/* Bottom Controls */}
           <div className="space-y-2 pt-2" style={{ borderTop: "1px solid var(--m-border-light)" }}>
             {/* Theme Selector Button */}
-            <button onClick={() => setThemeSelectorOpen(true)} className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-xs font-medium transition hover:opacity-80 minimal-surface">
+            <button onClick={() => setThemeSelectorOpen(true)} className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-xs font-medium transition hover:opacity-80 minimal-surface feature-chip">
               <span className="flex items-center gap-2">
                 <Palette size={15} />
                 <span>{themeConfig.name}</span>
@@ -1261,7 +1259,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
               </span>
             </button>
 
-            <button onClick={onSignOut} className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-danger)" }}>
+            <button onClick={onSignOut} className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition hover:opacity-80 minimal-surface feature-chip" style={{ color: "var(--m-danger)" }}>
               <LogOut size={14} /><span>Sign out</span>
             </button>
           </div>
@@ -1270,38 +1268,44 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
       {/* Mobile overlay */}
       {mobileOpen && (
-        <button className="fixed inset-0 z-20 bg-[#193428]/30 lg:hidden backdrop-blur-xs" onClick={() => setMobileOpen(false)} aria-label="Close menu" />
+        <button className="fixed inset-0 z-20 bg-black/60 lg:hidden transition-opacity" onClick={() => setMobileOpen(false)} aria-label="Close menu" />
       )}
 
       {/* ─── Main Content ─── */}
       <section className="lg:pl-[240px]">
         {/* Top Bar */}
-        <header className="sticky top-0 z-20 flex items-center justify-between px-5 py-3 glass-header md:px-8">
-          <div className="flex items-center gap-3">
-            <button className="lg:hidden p-1.5 rounded-lg hover:bg-[#eef4ec]" onClick={() => setMobileOpen(true)} aria-label="Open menu">
-              <Menu size={22} />
+        <header className="sticky top-0 z-20 flex items-center justify-between px-3.5 sm:px-6 py-2.5 sm:py-3.5 md:px-8 minimal-surface shadow-xs" style={{ backgroundColor: "var(--m-surface-solid)", borderBottom: "1px solid var(--m-border-light)" }}>
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <button className="lg:hidden p-2 rounded-xl hover:opacity-80 transition minimal-surface min-h-[40px] min-w-[40px] flex items-center justify-center" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+              <Menu size={20} />
             </button>
             <div>
-              <p className="text-sm font-medium" style={{ color: "var(--m-text-heading)" }}>
-                {new Date().toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" })}
+              <p className="text-xs sm:text-sm font-medium truncate max-w-[170px] sm:max-w-none" style={{ color: "var(--m-text-heading)" }}>
+                {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
               </p>
-              <p className="text-xs" style={{ color: "var(--m-text-muted)" }}>
+              <p className="text-[10px] sm:text-xs truncate max-w-[170px] sm:max-w-none" style={{ color: "var(--m-text-muted)" }}>
                 {dayGreeting}, {userNameDisplay}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <button onClick={() => setIsChatMaximized(true)} className="flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }} title="Open AI Tutor">
+              <Brain size={15} /><span className="hidden xs:inline">AI Tutor</span>
+            </button>
+            <button onClick={() => setThemeSelectorOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Change theme">
+              <Palette size={17} />
+            </button>
             <button onClick={() => setSubjectsOpen(true)} className="hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-primary)" }}>
               <FolderPlus size={14} /><span>Projects ({subjects.length})</span>
             </button>
           </div>
         </header>
 
-        <div className="px-4 pb-10 pt-5 md:px-8">
+        <div className="px-3.5 sm:px-6 md:px-8 pb-28 lg:pb-10 pt-4 sm:pt-6">
 
           {/* ═══ Welcome Onboarding ═══ */}
           {showOnboarding && (
-            <div className="mb-8 rounded-2xl p-5 minimal-surface" style={{ borderColor: "var(--m-primary)", borderWidth: "1px" }}>
+            <div className="mb-8 rounded-2xl p-5 minimal-surface feature-zoom" style={{ borderColor: "var(--m-primary)", borderWidth: "1px" }}>
               <div className="flex items-start justify-between">
                 <div>
                   <h2 className="font-[Roboto_Slab] text-xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Welcome, {userNameDisplay}</h2>
@@ -1318,7 +1322,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
           {/* ═══════════ TODAY VIEW ═══════════ */}
           {activeNav === "Today" && (
-            <div className="grid gap-7 xl:grid-cols-[1fr_380px] items-start">
+            <div className="grid gap-5 sm:gap-7 xl:grid-cols-[1fr_380px] items-start">
               <div>
                 {/* Greeting */}
                 <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
@@ -1337,14 +1341,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
                 {/* Deadline Countdown Widget */}
                 {upcomingDeadlines.length > 0 && (
-                  <section className="mb-5 rounded-xl p-4 minimal-surface">
+                  <section className="mb-5 rounded-xl p-4 minimal-surface feature-zoom">
                     <div className="flex items-center gap-2 mb-3">
                       <AlarmClock size={15} style={{ color: "var(--m-danger)" }} />
                       <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Upcoming deadlines</p>
                     </div>
                     <div className="flex gap-3 overflow-x-auto pb-1">
                       {upcomingDeadlines.map((t) => (
-                        <div key={t.id} className="shrink-0 rounded-xl px-3 py-2 text-xs" style={{ border: `1px solid ${deadlineColor(t.daysLeft)}30`, backgroundColor: `${deadlineColor(t.daysLeft)}10` }}>
+                        <div key={t.id} className="shrink-0 rounded-xl px-3 py-2 text-xs feature-chip" style={{ border: `1px solid ${deadlineColor(t.daysLeft)}30`, backgroundColor: `${deadlineColor(t.daysLeft)}10` }}>
                           <p className="font-bold truncate max-w-[140px]" style={{ color: "var(--m-text-heading)" }}>{t.title}</p>
                           <p className="font-[DM_Mono] text-[11px] font-bold mt-0.5" style={{ color: deadlineColor(t.daysLeft) }}>
                             {t.daysLeft < 0 ? `${Math.abs(t.daysLeft)}d overdue!` : t.daysLeft === 0 ? "Due today!" : `${t.daysLeft}d left`}
@@ -1356,7 +1360,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 )}
 
                 {/* Subject Filter */}
-                <section className="mb-5 rounded-xl p-4 minimal-inset">
+                <section className="mb-5 rounded-xl p-4 minimal-inset feature-zoom">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Filter by project</p>
                     <button onClick={() => setSubjectsOpen(true)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition hover:scale-105" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
@@ -1364,13 +1368,13 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     </button>
                   </div>
                   <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    <button onClick={() => setSelectedSubject("All subjects")} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105" style={selectedSubject === "All subjects" ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
+                    <button onClick={() => setSelectedSubject("All subjects")} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 feature-chip" style={selectedSubject === "All subjects" ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
                       All ({tasks.length})
                     </button>
                     {subjects.map((s) => {
                       const count = tasks.filter((t) => t.course === s.name && !t.done).length;
                       return (
-                        <button key={s.id} onClick={() => { setSelectedSubject(s.name); setTaskCourse(s.name); }} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105" style={selectedSubject === s.name ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
+                        <button key={s.id} onClick={() => { setSelectedSubject(s.name); setTaskCourse(s.name); }} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 feature-chip" style={selectedSubject === s.name ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
                           <span className="mr-2 inline-block size-2.5 rounded-full" style={{ backgroundColor: s.color }} />
                           {s.name} {count > 0 && <span className="opacity-75">({count})</span>}
                         </button>
@@ -1380,8 +1384,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 </section>
 
                 {/* Progress & Timer */}
-                <div className="grid gap-5 md:grid-cols-[1.3fr_1fr]">
-                  <section className="overflow-hidden rounded-xl p-5 minimal-surface">
+                <div className="grid gap-4 sm:gap-5 md:grid-cols-[1.3fr_1fr]">
+                  <section className="overflow-hidden rounded-xl p-5 minimal-surface feature-zoom">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Progress</p>
@@ -1415,7 +1419,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                   </section>
 
                   {/* Pomodoro Widget */}
-                  <section className="rounded-xl p-5 minimal-surface" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", borderColor: "transparent" }}>
+                  <section className="rounded-xl p-5 minimal-surface feature-zoom" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", borderColor: "transparent" }}>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">
@@ -1452,7 +1456,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                         </div>
                         <div className="mt-2 flex gap-1 text-[10px]">
                           {[15, 25, 45].map((m) => (
-                            <button key={m} onClick={() => changeTimerPreset(m)} className="px-2 py-0.5 rounded transition-all duration-200" style={timerPreset === m ? { backgroundColor: "var(--m-accent)", color: "var(--m-accent-text)", fontWeight: "bold" } : { backgroundColor: "color-mix(in srgb, var(--m-primary-text) 15%, transparent)", color: "var(--m-primary-text)", opacity: 0.85 }}>{m}m</button>
+                            <button key={m} onClick={() => changeTimerPreset(m)} className="px-2 py-0.5 rounded transition-all duration-200 feature-chip" style={timerPreset === m ? { backgroundColor: "var(--m-accent)", color: "var(--m-accent-text)", fontWeight: "bold" } : { backgroundColor: "color-mix(in srgb, var(--m-primary-text) 15%, transparent)", color: "var(--m-primary-text)", opacity: 0.85 }}>{m}m</button>
                           ))}
                         </div>
                       </div>
@@ -1466,14 +1470,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     <h2 className="text-lg font-semibold" style={{ color: "var(--m-text-heading)" }}>Tasks</h2>
                     <div className="flex rounded-xl p-1 text-xs font-semibold" style={{ backgroundColor: "var(--m-surface-alt)" }}>
                       {(["all", "active", "completed"] as const).map((st) => (
-                        <button key={st} onClick={() => setTaskFilterStatus(st)} className={`rounded-lg px-3 py-1 capitalize transition`} style={taskFilterStatus === st ? { backgroundColor: "var(--m-surface)", color: "var(--m-primary)", fontWeight: 700, boxShadow: "0 1px 2px rgba(0,0,0,0.05)" } : { color: "var(--m-text-sub)" }}>
+                        <button key={st} onClick={() => setTaskFilterStatus(st)} className={`rounded-lg px-3 py-1 capitalize transition feature-chip`} style={taskFilterStatus === st ? { backgroundColor: "var(--m-surface)", color: "var(--m-primary)", fontWeight: 700, boxShadow: "0 1px 2px rgba(0,0,0,0.05)" } : { color: "var(--m-text-sub)" }}>
                           {st}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  <div className="overflow-hidden rounded-xl minimal-surface">
+                  <div className="overflow-hidden rounded-xl minimal-surface feature-zoom">
                     <div className="divide-y" style={{ borderColor: "var(--m-border-light)" }}>
                       {filteredTasks.length ? (
                         filteredTasks.map((task) => (
@@ -1564,7 +1568,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
               </div>
 
               {/* ─── Right: AI Chat Panel ─── */}
-              <aside className="flex flex-col overflow-hidden rounded-2xl w-full liquid-glass-float h-[calc(100vh-120px)] min-h-[520px] sticky top-4">
+              <aside className="flex flex-col overflow-hidden rounded-2xl w-full minimal-surface h-[calc(100vh-120px)] min-h-[520px] sticky top-4 shadow-sm feature-zoom" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)" }}>
                 {/* Side Panel Header */}
                 <div className="flex items-center justify-between p-3.5 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                   <div className="flex items-center gap-2">
@@ -1639,19 +1643,22 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 </form>
               </aside>
 
-              {/* ─── Full Screen Wide Angle AI Overlay Modal ─── */}
+              {/* ─── Full Screen Wide Angle AI Fullscreen Overlay ─── */}
               {isChatMaximized && (
-                <div className="fixed inset-0 z-50 flex flex-col p-4 md:p-6 liquid-glass-float animate-in fade-in zoom-in-95 duration-200" style={{ color: "var(--m-text)" }}>
+                <div
+                  className="fixed inset-0 z-50 flex flex-col w-full h-full p-0 m-0 overflow-hidden minimal-surface animate-in fade-in duration-200"
+                  style={{ backgroundColor: "var(--m-surface-solid)", color: "var(--m-text)" }}
+                >
                   {/* Fullscreen Header */}
-                  <div className="flex items-center justify-between pb-4 mb-4 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
+                  <div className="w-full px-4 sm:px-6 md:px-8 py-3.5 sm:py-4 flex items-center justify-between shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface)" }}>
                     <div className="flex items-center gap-3">
-                      <div className="grid size-11 place-items-center rounded-2xl shadow-sm" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                      <div className="grid size-10 sm:size-11 place-items-center rounded-2xl shadow-sm" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                         <Brain size={22} />
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
-                          <h2 className="font-[Roboto_Slab] text-xl font-bold" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
-                          <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Angle Mode</span>
+                          <h2 className="font-[Roboto_Slab] text-lg sm:text-xl font-bold" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
+                          <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
                         </div>
                         <p className="flex items-center gap-1.5 text-xs mt-0.5" style={{ color: "var(--m-text-sub)" }}>
                           <span className="size-2 rounded-full animate-pulse" style={{ backgroundColor: "var(--m-success)" }} />
@@ -1659,20 +1666,30 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                         </p>
                       </div>
                     </div>
-                    <button onClick={() => setIsChatMaximized(false)} className="flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-primary)" }} title="Exit full screen">
-                      <Minimize2 size={16} /><span>Exit Wide Angle</span>
+                    <button onClick={() => setIsChatMaximized(false)} className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }} title="Exit full screen">
+                      <Minimize2 size={16} /><span>Exit Full Screen</span>
                     </button>
                   </div>
 
-                  {/* Fullscreen Messages Area (Stretches to 100% width) */}
-                  <div ref={chatMaxContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar w-full px-2 py-4">
+                  {/* Fullscreen Messages Area (Stretches across entire screen) */}
+                  <div ref={chatMaxContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar w-full px-4 sm:px-6 md:px-10 py-6 max-w-6xl mx-auto">
                     {messages.map((m, idx) => (
-                      <div key={idx} className={`max-w-[90%] rounded-2xl p-4 leading-relaxed transition ${m.role === "assistant" ? "minimal-inset" : "ml-auto"}`} style={m.role === "assistant" ? { color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px" } : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }}>
+                      <div
+                        key={idx}
+                        className={`max-w-[90%] md:max-w-[80%] rounded-2xl p-4 md:p-5 leading-relaxed transition ${
+                          m.role === "assistant" ? "shadow-xs" : "ml-auto shadow-sm"
+                        }`}
+                        style={
+                          m.role === "assistant"
+                            ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
+                            : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
+                        }
+                      >
                         {renderSimpleMarkdown(m.content)}
                       </div>
                     ))}
                     {isAsking && (
-                      <div className="flex w-fit items-center gap-3 rounded-2xl p-3 minimal-inset" style={{ borderTopLeftRadius: "4px" }}>
+                      <div className="flex w-fit items-center gap-3 rounded-2xl p-3.5 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }}>
                         <Sparkles size={18} className="animate-spin" style={{ color: "var(--m-primary)" }} />
                         <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI is analyzing your prompt...</span>
                       </div>
@@ -1680,7 +1697,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                   </div>
 
                   {/* Quick Prompts Bar */}
-                  <div className="w-full py-2 shrink-0">
+                  <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 py-2 shrink-0">
                     <div className="flex flex-wrap gap-2 justify-center">
                       {[
                         { emoji: "📐", text: "Solve Step-by-Step", prompt: "Solve 2x - 1 = 0 step by step with explanations" },
@@ -1688,26 +1705,26 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                         { emoji: "🃏", text: "Create Revision Flashcards", prompt: `Generate 5 flashcards for studying ${subjects.length > 0 ? subjects[0].name : "my course"}` },
                         { emoji: "📝", text: "Summarize Study Notes", prompt: "Summarize key study concepts and main takeaways" },
                       ].map(({ emoji, text, prompt }) => (
-                        <button key={text} onClick={() => askCoach(undefined, prompt)} className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-primary)" }}>
+                        <button key={text} onClick={() => askCoach(undefined, prompt)} className="rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
                           {emoji} {text}
                         </button>
                       ))}
                     </div>
                   </div>
 
-                  {/* Fullscreen Input Bar (Spans full screen width) */}
-                  <form onSubmit={askCoach} className="w-full pt-2 shrink-0">
+                  {/* Fullscreen Input Bar */}
+                  <form onSubmit={askCoach} className="w-full max-w-6xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
                     {chatFile && (
-                      <div className="flex items-center justify-between rounded-lg px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)" }}>
+                      <div className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
                         <span className="flex items-center gap-2 truncate"><Paperclip size={14} />{chatFile.name} <span className="text-[10px] opacity-75 font-mono">({formatFileSize(chatFile.size)})</span></span>
                         <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75"><X size={14} /></button>
                       </div>
                     )}
-                    <div className="flex items-center gap-3 rounded-xl p-2 pl-3 minimal-inset">
+                    <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
                       <button type="button" onClick={() => chatFileInputRef.current?.click()} className="p-1.5 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
                         <Paperclip size={18} />
                       </button>
-                      <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything... (Press Enter to send)" />
+                      <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything... (Press Enter to send)" />
                       <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:scale-105 disabled:opacity-40 shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                         <Send size={15} /><span>Send</span>
                       </button>
@@ -1720,8 +1737,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
           {/* ═══════════ PLANNER VIEW ═══════════ */}
           {activeNav === "Planner" && (
-            <section className="grid gap-7 xl:grid-cols-[0.95fr_1.05fr]">
-              <div className="rounded-[1.5rem] p-6 shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+            <section className="grid gap-5 sm:gap-7 xl:grid-cols-[0.95fr_1.05fr]">
+              <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                 <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Build a Doable Day</p>
                 <h2 className="mt-1 font-[Roboto_Slab] text-3xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Plan your study blocks.</h2>
 
@@ -1774,7 +1791,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
               </div>
 
               {/* Timeline */}
-              <div className="rounded-[1.5rem] p-6 shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+              <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                 <div className="flex items-end justify-between pb-4" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                   <div>
                     <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Timeline</p>
@@ -1784,7 +1801,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 </div>
                 <div className="mt-6 space-y-3">
                   {scheduleItems.length ? scheduleItems.map((item, idx) => (
-                    <div key={item.id || idx} className={`group flex items-center gap-4 rounded-2xl p-4 transition hover:shadow-xs ${item.done ? "opacity-60" : ""}`} style={{ border: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
+                    <div key={item.id || idx} className={`group flex items-center gap-4 rounded-2xl p-4 transition feature-chip ${item.done ? "opacity-60" : ""}`} style={{ border: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
                       <button onClick={() => toggleScheduleDone(item.id, item.title)} className="grid size-6 shrink-0 place-items-center rounded-full border transition" style={item.done ? { borderColor: "var(--m-primary)", backgroundColor: "var(--m-primary)", color: "white" } : { borderColor: "var(--m-border)", backgroundColor: "var(--m-surface)" }}>
                         {item.done && <Check size={14} strokeWidth={3} />}
                       </button>
@@ -1831,7 +1848,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                   const gpa = subjectGPAs[sub.id];
 
                   return (
-                    <div key={sub.id} className="group flex flex-col justify-between rounded-[1.5rem] p-5 shadow-xs transition hover:scale-[1.02] hover:shadow-md" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                    <div key={sub.id} className="group flex flex-col justify-between rounded-[1.5rem] p-5 shadow-xs transition hover:shadow-md feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                       <div>
                         <div className="flex items-start justify-between">
                           <span className="grid size-12 place-items-center rounded-2xl shadow-xs" style={{ backgroundColor: sub.color }}><Folder size={22} style={{ color: "var(--m-primary)" }} /></span>
@@ -1858,7 +1875,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                           <span className="flex items-center gap-1.5 font-medium" style={{ color: "var(--m-text-sub)" }}><Paperclip size={13} />{subjectFiles.length} files</span>
                           <button onClick={() => setFilesModalSubject(sub)} className="rounded-lg px-2 py-1 font-bold transition hover:opacity-80" style={{ color: "var(--m-primary)" }}>Manage →</button>
                         </div>
-                        <button onClick={() => { setSelectedSubject(sub.name); setActiveNav("Today"); }} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold hover:opacity-80" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                        <button onClick={() => { setSelectedSubject(sub.name); setActiveNav("Today"); }} className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-xl py-2 text-xs font-bold hover:opacity-80 feature-chip" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
                           <span>Open Tasks</span><ArrowUpRight size={14} />
                         </button>
                       </div>
@@ -1880,8 +1897,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
           {/* ═══════════ FOCUS VIEW ═══════════ */}
           {activeNav === "Focus" && (
-            <section className="grid gap-7 xl:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-[1.5rem] p-6 shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+            <section className="grid gap-5 sm:gap-7 xl:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-5" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                   <div>
                     <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>7-Day Focus Graph</p>
@@ -1912,7 +1929,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
               <div className="space-y-5">
                 {/* Goal Card */}
-                <div className="rounded-[1.5rem] p-6 shadow-md" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                <div className="rounded-[1.5rem] p-6 shadow-md feature-zoom" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2"><Target size={20} style={{ color: "var(--m-accent)" }} /><span className="font-[DM_Mono] text-[10px] uppercase tracking-[0.14em] opacity-90">Weekly Goal</span></div>
                     <span className="font-[DM_Mono] text-xs font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: "rgba(0,0,0,0.2)" }}>{targetProgress}%</span>
@@ -1930,7 +1947,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 </div>
 
                 {/* Live Timer */}
-                <div className="rounded-[1.5rem] p-6 shadow-xs" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)" }}>
+                <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)" }}>
                   <div className="flex items-center justify-between mb-3">
                     <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>{isBreak ? "Break Timer ☕" : "Focus Timer"}</p>
                     <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Session {pomodoroSession + 1}</span>
@@ -1952,7 +1969,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     <span>Presets:</span>
                     <div className="flex gap-1">
                       {[15, 25, 45, 60].map((m) => (
-                        <button key={m} onClick={() => changeTimerPreset(m)} className="px-2.5 py-1 rounded-lg text-xs font-bold transition" style={timerPreset === m ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text-sub)", border: "1px solid var(--m-border-light)" }}>{m}m</button>
+                        <button key={m} onClick={() => changeTimerPreset(m)} className="px-2.5 py-1 rounded-lg text-xs font-bold transition feature-chip" style={timerPreset === m ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text-sub)", border: "1px solid var(--m-border-light)" }}>{m}m</button>
                       ))}
                     </div>
                   </div>
@@ -1963,9 +1980,9 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
           {/* ═══════════ NOTES VIEW ═══════════ */}
           {activeNav === "Notes" && (
-            <section className="grid gap-7 xl:grid-cols-[320px_1fr]">
+            <section className="grid gap-5 sm:gap-7 xl:grid-cols-[280px_1fr]">
               {/* Notes Sidebar List */}
-              <div className="flex flex-col rounded-xl p-5 minimal-surface" style={{ maxHeight: "calc(100vh - 140px)" }}>
+              <div className="flex flex-col rounded-xl p-5 minimal-surface feature-zoom" style={{ maxHeight: "calc(100vh - 140px)" }}>
                 <div className="flex items-center justify-between mb-3 shrink-0">
                   <div>
                     <h2 className="font-[Roboto_Slab] text-xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Notes & Journal</h2>
@@ -1978,8 +1995,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
                 {/* Filters */}
                 <div className="space-y-2 mb-3 shrink-0">
-                  <input value={noteSearchQuery} onChange={(e) => setNoteSearchQuery(e.target.value)} placeholder="🔍 Search notes..." className="w-full rounded-xl px-3 py-2 text-xs outline-none glass-input" style={{ color: "var(--m-text)" }} />
-                  <select value={noteSubjectFilter ?? ""} onChange={(e) => setNoteSubjectFilter(e.target.value ? Number(e.target.value) : null)} className="w-full rounded-xl px-3 py-2 text-xs outline-none glass-input cursor-pointer" style={{ color: "var(--m-text)" }}>
+                  <input value={noteSearchQuery} onChange={(e) => setNoteSearchQuery(e.target.value)} placeholder="🔍 Search notes..." className="w-full rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} />
+                  <select value={noteSubjectFilter ?? ""} onChange={(e) => setNoteSubjectFilter(e.target.value ? Number(e.target.value) : null)} className="w-full rounded-xl px-3 py-2 text-xs outline-none border cursor-pointer" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}>
                     <option value="">All Subjects ({notes.length})</option>
                     {subjects.map((s) => (
                       <option key={s.id} value={s.id}>{s.name} ({notes.filter((n) => n.subjectId === s.id).length})</option>
@@ -1996,7 +2013,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                       const noteSub = subjects.find((s) => Number(s.id) === Number(note.subjectId));
                       const isSelected = activeNote?.id === note.id;
                       return (
-                        <button key={note.id} onClick={() => selectNote(note)} className="w-full text-left rounded-2xl p-3.5 transition duration-200 glass-card-hover" style={isSelected ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 4px 15px rgba(36,76,59,0.25)" } : { backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border-light)", color: "var(--m-text)" }}>
+                        <button key={note.id} onClick={() => selectNote(note)} className="w-full text-left rounded-2xl p-3.5 transition duration-200 feature-chip" style={isSelected ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 4px 15px rgba(36,76,59,0.25)" } : { backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border-light)", color: "var(--m-text)" }}>
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-xs font-bold truncate flex-1">{note.title || "Untitled Note"}</p>
                             {noteSub && (
@@ -2022,11 +2039,11 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
               </div>
 
               {/* Note Editor Area */}
-              <div className="flex flex-col rounded-xl p-5 minimal-surface" style={{ minHeight: "600px" }}>
+              <div className="flex flex-col rounded-xl p-5 minimal-surface feature-zoom" style={{ minHeight: "600px" }}>
                 {/* Editor Top Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <select value={noteSubjectId} onChange={(e) => handleSubjectChange(Number(e.target.value))} className="rounded-xl border px-3 py-1.5 text-xs font-bold outline-none cursor-pointer glass-input" style={{ color: "var(--m-primary)" }}>
+                    <select value={noteSubjectId} onChange={(e) => handleSubjectChange(Number(e.target.value))} className="rounded-xl border px-3 py-1.5 text-xs font-bold outline-none cursor-pointer" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-primary)" }}>
                       <option value={0}>General Study</option>
                       {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
                     </select>
@@ -2116,7 +2133,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                   <h2 className="mt-1 font-[Roboto_Slab] text-3xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Grade Tracker</h2>
                 </div>
                 {overallGPA > 0 && (
-                  <div className="rounded-2xl px-5 py-3 text-center" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                  <div className="rounded-2xl px-5 py-3 text-center feature-chip" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                     <p className="text-[10px] font-[DM_Mono] uppercase opacity-80">Overall Average</p>
                     <p className="font-[Roboto_Slab] text-3xl font-bold">{overallGPA}%</p>
                   </div>
@@ -2124,9 +2141,9 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
               </div>
 
               {/* Add Grade Form */}
-              <form onSubmit={addGrade} className="rounded-[1.5rem] p-5 shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+              <form onSubmit={addGrade} className="rounded-[1.5rem] p-5 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                 <p className="text-xs font-bold mb-3" style={{ color: "var(--m-text-heading)" }}>Record New Grade</p>
-                <div className="grid gap-3 sm:grid-cols-5">
+                <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-5">
                   <select value={gradeForm.subjectId} onChange={(e) => setGradeForm({ ...gradeForm, subjectId: Number(e.target.value) })} className="rounded-xl border px-3 py-2 text-xs outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} required>
                     <option value={0}>Select Subject</option>
                     {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -2145,7 +2162,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                   const avg = subjectGPAs[sub.id] ?? 0;
                   if (subGrades.length === 0) return null;
                   return (
-                    <div key={sub.id} className="rounded-[1.5rem] p-5 shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                    <div key={sub.id} className="rounded-[1.5rem] p-5 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-2">
                           <span className="size-3 rounded-full" style={{ backgroundColor: sub.color }} />
@@ -2155,7 +2172,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                       </div>
                       <div className="space-y-2">
                         {subGrades.map((g) => (
-                          <div key={g.id} className="flex items-center justify-between rounded-xl px-3 py-2 text-xs" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
+                          <div key={g.id} className="flex items-center justify-between rounded-xl px-3 py-2 text-xs feature-chip" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
                             <span className="font-medium" style={{ color: "var(--m-text)" }}>{g.assignmentName}</span>
                             <span className="font-[DM_Mono] font-bold" style={{ color: "var(--m-primary)" }}>{g.score}/{g.total}</span>
                           </div>
@@ -2207,7 +2224,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     <div className="h-full rounded-full transition-all duration-300" style={{ width: `${((currentCardIndex + 1) / studyCards.length) * 100}%`, backgroundColor: "var(--m-primary)" }} />
                   </div>
 
-                  <button onClick={() => setCardFlipped(!cardFlipped)} className="w-full min-h-[280px] rounded-[2rem] p-8 text-center shadow-lg transition-all duration-500 hover:shadow-xl cursor-pointer" style={{ backgroundColor: cardFlipped ? "var(--m-primary)" : "var(--m-surface)", color: cardFlipped ? "var(--m-primary-text)" : "var(--m-text)", border: `2px solid ${cardFlipped ? "var(--m-primary)" : "var(--m-border)"}`, transform: cardFlipped ? "rotateY(0deg)" : "rotateY(0deg)" }}>
+                  <button onClick={() => setCardFlipped(!cardFlipped)} className="w-full min-h-[280px] rounded-[2rem] p-8 text-center shadow-lg transition-all duration-500 hover:shadow-xl cursor-pointer feature-zoom" style={{ backgroundColor: cardFlipped ? "var(--m-primary)" : "var(--m-surface)", color: cardFlipped ? "var(--m-primary-text)" : "var(--m-text)", border: `2px solid ${cardFlipped ? "var(--m-primary)" : "var(--m-border)"}`, transform: cardFlipped ? "rotateY(0deg)" : "rotateY(0deg)" }}>
                     <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.2em] opacity-60 mb-4">{cardFlipped ? "Answer" : "Question"}</p>
                     <p className="font-[Roboto_Slab] text-xl font-semibold leading-8">{cardFlipped ? studyCards[currentCardIndex].back : studyCards[currentCardIndex].front}</p>
                     {!cardFlipped && <p className="mt-6 text-xs opacity-50">Click to reveal answer</p>}
@@ -2230,9 +2247,9 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
               {/* Create Card Form */}
               {!studyingCards && (
                 <>
-                  <form onSubmit={addFlashcard} className="rounded-[1.5rem] p-5 shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                  <form onSubmit={addFlashcard} className="rounded-[1.5rem] p-5 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                     <p className="text-xs font-bold mb-3" style={{ color: "var(--m-text-heading)" }}>Create New Flashcard</p>
-                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
+                    <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-[1fr_1fr_1fr_auto]">
                       <select value={cardForm.subjectId} onChange={(e) => setCardForm({ ...cardForm, subjectId: Number(e.target.value) })} className="rounded-xl border px-3 py-2 text-xs outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} required>
                         <option value={0}>Select Subject</option>
                         {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -2248,7 +2265,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     {studyCards.map((card) => {
                       const sub = subjects.find((s) => s.id === card.subjectId);
                       return (
-                        <div key={card.id} className="group rounded-[1.5rem] p-5 shadow-xs transition hover:shadow-md" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                        <div key={card.id} className="group rounded-[1.5rem] p-5 shadow-xs transition hover:shadow-md feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                           <div className="flex items-center justify-between mb-3">
                             {sub && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ backgroundColor: sub.color + "40", color: "var(--m-text-heading)" }}>{sub.name}</span>}
                             <button onClick={() => setFlashcards((c) => c.filter((x) => x.id !== card.id))} className="opacity-0 group-hover:opacity-100 p-1 rounded-lg transition" style={{ color: "var(--m-danger)" }}><Trash2 size={14} /></button>
@@ -2274,20 +2291,85 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
         </div>
       </section>
 
+      {/* ─── Mobile Bottom Navigation Dock (Optimized for 1-Thumb Reach) ─── */}
+      <nav
+        className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around px-2 py-1.5 border-t lg:hidden pb-safe minimal-surface shadow-2xl"
+        style={{
+          backgroundColor: "var(--m-surface-solid)",
+          borderColor: "var(--m-border-light)",
+        }}
+      >
+        {[
+          { label: "Today", icon: Sun, display: "Today" },
+          { label: "Planner", icon: CalendarDays, display: "Plan" },
+          { label: "Focus", icon: Target, display: "Focus" },
+          { label: "Notes", icon: Notebook, display: "Notes" },
+        ].map(({ label, icon: Icon, display }) => {
+          const isActive = activeNav === label;
+          return (
+            <button
+              key={label}
+              onClick={() => {
+                setActiveNav(label as any);
+                setMobileOpen(false);
+              }}
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-2.5 transition-all min-w-[50px] min-h-[44px] ${
+                isActive ? "font-bold" : "opacity-75"
+              }`}
+              style={{
+                color: isActive ? "var(--m-primary)" : "var(--m-text-sub)",
+                backgroundColor: isActive ? "var(--m-surface-alt)" : "transparent",
+              }}
+            >
+              <Icon size={18} />
+              <span className="text-[10px] tracking-tight">{display}</span>
+            </button>
+          );
+        })}
+
+        {/* AI Tutor One-Tap Button */}
+        <button
+          onClick={() => setIsChatMaximized(true)}
+          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-2.5 transition-all min-w-[50px] min-h-[44px]"
+          style={{ color: "var(--m-primary)" }}
+        >
+          <div
+            className="grid size-6 place-items-center rounded-lg shadow-xs"
+            style={{
+              backgroundColor: "var(--m-primary)",
+              color: "var(--m-primary-text)",
+            }}
+          >
+            <Brain size={13} />
+          </div>
+          <span className="text-[10px] font-bold tracking-tight">AI Tutor</span>
+        </button>
+
+        {/* More / Menu Drawer Toggle */}
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-2.5 transition-all min-w-[50px] min-h-[44px] opacity-75"
+          style={{ color: "var(--m-text-sub)" }}
+        >
+          <Menu size={18} />
+          <span className="text-[10px] tracking-tight">More</span>
+        </button>
+      </nav>
+
       {/* ═══════════ MODALS ═══════════ */}
 
       {/* Subject Create/Edit Modal */}
       {(subjectsOpen || editingSubject) && (
-        <div className="fixed inset-0 z-40 grid place-items-center p-4 backdrop-blur-xs" style={{ backgroundColor: "var(--m-modal-overlay)" }}>
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl liquid-glass-float">
-            <div className="flex items-start justify-between p-6" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
+        <div className="fixed inset-0 z-40 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/60 animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden rounded-2xl md:rounded-3xl minimal-surface shadow-2xl animate-in zoom-in-95 duration-200" style={{ backgroundColor: "var(--m-surface-solid)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
+            <div className="flex items-start justify-between p-4 sm:p-6 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
               <div>
                 <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Subject Management</p>
-                <h2 className="mt-1 font-[Roboto_Slab] text-2xl font-semibold" style={{ color: "var(--m-text-heading)" }}>{editingSubject ? `Edit "${editingSubject.name}"` : "Create New Subject"}</h2>
+                <h2 className="mt-1 font-[Roboto_Slab] text-xl sm:text-2xl font-semibold" style={{ color: "var(--m-text-heading)" }}>{editingSubject ? `Edit "${editingSubject.name}"` : "Create New Subject"}</h2>
               </div>
               <button onClick={() => { setSubjectsOpen(false); setEditingSubject(null); }} className="rounded-full p-2 hover:opacity-75"><X size={20} /></button>
             </div>
-            <div className="p-6 space-y-6">
+            <div className="p-4 sm:p-6 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
               {editingSubject ? (
                 <form onSubmit={updateSubject} className="space-y-4">
                   <label className="block text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Subject Name
@@ -2364,8 +2446,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
       {/* Files Modal */}
       {filesModalSubject && (
-        <div className="fixed inset-0 z-50 grid place-items-center p-4 backdrop-blur-xs" style={{ backgroundColor: "var(--m-modal-overlay)" }}>
-          <div className="w-full max-w-2xl rounded-[1.5rem] p-6 shadow-2xl max-h-[90vh] flex flex-col" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-surface)" }}>
+        <div className="fixed inset-0 z-50 grid place-items-center p-4 bg-black/60 animate-in fade-in duration-200">
+          <div className="w-full max-w-2xl rounded-[1.5rem] p-6 shadow-2xl max-h-[90vh] flex flex-col overflow-hidden minimal-surface" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-surface-solid)", color: "var(--m-text)" }}>
             <div className="flex items-start justify-between pb-4 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
               <div className="flex items-center gap-3">
                 <div className="grid size-11 place-items-center rounded-2xl shadow-xs" style={{ backgroundColor: filesModalSubject.color }}><Folder size={24} style={{ color: "var(--m-primary)" }} /></div>
