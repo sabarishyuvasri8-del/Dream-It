@@ -534,9 +534,25 @@ export default function LandingPage({
                 e.currentTarget.style.transform = "none";
                 e.currentTarget.style.boxShadow = "none";
               }}
-            >
-              Start for free <ArrowRight size={18} />
             </button>
+          </motion.div>
+          
+          <motion.div
+             initial={prefersReducedMotion ? false : { opacity: 0 }}
+             animate={prefersReducedMotion ? false : { opacity: 1 }}
+             transition={{ duration: 0.5, delay: prefersReducedMotion ? 0 : 1.8 }}
+             className="mt-12 flex flex-wrap justify-center gap-6 md:gap-10 text-sm font-medium"
+             style={{ color: "var(--m-text-muted)" }}
+          >
+             <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>No credit card required</span>
+             </div>
+             <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>Setup in 30 seconds</span>
+             </div>
+             <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>Free forever plan</span>
+             </div>
           </motion.div>
         </div>
 
@@ -545,7 +561,7 @@ export default function LandingPage({
           initial={prefersReducedMotion ? false : { opacity: 0, y: 30 }}
           animate={prefersReducedMotion ? false : { opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: prefersReducedMotion ? 0 : 1.8 }}
-          className="mt-24 max-w-7xl w-full px-6 relative z-0"
+          className="mt-32 md:mt-40 max-w-7xl w-full px-6 relative z-0"
           style={{ transform: prefersReducedMotion ? "none" : `translateY(${parallaxOffset}px)` }}
         >
           <div className="text-center mb-12 relative">
