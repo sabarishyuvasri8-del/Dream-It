@@ -15,6 +15,7 @@ import {
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "../../lib/finance-defaults";
 import { Bot, Send, Sparkles, Trash2, User } from "lucide-react";
 import VoiceInputButton from "../components/VoiceInputButton";
+import { fetchAI } from "../../lib/ai-client";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -235,65 +236,34 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
       .slice(-8)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    const apiKey = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
-
     try {
-      const res = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: "gemini-3.5-flash-lite",
-            messages: [
-              { role: "system", content: systemPrompt },
-              ...history,
-              { role: "user", content: question },
-            ],
-            max_tokens: 4096,
-            temperature: 0.4,
-            top_p: 0.9,
-          }),
-        }
-      );
+      const response = await fetchAI({
+        model: "gemini-3.5-flash-lite",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...history,
+          { role: "user", content: question },
+        ],
+        max_tokens: 4096,
+        temperature: 0.4,
+        top_p: 0.9,
+      });
 
-      if (res.ok) {
-        const resData = await res.json();
-        const answer = resData.choices?.[0]?.message?.content;
-        if (answer && answer.trim()) {
-          setMessages((prev) => [...prev, { role: "assistant", content: answer.trim() }]);
-          setIsAsking(false);
-          return;
-        }
+      if (response.content) {
+        setMessages((prev) => [...prev, { role: "assistant", content: response.content }]);
       } else {
-        const errText = await res.text();
-        console.error("Gemma 4 API error response:", res.status, errText);
-        if (res.status === 429) {
-          setMessages((prev) => [
-            ...prev,
-            {
-              role: "assistant",
-              content: "⚠️ **Rate Limit Exceeded:** The AI is currently experiencing high traffic. Please wait about 60 seconds and try again.",
-            },
-          ]);
-          setIsAsking(false);
-          return;
-        }
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `⚠️ **AI Money Coach**: ${response.error || "Temporarily unavailable."}` },
+        ]);
       }
-    } catch (err) {
-      console.error("AI Money Coach (Gemma 4) API error:", err);
+    } catch (error) {
+      console.warn("AI Money Coach fallback notice:", error);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "⚠️ **AI Money Coach**: An unexpected error occurred. Please try again." },
+      ]);
     }
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        role: "assistant",
-        content: "⚠️ **AI Money Coach** is temporarily unavailable. Please try again shortly.",
-      },
-    ]);
     setIsAsking(false);
   };
 

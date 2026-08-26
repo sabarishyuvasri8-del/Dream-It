@@ -4,8 +4,8 @@
  * Uses the Gemini API for all AI features.
  */
 
-const GEMINI_API_KEY = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
-const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+import { fetchAI } from "../../lib/ai-client";
+
 const GEMINI_MODEL = "gemma-4-31b-it";
 
 export interface Subsystems {
@@ -122,34 +122,25 @@ async function callGemini(
   maxTokens: number = 2048,
   temperature: number = 0.3
 ): Promise<string> {
-  const res = await fetch(GEMINI_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${GEMINI_API_KEY.trim()}`,
-    },
-    body: JSON.stringify({
-      model: GEMINI_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      max_tokens: maxTokens,
-      temperature,
-    }),
+  const response = await fetchAI({
+    model: GEMINI_MODEL,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage },
+    ],
+    max_tokens: maxTokens,
+    temperature,
   });
 
-  if (!res.ok) {
-    const errText = await res.text();
-    console.error("Gemini API error:", res.status, errText);
-    if (res.status === 429) {
+  if (response.error) {
+    console.error("Gemini API error:", response.error);
+    if (response.isRateLimited) {
       throw new Error("RATE_LIMIT");
     }
-    throw new Error(`Gemini API error (${res.status})`);
+    throw new Error(`Gemini API error (${response.error})`);
   }
 
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim() || "";
+  return response.content;
 }
 
 /**
@@ -317,29 +308,18 @@ YOUR ROLE:
   ];
 
   try {
-    const res = await fetch(GEMINI_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${GEMINI_API_KEY.trim()}`,
-      },
-      body: JSON.stringify({
-        model: GEMINI_MODEL,
-        messages,
-        max_tokens: 2048,
-        temperature: 0.4,
-      }),
+    const response = await fetchAI({
+      model: GEMINI_MODEL,
+      messages,
+      max_tokens: 2048,
+      temperature: 0.4,
     });
 
-    if (!res.ok) {
-      if (res.status === 429) {
-        return "The AI service is temporarily busy. Please wait about 30 seconds and try again.";
-      }
-      throw new Error(`API error ${res.status}`);
+    if (response.error) {
+      return response.error;
     }
 
-    const data = await res.json();
-    return data.choices?.[0]?.message?.content?.trim() || "I couldn't generate a response. Please try again.";
+    return response.content || "I couldn't generate a response. Please try again.";
   } catch (error) {
     console.error("Speech Coach chat error:", error);
     return "Failed to connect to the AI coach. Please check your connection and try again.";

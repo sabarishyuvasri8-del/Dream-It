@@ -99,6 +99,7 @@ import { FileUpload, formatFileSize } from "../components/FileUpload";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
 import VoiceInputButton from "./components/VoiceInputButton";
+import { fetchAI } from "../lib/ai-client";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -992,46 +993,19 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     };
     setAutopilotRuns((prev) => [runEntry, ...prev]);
 
-    const apiKey = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
-
     try {
-      // Stage A: Extract actionable items via Gemini
-      const extractionPrompt = `You are an intelligent student productivity assistant. Analyze the following text and extract ALL actionable items (tasks, deadlines, exams, assignments, meetings, study sessions).
-
-For each item, determine:
-- title: a concise action title
-- type: either "task" or "schedule" 
-- priority: "low", "medium", or "high"
-- deadline: ISO date string if a specific date is mentioned (use ${new Date().getFullYear()} as the year if not specified), or omit
-- time: a time like "09:00" if mentioned, or a sensible default like "10:00"
-- course: the subject/course name if identifiable, or "General Study"
-
-Respond ONLY with a valid JSON array. No markdown, no explanation. Example:
-[{"title":"Read Chapter 4","type":"task","priority":"medium","course":"Biology","deadline":"2026-08-25"},{"title":"Midterm Exam","type":"schedule","priority":"high","time":"14:00","course":"Biology","deadline":"2026-10-15"}]
-
-Text to analyze:
-${autopilotText}`;
-
-      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey.trim()}`,
-        },
-        body: JSON.stringify({
-          model: "gemini-3.6-flash",
-          messages: [
-            { role: "user", content: extractionPrompt },
-          ],
-          max_tokens: 2048,
-          temperature: 0.2,
-        }),
+      const response = await fetchAI({
+        model: "gemini-3.6-flash",
+        messages: [{ role: "user", content: extractionPrompt }],
+        max_tokens: 2048,
+        temperature: 0.2,
       });
 
-      if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+      if (response.error) {
+        throw new Error(`Gemini API error: ${response.error}`);
+      }
 
-      const data = await res.json();
-      const rawText = data.choices?.[0]?.message?.content || "[]";
+      const rawText = response.content || "[]";
       
       // Parse JSON — handle markdown-wrapped responses
       let cleaned = rawText.trim();
@@ -1252,50 +1226,44 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
       console.warn("Backend AI request notice:", e);
     }
 
-    // 2. Fallback via hidden environment variable if backend is unreachable
-    const fallbackKey = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
-    if (fallbackKey) {
-      try {
-        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${fallbackKey.trim()}`,
-          },
-          body: JSON.stringify({
-            model: "gemini-3.6-flash",
-            messages: [
-              { role: "system", content: systemPrompt },
-              ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
-              { role: "user", content: promptForAI },
-            ],
-            max_tokens: 4096,
-            temperature: chatSubjectId ? 0.1 : 0.7, // Lower temperature for grounded mode
-          }),
-        });
+    // 2. Fallback via the central AI client if backend is unreachable
+    try {
+      const response = await fetchAI({
+        model: "gemini-3.6-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
+          { role: "user", content: promptForAI },
+        ],
+        max_tokens: 4096,
+        temperature: chatSubjectId ? 0.1 : 0.7, // Lower temperature for grounded mode
+      });
 
-        if (res.ok) {
-          const data = await res.json();
-          const answerText = data.choices?.[0]?.message?.content;
-          if (answerText && answerText.trim()) {
-            setMessages((curr) => [...curr, { role: "assistant", content: answerText.trim() }]);
-            setIsAsking(false);
-            addXP(2);
-            return;
-          }
-        }
-      } catch (e) {
-        console.warn("AI fallback notice:", e);
+      if (response.content) {
+        setMessages((curr) => [...curr, { role: "assistant", content: response.content }]);
+        setIsAsking(false);
+        addXP(2);
+        return;
+      } else {
+        setMessages((curr) => [
+          ...curr,
+          {
+            role: "assistant",
+            content: `⚠️ **Dream It AI**: ${response.error || "Service is temporarily busy. Please try again shortly."}`,
+          },
+        ]);
       }
+    } catch (e) {
+      console.warn("AI fallback notice:", e);
+      setMessages((curr) => [
+        ...curr,
+        {
+          role: "assistant",
+          content: "⚠️ **Dream It AI**: An unexpected error occurred. Please try again.",
+        },
+      ]);
     }
 
-    setMessages((curr) => [
-      ...curr,
-      {
-        role: "assistant",
-        content: "⚠️ **Dream It AI**: Service is temporarily busy. Please try again shortly.",
-      },
-    ]);
     setIsAsking(false);
   };
 
