@@ -466,7 +466,7 @@ export default function LandingPage({
       </header>
 
       {/* ─── HERO SECTION ─── */}
-      <section className="relative pt-32 pb-24 md:pt-48 md:pb-32 overflow-hidden flex flex-col items-center text-center">
+      <section className="relative min-h-[95vh] flex flex-col justify-center items-center text-center overflow-hidden pt-24 pb-16 md:pt-32 md:pb-24">
         <div className="max-w-4xl mx-auto px-6 w-full relative z-10">
           <motion.div
             initial={prefersReducedMotion ? false : { y: 20, opacity: 0 }}
