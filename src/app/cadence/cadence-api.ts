@@ -4,9 +4,9 @@
  * Uses the Gemini API for all AI features.
  */
 
-const GEMINI_API_KEY = atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
+const GEMINI_API_KEY = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
-const GEMINI_MODEL = "gemini-3.6-flash";
+const GEMINI_MODEL = "gemma-4-31b-it";
 
 export interface Subsystems {
   phonation: number;

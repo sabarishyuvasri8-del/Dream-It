@@ -235,8 +235,7 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
       .slice(-8)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    // Using the Gemma 4 / Gemini API key provided
-    const apiKey = atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
+    const apiKey = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
 
     try {
       const res = await fetch(
@@ -248,7 +247,7 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: "gemma-4-31b-it",
+            model: "gemini-3.5-flash-lite",
             messages: [
               { role: "system", content: systemPrompt },
               ...history,

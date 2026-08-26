@@ -992,7 +992,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     };
     setAutopilotRuns((prev) => [runEntry, ...prev]);
 
-    const apiKey = atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
+    const apiKey = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
 
     try {
       // Stage A: Extract actionable items via Gemini
@@ -1253,7 +1253,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
     }
 
     // 2. Fallback via hidden environment variable if backend is unreachable
-    const fallbackKey = atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
+    const fallbackKey = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
     if (fallbackKey) {
       try {
         const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
