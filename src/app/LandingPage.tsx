@@ -548,6 +548,15 @@ export default function LandingPage({
           className="mt-20 max-w-5xl w-full px-6 relative z-0"
           style={{ transform: prefersReducedMotion ? "none" : `translateY(${parallaxOffset}px)` }}
         >
+          <div className="text-center mb-8">
+            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-3" style={{ color: "var(--m-text-heading)" }}>
+              Awesome Task Management
+            </h2>
+            <p className="text-lg max-w-2xl mx-auto" style={{ color: "var(--m-text-muted)" }}>
+              Organize your study schedule, track your daily streak, and let our AI prioritize your assignments so you can focus on learning.
+            </p>
+          </div>
+
           <div
             className="rounded-2xl p-2 sm:p-4 md:p-8"
             style={{
