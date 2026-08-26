@@ -545,16 +545,44 @@ export default function LandingPage({
           initial={prefersReducedMotion ? false : { opacity: 0, y: 30 }}
           animate={prefersReducedMotion ? false : { opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: prefersReducedMotion ? 0 : 1.8 }}
-          className="mt-20 max-w-5xl w-full px-6 relative z-0"
+          className="mt-24 max-w-5xl w-full px-6 relative z-0"
           style={{ transform: prefersReducedMotion ? "none" : `translateY(${parallaxOffset}px)` }}
         >
-          <div className="text-center mb-8">
-            <h2 className="text-3xl md:text-4xl font-bold tracking-tight mb-3" style={{ color: "var(--m-text-heading)" }}>
+          <div className="text-center mb-12 relative">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium mb-6" 
+                 style={{ backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)", color: "var(--m-primary)" }}>
+              <Sparkles size={14} />
+              <span>Productivity Reimagined</span>
+            </div>
+            
+            <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6" 
+                style={{ 
+                  background: "linear-gradient(135deg, var(--m-text-heading) 0%, var(--m-primary) 100%)",
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  color: "var(--m-text-heading)"
+                }}>
               Awesome Task Management
             </h2>
-            <p className="text-lg max-w-2xl mx-auto" style={{ color: "var(--m-text-muted)" }}>
+            
+            <p className="text-xl max-w-2xl mx-auto mb-10 leading-relaxed" style={{ color: "var(--m-text-muted)" }}>
               Organize your study schedule, track your daily streak, and let our AI prioritize your assignments so you can focus on learning.
             </p>
+
+            <div className="flex flex-wrap justify-center gap-4 text-sm font-medium">
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", boxShadow: "0 4px 12px -4px rgba(0,0,0,0.1)" }}>
+                <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} />
+                <span style={{ color: "var(--m-text)" }}>Smart Prioritization</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", boxShadow: "0 4px 12px -4px rgba(0,0,0,0.1)" }}>
+                <Clock size={16} style={{ color: "var(--m-primary)" }} />
+                <span style={{ color: "var(--m-text)" }}>Time Blocking</span>
+              </div>
+              <div className="flex items-center gap-2 px-4 py-2 rounded-xl" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", boxShadow: "0 4px 12px -4px rgba(0,0,0,0.1)" }}>
+                <Layout size={16} style={{ color: "var(--m-primary)" }} />
+                <span style={{ color: "var(--m-text)" }}>Drag & Drop Canvas</span>
+              </div>
+            </div>
           </div>
 
           <div
