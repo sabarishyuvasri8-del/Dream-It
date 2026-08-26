@@ -1029,7 +1029,7 @@ export default function LandingPage({
               className="text-[1.125rem] leading-relaxed max-w-2xl mx-auto mb-12"
               style={{ color: "var(--m-text-muted)" }}
             >
-              AI powered by gemma 4 and integrated with gemini 3.6 flash
+              Powered by Gemma 4 and integrated with Gemini 3.6 Flash & Gemini 3.5 Flash Lite
             </p>
           </AnimatedItem>
 
@@ -1046,11 +1046,15 @@ export default function LandingPage({
           <AnimatedItem delay={0.5} className="flex flex-col md:flex-row justify-center gap-6">
             <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
               gemini-3.6-flash
-              <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Study coach & Autopilot</span>
+              <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Study Coach & Autopilot</span>
             </div>
             <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
               gemma-4-31b-it
-              <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Finance coach</span>
+              <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Speech Coach</span>
+            </div>
+            <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
+              gemini-3.5-flash-lite
+              <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Finance Coach</span>
             </div>
           </AnimatedItem>
 
