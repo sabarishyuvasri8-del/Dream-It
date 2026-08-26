@@ -992,8 +992,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     };
     setAutopilotRuns((prev) => [runEntry, ...prev]);
 
-    const envKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-    const apiKey = (!envKey || envKey === "undefined" || envKey === "your_api_key_here") ? atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=") : envKey;
+    const apiKey = atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
 
     try {
       // Stage A: Extract actionable items via Gemini
@@ -1254,8 +1253,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
     }
 
     // 2. Fallback via hidden environment variable if backend is unreachable
-    const envKeyFallback = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-    const fallbackKey = (!envKeyFallback || envKeyFallback === "undefined" || envKeyFallback === "your_api_key_here") ? atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=") : envKeyFallback;
+    const fallbackKey = atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
     if (fallbackKey) {
       try {
         const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {

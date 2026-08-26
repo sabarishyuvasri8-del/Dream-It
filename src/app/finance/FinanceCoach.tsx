@@ -236,8 +236,7 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
       .map((m) => ({ role: m.role, content: m.content }));
 
     // Using the Gemma 4 / Gemini API key provided
-    const envKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
-    const apiKey = (!envKey || envKey === "undefined" || envKey === "your_api_key_here") ? atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=") : envKey;
+    const apiKey = atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
 
     try {
       const res = await fetch(
