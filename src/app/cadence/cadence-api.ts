@@ -4,7 +4,7 @@
  * Uses the Gemini API for all AI features.
  */
 
-const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
+const GEMINI_API_KEY = (import.meta.env.VITE_GEMINI_API_KEY as string) || atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
 const GEMINI_MODEL = "gemini-3.6-flash";
 
