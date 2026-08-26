@@ -545,7 +545,7 @@ export default function LandingPage({
           initial={prefersReducedMotion ? false : { opacity: 0, y: 30 }}
           animate={prefersReducedMotion ? false : { opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: prefersReducedMotion ? 0 : 1.8 }}
-          className="mt-24 max-w-5xl w-full px-6 relative z-0"
+          className="mt-24 max-w-7xl w-full px-6 relative z-0"
           style={{ transform: prefersReducedMotion ? "none" : `translateY(${parallaxOffset}px)` }}
         >
           <div className="text-center mb-12 relative">
@@ -565,7 +565,7 @@ export default function LandingPage({
               Awesome Task Management
             </h2>
             
-            <p className="text-xl max-w-2xl mx-auto mb-10 leading-relaxed" style={{ color: "var(--m-text-muted)" }}>
+            <p className="text-xl max-w-3xl mx-auto mb-10 leading-relaxed" style={{ color: "var(--m-text-muted)" }}>
               Organize your study schedule, track your daily streak, and let our AI prioritize your assignments so you can focus on learning.
             </p>
 
