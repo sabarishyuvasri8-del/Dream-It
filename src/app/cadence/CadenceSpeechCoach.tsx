@@ -1,5 +1,6 @@
-import React, { useState, useRef, useEffect } from "react";
-import { Bot, Send, X, Maximize2, Minimize2, Sparkles, User } from "lucide-react";
+import React, { useState, useRef, useEffect, KeyboardEvent } from "react";
+import { Bot, Send, X, Maximize2, Minimize2, Sparkles, User, Trash2 } from "lucide-react";
+import { useUser } from "@clerk/clerk-react";
 import { chatWithSpeechCoach, CadenceResponse } from "./cadence-api";
 import VoiceInputButton from "../components/VoiceInputButton";
 
@@ -21,9 +22,10 @@ const SUGGESTED_QUESTIONS = [
   "Why was my score low?",
 ];
 
-const CADENCE_CHAT_KEY = "dreamit-cadence-coach-chat";
-
 export default function CadenceSpeechCoach({ report }: CadenceSpeechCoachProps) {
+  const { user } = useUser();
+  const CADENCE_CHAT_KEY = `dreamit-cadence-coach-chat-${user?.id || 'guest'}`;
+
   const [isOpen, setIsOpen] = useState(false);
   const [isWide, setIsWide] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
@@ -41,6 +43,19 @@ export default function CadenceSpeechCoach({ report }: CadenceSpeechCoachProps) 
       },
     ];
   });
+  
+  const clearChat = () => {
+    setMessages([
+      {
+        role: "assistant" as const,
+        content: `Hi! I'm your **Speech Coach AI** 🎙️\n\nI've reviewed your screening results (Score: **${report.score}/100**). I can help you understand your performance and give you personalized exercises to improve.\n\nTry asking me anything about your speech analysis!`,
+      },
+    ]);
+    if (CADENCE_CHAT_KEY) {
+      try { sessionStorage.removeItem(CADENCE_CHAT_KEY); } catch { /* ignore */ }
+    }
+  };
+
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -48,8 +63,10 @@ export default function CadenceSpeechCoach({ report }: CadenceSpeechCoachProps) 
 
   // Persist messages to sessionStorage
   useEffect(() => {
-    try { sessionStorage.setItem(CADENCE_CHAT_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
-  }, [messages]);
+    if (CADENCE_CHAT_KEY) {
+      try { sessionStorage.setItem(CADENCE_CHAT_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
+    }
+  }, [messages, CADENCE_CHAT_KEY]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

@@ -14,6 +14,7 @@ import {
 } from "../../lib/finance-calculations";
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "../../lib/finance-defaults";
 import { Bot, Send, Sparkles, Trash2, User } from "lucide-react";
+import { useUser } from "@clerk/clerk-react";
 import VoiceInputButton from "../components/VoiceInputButton";
 import { fetchAI } from "../../lib/ai-client";
 
@@ -196,9 +197,11 @@ Structure EVERY response using this well-organized format:
 `;
 
 // ─── Component ──────────────────────────────────────────────────
-const FINANCE_CHAT_KEY = "dreamit-finance-coach-chat";
 
 export default function FinanceCoach({ data }: { data: FinanceData }) {
+  const { user } = useUser();
+  const FINANCE_CHAT_KEY = `dreamit-finance-coach-chat-${user?.id || 'guest'}`;
+
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
       const saved = sessionStorage.getItem(FINANCE_CHAT_KEY);
@@ -212,8 +215,10 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
 
   // Persist messages to sessionStorage
   useEffect(() => {
-    try { sessionStorage.setItem(FINANCE_CHAT_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
-  }, [messages]);
+    if (FINANCE_CHAT_KEY) {
+      try { sessionStorage.setItem(FINANCE_CHAT_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
+    }
+  }, [messages, FINANCE_CHAT_KEY]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -269,7 +274,9 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
 
   const clearChat = () => {
     setMessages([]);
-    try { sessionStorage.removeItem(FINANCE_CHAT_KEY); } catch { /* ignore */ }
+    if (FINANCE_CHAT_KEY) {
+      try { sessionStorage.removeItem(FINANCE_CHAT_KEY); } catch { /* ignore */ }
+    }
   };
 
   // Rich markdown-ish renderer for coach responses
