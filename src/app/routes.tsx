@@ -14,6 +14,10 @@ import Dashboard from "./Dashboard";
 import LandingPage from "./LandingPage";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
+import CadenceApp from "./cadence/CadenceApp";
+import PrivacyPolicy from "./PrivacyPolicy";
+import TermsOfService from "./TermsOfService";
+import ContactPage from "./ContactPage";
 
 /* ─────────────── Clerk Auth Screen ─────────────── */
 function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
@@ -89,14 +93,8 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
           }}
         >
           <div className="relative flex items-center gap-3">
-            <div
-              className="grid size-9 place-items-center rounded-xl shadow-sm transition-colors duration-300"
-              style={{
-                backgroundColor: "var(--m-accent)",
-                color: "var(--m-accent-text)",
-              }}
-            >
-              <BookOpenCheck size={18} />
+            <div className="size-9 rounded-xl overflow-hidden shadow-sm shrink-0 flex items-center justify-center bg-white/10 dark:bg-black/10">
+              <img src="/logo.png" alt="Dream It Logo" className="w-full h-full object-contain object-center scale-[1.15]" />
             </div>
             <span className="font-[Roboto_Slab] text-xl font-semibold tracking-tight">
               Dream It
@@ -216,18 +214,15 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
                 <SignIn
                   appearance={{
                     layout: {
-                      socialButtonsVariant: "hidden",
+                      socialButtonsVariant: "blockButton",
                     },
                     elements: {
                       card: "shadow-none border-none bg-transparent w-full",
                       headerTitle: "hidden",
                       headerSubtitle: "hidden",
                       footer: "hidden",
-                      socialButtons: "hidden",
-                      socialButtonsBlockButton: "hidden",
-                      socialButtonsBlockButtonText: "hidden",
-                      socialButtonsIconButton: "hidden",
-                      socialButtonsProviderIcon: "hidden",
+                      socialButtonsBlockButton: "cl-social-btn rounded-xl py-2.5 transition hover:scale-[1.02] shadow-sm mb-4 border",
+                      socialButtonsBlockButtonText: "text-sm font-bold",
                       dividerRow: "hidden",
                       dividerText: "hidden",
                       dividerLine: "hidden",
@@ -244,18 +239,15 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
                 <SignUp
                   appearance={{
                     layout: {
-                      socialButtonsVariant: "hidden",
+                      socialButtonsVariant: "blockButton",
                     },
                     elements: {
                       card: "shadow-none border-none bg-transparent w-full",
                       headerTitle: "hidden",
                       headerSubtitle: "hidden",
                       footer: "hidden",
-                      socialButtons: "hidden",
-                      socialButtonsBlockButton: "hidden",
-                      socialButtonsBlockButtonText: "hidden",
-                      socialButtonsIconButton: "hidden",
-                      socialButtonsProviderIcon: "hidden",
+                      socialButtonsBlockButton: "cl-social-btn rounded-xl py-2.5 transition hover:scale-[1.02] shadow-sm mb-4 border",
+                      socialButtonsBlockButtonText: "text-sm font-bold",
                       dividerRow: "hidden",
                       dividerText: "hidden",
                       dividerLine: "hidden",
@@ -401,5 +393,9 @@ function RouteErrorBoundary() {
 }
 
 export const router = createBrowserRouter([
+  { path: "/cadence", Component: CadenceApp },
+  { path: "/privacy", Component: PrivacyPolicy },
+  { path: "/terms", Component: TermsOfService },
+  { path: "/contact", Component: ContactPage },
   { path: "*", Component: Root, ErrorBoundary: RouteErrorBoundary },
 ]);

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { projectId, publicAnonKey } from "../../utils/supabase/info";
+import type { FinanceData } from "./finance-types";
 
 export const supabase = createClient(`https://${projectId}.supabase.co`, publicAnonKey);
 
@@ -15,6 +16,8 @@ export interface Task {
   priority?: "low" | "medium" | "high";
   createdAt?: string;
   deadline?: string; // ISO date string for deadline countdown
+  createdBy?: "user" | "agent";
+  agentRunId?: string;
 }
 
 export interface ScheduleItem {
@@ -25,6 +28,8 @@ export interface ScheduleItem {
   tone: string;
   course?: string;
   done?: boolean;
+  createdBy?: "user" | "agent";
+  agentRunId?: string;
 }
 
 export interface Subject {
@@ -92,6 +97,7 @@ export interface UserWorkspace {
   grades?: GradeEntry[];
   flashcards?: Flashcard[];
   streak?: StreakData;
+  finance?: FinanceData;
 }
 
 export interface AttachedFile {
@@ -126,6 +132,7 @@ export function createEmptyWorkspace(): UserWorkspace {
       focusSessionsCompleted: 0,
       flashcardsStudied: 0,
     },
+    finance: undefined,
   };
 }
 
@@ -222,7 +229,8 @@ export async function uploadAttachedFile(
   userId: string,
   file: File,
   subjectId: number,
-  taskId?: number
+  taskId?: number,
+  kind?: string
 ): Promise<AttachedFile> {
   if (!userId) throw new Error("User authentication required");
   const cacheKey = `dreamit_files_${userId}`;
@@ -232,28 +240,27 @@ export async function uploadAttachedFile(
     throw new Error("File size exceeds the 20MB limit.");
   }
 
-  const fileId = crypto.randomUUID();
-  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-  const storagePath = `${userId}/${fileId}-${sanitizedFileName}`;
+  const formData = new FormData();
+  formData.append("file", file);
+  formData.append("subjectId", subjectId.toString());
+  if (taskId !== undefined) formData.append("taskId", taskId.toString());
+  if (kind) formData.append("kind", kind);
 
-  const { error: storageErr } = await supabase.storage
-    .from("attachments")
-    .upload(storagePath, file, { contentType: file.type, upsert: true });
+  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-d53fe46f/files`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: formData,
+  });
 
-  if (storageErr) {
-    console.warn("Supabase storage upload info:", storageErr.message);
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.error || `Upload failed: ${res.statusText}`);
   }
 
-  const meta: AttachedFile = {
-    id: fileId,
-    fileName: file.name,
-    mimeType: file.type || "application/octet-stream",
-    size: file.size,
-    subjectId,
-    taskId,
-    storagePath,
-    createdAt: new Date().toISOString(),
-  };
+  const data = await res.json();
+  const meta: AttachedFile = data.file;
 
   const existing = await fetchUserFiles(accessToken, userId);
   const updated = [...existing, meta];

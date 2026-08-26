@@ -1,6 +1,12 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, useCallback } from "react";
 import confetti from "canvas-confetti";
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import {
+  Activity,
   AlarmClock,
   AlertCircle,
   ArrowUpRight,
@@ -62,6 +68,7 @@ import {
   Trash2,
   Trophy,
   UserCheck,
+  Wallet,
   X,
   Zap,
 } from "lucide-react";
@@ -86,9 +93,12 @@ import {
   ScheduleItem,
   UserWorkspace,
 } from "../lib/supabase";
+import FinanceApp from "./finance/FinanceApp";
+import type { FinanceData } from "../lib/finance-types";
 import { FileUpload, formatFileSize } from "../components/FileUpload";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
+import VoiceInputButton from "./components/VoiceInputButton";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -104,33 +114,28 @@ function renderSimpleMarkdown(text: string) {
   if (!text.trim()) {
     return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet. Switch to Edit mode to write your note!</p>;
   }
-  const lines = text.split("\n");
   return (
     <div className="space-y-2 text-xs leading-relaxed font-[DM_Sans]">
-      {lines.map((line, idx) => {
-        if (line.startsWith("# ")) {
-          return <h1 key={idx} className="font-[Roboto_Slab] text-xl font-bold mt-4 mb-2 pb-1 border-b" style={{ borderColor: "var(--m-border-light)", color: "var(--m-text-heading)" }}>{line.slice(2)}</h1>;
-        }
-        if (line.startsWith("## ")) {
-          return <h2 key={idx} className="font-[Roboto_Slab] text-lg font-semibold mt-3 mb-1" style={{ color: "var(--m-text-heading)" }}>{line.slice(3)}</h2>;
-        }
-        if (line.startsWith("### ")) {
-          return <h3 key={idx} className="font-[Roboto_Slab] text-sm font-bold mt-2" style={{ color: "var(--m-text-heading)" }}>{line.slice(4)}</h3>;
-        }
-        if (line.startsWith("- ") || line.startsWith("* ")) {
-          return <li key={idx} className="ml-4 list-disc" style={{ color: "var(--m-text)" }}>{line.slice(2)}</li>;
-        }
-        if (line.startsWith("> ")) {
-          return <blockquote key={idx} className="border-l-3 pl-3 italic my-2 py-1 rounded-r-lg" style={{ borderColor: "var(--m-primary)", backgroundColor: "var(--m-surface-alt)", color: "var(--m-text-sub)" }}>{line.slice(2)}</blockquote>;
-        }
-        if (line.startsWith("---")) {
-          return <hr key={idx} className="my-4" style={{ borderColor: "var(--m-border-light)" }} />;
-        }
-        if (!line.trim()) {
-          return <div key={idx} className="h-2" />;
-        }
-        return <p key={idx} style={{ color: "var(--m-text)" }}>{line}</p>;
-      })}
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[rehypeKatex]}
+        components={{
+          h1: ({node, ...props}) => <h1 className="font-[Roboto_Slab] text-xl font-bold mt-4 mb-2 pb-1 border-b" style={{ borderColor: "var(--m-border-light)", color: "var(--m-text-heading)" }} {...props} />,
+          h2: ({node, ...props}) => <h2 className="font-[Roboto_Slab] text-lg font-semibold mt-3 mb-1" style={{ color: "var(--m-text-heading)" }} {...props} />,
+          h3: ({node, ...props}) => <h3 className="font-[Roboto_Slab] text-sm font-bold mt-2" style={{ color: "var(--m-text-heading)" }} {...props} />,
+          ul: ({node, ...props}) => <ul className="ml-4 list-disc" style={{ color: "var(--m-text)" }} {...props} />,
+          ol: ({node, ...props}) => <ol className="ml-4 list-decimal" style={{ color: "var(--m-text)" }} {...props} />,
+          li: ({node, ...props}) => <li className="" {...props} />,
+          blockquote: ({node, ...props}) => <blockquote className="border-l-3 pl-3 italic my-2 py-1 rounded-r-lg" style={{ borderColor: "var(--m-primary)", backgroundColor: "var(--m-surface-alt)", color: "var(--m-text-sub)" }} {...props} />,
+          hr: ({node, ...props}) => <hr className="my-4" style={{ borderColor: "var(--m-border-light)" }} {...props} />,
+          p: ({node, ...props}) => <p style={{ color: "var(--m-text)" }} {...props} />,
+          a: ({node, ...props}) => <a className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+          pre: ({node, ...props}) => <pre className="bg-[#1e1e1e] text-white p-3 rounded-lg overflow-x-auto text-[11px] mt-2 mb-2 custom-scrollbar shadow-sm" {...props} />,
+          code: ({node, className, ...props}: any) => <code className={`${className || ''} bg-black/5 dark:bg-white/10 rounded-md px-1.5 py-0.5 text-[10.5px] font-mono`} {...props} />,
+        }}
+      >
+        {text}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -202,6 +207,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     currentStreak: 0, longestStreak: 0, lastActiveDate: "",
     totalXP: 0, level: 1, tasksCompleted: 0, focusSessionsCompleted: 0, flashcardsStudied: 0,
   });
+  const [finance, setFinance] = useState<FinanceData | undefined>(undefined);
 
   // ─── Sync & Status ───
   const [workspaceReady, setWorkspaceReady] = useState(false);
@@ -217,11 +223,12 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
   }, []);
 
   // ─── Navigation ───
-  type NavItem = "Today" | "Planner" | "Projects" | "Focus" | "Notes" | "Grades" | "Cards";
+  type NavItem = "Today" | "Planner" | "Projects" | "Focus" | "Notes" | "Grades" | "Cards" | "Money";
   const [activeNav, setActiveNav] = useState<NavItem>("Today");
   const [selectedSubject, setSelectedSubject] = useState("All subjects");
   const [taskFilterStatus, setTaskFilterStatus] = useState<"all" | "active" | "completed">("all");
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
   // ─── Modals ───
   const [subjectsOpen, setSubjectsOpen] = useState(false);
@@ -238,6 +245,19 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
   const [taskTime, setTaskTime] = useState("10:00 AM");
   const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
   const [taskDeadline, setTaskDeadline] = useState("");
+
+  // ─── Autopilot ───
+  const [autopilotText, setAutopilotText] = useState("");
+  const [isSubmittingAutopilot, setIsSubmittingAutopilot] = useState(false);
+  const [autopilotRuns, setAutopilotRuns] = useState<{
+    id: string;
+    timestamp: string;
+    status: "extracting" | "planning" | "executing" | "done" | "error";
+    extractedItems: { title: string; type: string; priority: string; deadline?: string; time?: string; course?: string }[];
+    createdTasks: string[];
+    createdSchedule: string[];
+    errorMsg?: string;
+  }[]>([]);
 
   // ─── Schedule Form ───
   const [planTitle, setPlanTitle] = useState("");
@@ -258,18 +278,33 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
   const [isBreak, setIsBreak] = useState(false);
 
   // ─── AI Chat — Dream It AI ───
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content: "Welcome! I'm **Dream It AI**, your intelligent study assistant.\n\nAsk me study questions, math problems, code debugging, or attach files — I'm here to help you excel!",
-    },
-  ]);
+  const DASH_CHAT_KEY = "dreamit-dashboard-chat";
+  const DEFAULT_WELCOME: Message = {
+    role: "assistant",
+    content: "Welcome! I'm **Dream It AI**, your intelligent study assistant.\n\nAsk me study questions, math problems, code debugging, or attach files — I'm here to help you excel!",
+  };
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const saved = sessionStorage.getItem(DASH_CHAT_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Message[];
+        if (parsed.length > 0) return parsed;
+      }
+    } catch { /* ignore */ }
+    return [DEFAULT_WELCOME];
+  });
   const [chatDraft, setChatDraft] = useState("");
   const [isAsking, setIsAsking] = useState(false);
+  const [chatSubjectId, setChatSubjectId] = useState<number | null>(null);
   const [isChatMaximized, setIsChatMaximized] = useState(false);
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatMaxContainerRef = useRef<HTMLDivElement>(null);
+
+  // Persist dashboard chat to sessionStorage
+  useEffect(() => {
+    try { sessionStorage.setItem(DASH_CHAT_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
+  }, [messages]);
 
   // ─── AI File Attachment ───
   const [chatFile, setChatFile] = useState<{
@@ -367,6 +402,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
           setGrades(Array.isArray(workspace.grades) ? workspace.grades : []);
           setFlashcards(Array.isArray(workspace.flashcards) ? workspace.flashcards : []);
           if (workspace.streak) setStreak(workspace.streak);
+          if (workspace.finance) setFinance(workspace.finance);
           // Check if truly new user (all empty)
           if (
             (!workspace.tasks || workspace.tasks.length === 0) &&
@@ -387,6 +423,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
           setGrades(empty.grades!);
           setFlashcards(empty.flashcards!);
           setStreak(empty.streak!);
+          setFinance(empty.finance);
           setShowOnboarding(true);
         }
       })
@@ -414,14 +451,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     const saveTimer = window.setTimeout(async () => {
       const payload: UserWorkspace = {
         tasks, scheduleItems, subjects, studyMinutes, focusLog,
-        notes, grades, flashcards, streak,
+        notes, grades, flashcards, streak, finance
       };
       await saveUserWorkspace(accessToken, userId, payload);
       setIsSaving(false);
       setLastSavedTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     }, 800);
     return () => window.clearTimeout(saveTimer);
-  }, [accessToken, userId, workspaceReady, tasks, scheduleItems, subjects, studyMinutes, focusLog, notes, grades, flashcards, streak]);
+  }, [accessToken, userId, workspaceReady, tasks, scheduleItems, subjects, studyMinutes, focusLog, notes, grades, flashcards, streak, finance]);
 
   // ─── Pomodoro ───
   useEffect(() => {
@@ -939,6 +976,169 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     showToast(`Uploaded "${newFile.fileName}" ✅`);
   };
 
+  const handleAutopilotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!autopilotText.trim()) return;
+
+    setIsSubmittingAutopilot(true);
+    const runId = `run-${Date.now()}`;
+    const runEntry = {
+      id: runId,
+      timestamp: new Date().toISOString(),
+      status: "extracting" as const,
+      extractedItems: [] as { title: string; type: string; priority: string; deadline?: string; time?: string; course?: string }[],
+      createdTasks: [] as string[],
+      createdSchedule: [] as string[],
+    };
+    setAutopilotRuns((prev) => [runEntry, ...prev]);
+
+    const apiKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || "your_api_key_here";
+
+    try {
+      // Stage A: Extract actionable items via Gemini
+      const extractionPrompt = `You are an intelligent student productivity assistant. Analyze the following text and extract ALL actionable items (tasks, deadlines, exams, assignments, meetings, study sessions).
+
+For each item, determine:
+- title: a concise action title
+- type: either "task" or "schedule" 
+- priority: "low", "medium", or "high"
+- deadline: ISO date string if a specific date is mentioned (use ${new Date().getFullYear()} as the year if not specified), or omit
+- time: a time like "09:00" if mentioned, or a sensible default like "10:00"
+- course: the subject/course name if identifiable, or "General Study"
+
+Respond ONLY with a valid JSON array. No markdown, no explanation. Example:
+[{"title":"Read Chapter 4","type":"task","priority":"medium","course":"Biology","deadline":"2026-08-25"},{"title":"Midterm Exam","type":"schedule","priority":"high","time":"14:00","course":"Biology","deadline":"2026-10-15"}]
+
+Text to analyze:
+${autopilotText}`;
+
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: "gemini-3.6-flash",
+          messages: [
+            { role: "user", content: extractionPrompt },
+          ],
+          max_tokens: 2048,
+          temperature: 0.2,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`Gemini API error: ${res.status}`);
+
+      const data = await res.json();
+      const rawText = data.choices?.[0]?.message?.content || "[]";
+      
+      // Parse JSON — handle markdown-wrapped responses
+      let cleaned = rawText.trim();
+      if (cleaned.startsWith("```")) {
+        cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+      }
+      
+      let items: { title: string; type: string; priority: string; deadline?: string; time?: string; course?: string }[];
+      try {
+        items = JSON.parse(cleaned);
+        if (!Array.isArray(items)) items = [];
+      } catch {
+        items = [];
+      }
+
+      // Update run with extracted items
+      setAutopilotRuns((prev) =>
+        prev.map((r) => r.id === runId ? { ...r, status: "planning" as const, extractedItems: items } : r)
+      );
+
+      if (items.length === 0) {
+        setAutopilotRuns((prev) =>
+          prev.map((r) => r.id === runId ? { ...r, status: "done" as const, errorMsg: "No actionable items found in the text." } : r)
+        );
+        setAutopilotText("");
+        setIsSubmittingAutopilot(false);
+        showToast("No actionable items found.", "info");
+        return;
+      }
+
+      // Stage B: Execute — create tasks and schedule items
+      setAutopilotRuns((prev) =>
+        prev.map((r) => r.id === runId ? { ...r, status: "executing" as const } : r)
+      );
+
+      const toneOptions = ["bg-[#b9d6c0]", "bg-[#f2cf91]", "bg-[#e2d6ee]", "bg-[#c8d9e9]"];
+      const createdTaskNames: string[] = [];
+      const createdScheduleNames: string[] = [];
+      const newTasks: Task[] = [];
+      const newScheduleItems: ScheduleItem[] = [];
+
+      for (const item of items) {
+        const courseName = item.course || "General Study";
+        const matchedSubject = subjects.find((s) => s.name.toLowerCase() === courseName.toLowerCase());
+        const color = matchedSubject ? matchedSubject.color : "#c8d9e9";
+
+        if (item.type === "schedule") {
+          const schedItem: ScheduleItem = {
+            id: Date.now() + Math.random() * 1000,
+            time: item.time || "10:00",
+            title: item.title,
+            note: `Auto-created by Autopilot • ${item.priority} priority`,
+            tone: toneOptions[newScheduleItems.length % toneOptions.length],
+            course: courseName,
+            done: false,
+            createdBy: "agent",
+            agentRunId: runId,
+          };
+          newScheduleItems.push(schedItem);
+          createdScheduleNames.push(item.title);
+        } else {
+          const task: Task = {
+            id: Date.now() + Math.random() * 1000,
+            title: item.title,
+            course: courseName,
+            time: item.time || "Today",
+            done: false,
+            color,
+            priority: (item.priority as "low" | "medium" | "high") || "medium",
+            createdAt: new Date().toISOString(),
+            deadline: item.deadline || undefined,
+            createdBy: "agent",
+            agentRunId: runId,
+          };
+          newTasks.push(task);
+          createdTaskNames.push(item.title);
+        }
+      }
+
+      // Batch-add to state
+      if (newTasks.length > 0) {
+        setTasks((curr) => [...newTasks, ...curr]);
+      }
+      if (newScheduleItems.length > 0) {
+        setScheduleItems((curr) => [...curr, ...newScheduleItems].sort((a, b) => a.time.localeCompare(b.time)));
+      }
+
+      // Mark run as complete
+      setAutopilotRuns((prev) =>
+        prev.map((r) => r.id === runId ? { ...r, status: "done" as const, createdTasks: createdTaskNames, createdSchedule: createdScheduleNames } : r)
+      );
+
+      setAutopilotText("");
+      addXP(items.length * 5);
+      confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
+      showToast(`Autopilot created ${newTasks.length} task(s) and ${newScheduleItems.length} schedule block(s)! ✨`);
+
+    } catch (err: any) {
+      setAutopilotRuns((prev) =>
+        prev.map((r) => r.id === runId ? { ...r, status: "error" as const, errorMsg: err?.message || "Unknown error" } : r)
+      );
+      showToast("Autopilot failed. Check the activity log.", "error");
+    } finally {
+      setIsSubmittingAutopilot(false);
+    }
+  };
+
   const handleDownloadFile = async (file: AttachedFile) => {
     try {
       const url = await getFileDownloadUrl(accessToken, userId, file.id, file.storagePath);
@@ -1008,6 +1208,22 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
     const chatHistory = messages.slice(-8).map((m) => ({ role: m.role, content: m.content }));
 
+    let systemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting.`;
+
+    if (chatSubjectId !== null) {
+      const subject = subjects.find(s => s.id === chatSubjectId);
+      const subjectNotes = notes.filter(n => n.subjectId === chatSubjectId);
+      const notesContext = subjectNotes.map(n => `Title: ${n.title}\nContent:\n${n.content}`).join("\n\n---\n\n");
+      
+      systemPrompt = `You are Dream It AI, acting as a strict Source-Grounded Tutor for the subject "${subject?.name || 'Selected Subject'}". 
+You MUST answer the user's questions ONLY using the following provided notes for this subject.
+If the answer cannot be found in the provided notes, you MUST refuse to answer and honestly state: "This is not covered in your uploaded materials for ${subject?.name || 'this subject'}." Do NOT use your general knowledge.
+When you provide an answer from the notes, you MUST include an inline citation naming the source file, formatted like this: (Source: [Note Title]).
+
+SUBJECT NOTES KNOWLEDGE BASE:
+${notesContext ? notesContext : "(No notes uploaded for this subject yet. You must refuse to answer any subject-specific questions until materials are provided.)"}`;
+    }
+
     // 1. Primary: Secure backend edge function request
     try {
       const res = await fetch(`${serverUrl}/study-coach`, {
@@ -1019,6 +1235,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
         body: JSON.stringify({
           message: promptForAI,
           history: chatHistory,
+          systemPrompt,
         }),
       });
 
@@ -1036,25 +1253,24 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     }
 
     // 2. Fallback via hidden environment variable if backend is unreachable
-    const fallbackKey = (import.meta.env.VITE_GROQ_API_KEY as string) || "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";
+    const fallbackKey = (import.meta.env.VITE_GEMINI_API_KEY as string) || "your_api_key_here";
     if (fallbackKey) {
       try {
-        const systemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting.`;
-        const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${fallbackKey.trim()}`,
           },
           body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
+            model: "gemini-3.6-flash",
             messages: [
               { role: "system", content: systemPrompt },
               ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
               { role: "user", content: promptForAI },
             ],
             max_tokens: 4096,
-            temperature: 0.7,
+            temperature: chatSubjectId ? 0.1 : 0.7, // Lower temperature for grounded mode
           }),
         });
 
@@ -1092,177 +1308,209 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     { label: "Notes", icon: Notebook },
     { label: "Grades", icon: GraduationCap },
     { label: "Cards", icon: Layers },
+    { label: "Money", icon: Wallet },
   ];
+
+  const isExpanded = mobileOpen || isSidebarHovered;
 
   // ═══════════════════════════════════ RENDER ═══════════════════════════════════
   return (
     <main className={`dreamit-dash min-h-screen font-[DM_Sans] ${themeConfig.cssClass}`} style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)" }}>
       {/* ─── Sidebar ─── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-64 flex-col border-r transition-all duration-300 ${
-          mobileOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"
-        }`}
+        className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r transition-all duration-300 overflow-x-hidden ${
+          mobileOpen ? "translate-x-0 w-64" : "-translate-x-full lg:translate-x-0"
+        } ${!mobileOpen && isExpanded ? "lg:w-64" : "lg:w-[76px]"}`}
+        onMouseEnter={() => setIsSidebarHovered(true)}
+        onMouseLeave={() => setIsSidebarHovered(false)}
         style={{
           backgroundColor: "var(--m-sidebar-bg)",
           borderColor: "var(--m-border-light)",
         }}
       >
         {/* Brand Header */}
-        <div className="flex h-16 items-center justify-between border-b px-5" style={{ borderColor: "var(--m-border-light)" }}>
-          <div className="flex items-center gap-2.5">
-            <div className="grid size-9 place-items-center rounded-xl text-xs font-bold shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+        <div className={`flex h-16 items-center border-b transition-all duration-300 ${isExpanded ? "justify-between px-5" : "justify-center px-0"}`} style={{ borderColor: "var(--m-border-light)" }}>
+          <div className="flex items-center">
+            <div className="grid size-9 shrink-0 place-items-center rounded-xl text-xs font-bold shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
               <BookOpenCheck size={18} />
             </div>
-            <span className="font-[Roboto_Slab] text-lg font-bold tracking-tight" style={{ color: "var(--m-text-heading)" }}>
+            <span className={`font-[Roboto_Slab] text-lg font-bold tracking-tight whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[150px] opacity-100 ml-2.5" : "max-w-0 opacity-0 ml-0"}`} style={{ color: "var(--m-text-heading)" }}>
               Dream It
             </span>
           </div>
-          <button className="p-1 rounded-lg hover:opacity-75 lg:hidden" onClick={() => setMobileOpen(false)} aria-label="Close menu">
-            <X size={18} />
+          <button className={`p-1 rounded-lg hover:opacity-75 lg:hidden overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[40px] opacity-100" : "max-w-0 opacity-0"}`} onClick={() => setMobileOpen(false)} aria-label="Close menu">
+            <X size={18} className="shrink-0" />
           </button>
         </div>
 
         {/* Scrollable Body of Sidebar */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-4 space-y-5">
+        <div className={`flex-1 overflow-y-auto custom-scrollbar py-4 space-y-5 overflow-x-hidden transition-all duration-300 ${isExpanded ? "px-5" : "px-3"}`}>
           {/* User Info Card */}
-          <div className="rounded-xl p-3 minimal-inset feature-zoom">
-            <div className="flex items-center gap-2.5">
-              <div className="grid size-8 place-items-center rounded-full text-xs font-bold" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+          <div className={`rounded-xl minimal-inset feature-zoom transition-all duration-300 ${isExpanded ? "p-3" : "p-2 flex flex-col items-center"}`}>
+            <div className="flex items-center w-full">
+              <div className="grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold mx-auto" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                 {userNameDisplay.charAt(0)}
               </div>
-              <div className="min-w-0 flex-1">
+              <div className={`min-w-0 flex-1 overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-2.5" : "max-w-0 opacity-0 ml-0"}`}>
                 <p className="truncate text-xs font-bold" style={{ color: "var(--m-primary)" }}>{userNameDisplay}</p>
                 <p className="truncate text-[10px]" style={{ color: "var(--m-text-sub)" }}>{userEmail}</p>
               </div>
             </div>
-            <div className="mt-2 flex items-center justify-between pt-2 text-[10px]" style={{ borderTop: "1px solid var(--m-border)" }}>
-              <span className="flex items-center gap-1 font-medium" style={{ color: "var(--m-text-sub)" }}>
-                {isSaving ? (
-                  <><Cloud size={12} className="animate-pulse" style={{ color: "var(--m-warning)" }} /> Saving...</>
-                ) : (
-                  <><CheckCircle2 size={12} style={{ color: "var(--m-success)" }} /> Synced</>
-                )}
-              </span>
-              {/* XP & Level Badge */}
-              <span className="flex items-center gap-1 font-bold" style={{ color: "var(--m-primary)" }}>
-                <Star size={10} /> Lv.{streak.level} {getLevelTitle(streak.level)}
-              </span>
-            </div>
-            {/* XP Progress Bar */}
-            <div className="mt-3">
-              <div className="flex items-center justify-between text-[9px] font-[DM_Mono]" style={{ color: "var(--m-text-muted)" }}>
-                <span>{streak.totalXP} XP</span>
-                <span>{getXPForNextLevel(streak.level)} XP</span>
+            <div className={`overflow-hidden transition-all duration-300 w-full ${isExpanded ? "max-h-[100px] opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"}`}>
+              <div className="flex items-center justify-between pt-2 text-[10px]" style={{ borderTop: "1px solid var(--m-border)" }}>
+                <span className="flex items-center gap-1 font-medium whitespace-nowrap" style={{ color: "var(--m-text-sub)" }}>
+                  {isSaving ? (
+                    <><Cloud size={12} className="animate-pulse shrink-0" style={{ color: "var(--m-warning)" }} /> Saving...</>
+                  ) : (
+                    <><CheckCircle2 size={12} className="shrink-0" style={{ color: "var(--m-success)" }} /> Synced</>
+                  )}
+                </span>
+                {/* XP & Level Badge */}
+                <span className="flex items-center gap-1 font-bold whitespace-nowrap" style={{ color: "var(--m-primary)" }}>
+                  <Star size={10} className="shrink-0" /> Lv.{streak.level} {getLevelTitle(streak.level)}
+                </span>
               </div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "var(--m-border)" }}>
-                <div className="h-full rounded-full transition-all duration-500" style={{
-                  width: `${Math.min(100, (streak.totalXP / getXPForNextLevel(streak.level)) * 100)}%`,
-                  backgroundColor: "var(--m-primary)",
-                }} />
+              {/* XP Progress Bar */}
+              <div className="mt-3">
+                <div className="flex items-center justify-between text-[9px] font-[DM_Mono] whitespace-nowrap" style={{ color: "var(--m-text-muted)" }}>
+                  <span>{streak.totalXP} XP</span>
+                  <span>{getXPForNextLevel(streak.level)} XP</span>
+                </div>
+                <div className="mt-1 h-1.5 overflow-hidden rounded-full" style={{ backgroundColor: "var(--m-border)" }}>
+                  <div className="h-full rounded-full transition-all duration-500" style={{
+                    width: `${Math.min(100, (streak.totalXP / getXPForNextLevel(streak.level)) * 100)}%`,
+                    backgroundColor: "var(--m-primary)",
+                  }} />
+                </div>
               </div>
             </div>
           </div>
 
           {/* Navigation Links */}
           <div>
-            <p className="px-1 text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--m-text-muted)" }}>
+            <p className={`px-1 text-[10px] font-medium uppercase tracking-wider overflow-hidden transition-all duration-300 ${isExpanded ? "max-h-[20px] opacity-100 mb-2" : "max-h-0 opacity-0 mb-0"}`} style={{ color: "var(--m-text-muted)" }}>
               Menu
             </p>
-            <nav className="mt-2 space-y-1">
+            <nav className="space-y-1">
               {navItems.map(({ label, icon: Icon, displayLabel }) => (
                 <button
                   key={label}
                   onClick={() => { setActiveNav(label); setMobileOpen(false); }}
-                  className="flex w-full items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition duration-200 feature-chip"
+                  className={`flex items-center rounded-xl transition-all duration-300 feature-chip ${
+                    isExpanded ? "w-full px-3.5 py-2.5" : "w-10 h-10 justify-center mx-auto"
+                  }`}
                   style={
                     activeNav === label
                       ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", fontWeight: 600 }
                       : { color: "var(--m-text-sub)" }
                   }
+                  title={!isExpanded ? (displayLabel || label) : undefined}
                 >
-                  <Icon size={17} />
-                  <span>{displayLabel || label}</span>
+                  <Icon size={17} className="shrink-0" />
+                  <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0"}`}>{displayLabel || label}</span>
                 </button>
               ))}
+
+              <a
+                href="/cadence"
+                className={`flex items-center rounded-xl transition-all duration-300 feature-chip ${
+                  isExpanded ? "w-full px-3.5 py-2.5" : "w-10 h-10 justify-center mx-auto"
+                }`}
+                style={{ color: "var(--m-text-sub)" }}
+                title={!isExpanded ? "Cadence Screening" : undefined}
+              >
+                <Activity size={17} className="shrink-0" />
+                <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0"}`}>Cadence Screening</span>
+              </a>
             </nav>
           </div>
 
           {/* Subjects / Courses */}
           <div>
-            <div className="flex items-center justify-between px-1">
-              <p className="text-[10px] font-medium uppercase tracking-wider" style={{ color: "var(--m-text-muted)" }}>
+            <div className={`flex items-center justify-between px-1 overflow-hidden transition-all duration-300 ${isExpanded ? "max-h-[20px] opacity-100" : "max-h-0 opacity-0"}`}>
+              <p className="text-[10px] font-medium uppercase tracking-wider whitespace-nowrap" style={{ color: "var(--m-text-muted)" }}>
                 Subjects
               </p>
               <button
                 type="button"
                 onClick={() => setSubjectsOpen(true)}
-                className="text-[10px] font-bold flex items-center gap-0.5 hover:underline"
+                className="text-[10px] font-bold flex items-center gap-0.5 hover:underline whitespace-nowrap shrink-0"
                 style={{ color: "var(--m-primary)" }}
               >
                 <Plus size={11} /> Add
               </button>
             </div>
-            <div className="mt-2 space-y-1 px-1 text-sm">
+            <div className={`mt-2 space-y-1 text-sm transition-all duration-300 ${isExpanded ? "px-1" : "px-0"}`}>
               <button
                 onClick={() => { setSelectedSubject("All subjects"); setActiveNav("Today"); setMobileOpen(false); }}
-                className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition hover:opacity-80 feature-chip"
+                className={`flex items-center rounded-xl transition-all duration-300 feature-chip ${
+                  isExpanded ? "w-full px-2.5 py-2 text-left" : "w-10 h-10 justify-center mx-auto"
+                }`}
                 style={selectedSubject === "All subjects" ? { backgroundColor: "var(--m-surface-alt)", fontWeight: 700, color: "var(--m-primary)" } : { color: "var(--m-text-sub)" }}
+                title={!isExpanded ? "All subjects" : undefined}
               >
                 <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: "var(--m-primary)" }} />
-                <span className="truncate">All subjects</span>
+                <span className={`truncate text-xs whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-2.5" : "max-w-0 opacity-0 ml-0"}`}>All subjects</span>
               </button>
               {subjects.map((sub) => (
                 <button
                   key={sub.id}
                   onClick={() => { setSelectedSubject(sub.name); setActiveNav("Today"); setMobileOpen(false); }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left text-xs transition hover:opacity-80 feature-chip"
+                  className={`flex items-center rounded-xl transition-all duration-300 feature-chip ${
+                    isExpanded ? "w-full px-2.5 py-2 text-left" : "w-10 h-10 justify-center mx-auto"
+                  }`}
                   style={selectedSubject === sub.name ? { backgroundColor: "var(--m-surface-alt)", fontWeight: 700, color: "var(--m-primary)" } : { color: "var(--m-text-sub)" }}
+                  title={!isExpanded ? sub.name : undefined}
                 >
                   <span className="size-2.5 rounded-full shrink-0" style={{ backgroundColor: sub.color }} />
-                  <span className="truncate">{sub.name}</span>
+                  <span className={`truncate text-xs whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-2.5" : "max-w-0 opacity-0 ml-0"}`}>{sub.name}</span>
                 </button>
               ))}
-              <button onClick={() => { setSubjectsOpen(true); setMobileOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs font-bold hover:opacity-80 feature-chip" style={{ color: "var(--m-primary)" }}>
-                <FolderPlus size={14} /><span>+ Add / Manage Subjects</span>
-              </button>
+              <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? "max-h-[50px] opacity-100 mt-2" : "max-h-0 opacity-0 mt-0"}`}>
+                <button onClick={() => { setSubjectsOpen(true); setMobileOpen(false); }} className="flex w-full items-center gap-2 rounded-xl px-2.5 py-2 text-left text-xs font-bold hover:opacity-80 feature-chip" style={{ color: "var(--m-primary)" }}>
+                  <FolderPlus size={14} className="shrink-0" /><span className="whitespace-nowrap">+ Add / Manage Subjects</span>
+                </button>
+              </div>
             </div>
           </div>
 
           {/* Streak & Export Card */}
-          <div className="rounded-xl p-3 text-xs minimal-inset feature-zoom">
-            <div className="flex items-center gap-2 font-medium" style={{ color: "var(--m-text-heading)" }}>
-              <Flame size={14} style={{ color: "var(--m-warning)" }} />
-              <span>{streak.currentStreak} day streak</span>
-            </div>
-            <div className="mt-2.5 flex gap-1.5">
-              <button onClick={exportDataJSON} className="flex-1 rounded-lg py-1.5 text-[10px] font-bold transition hover:opacity-80" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                Export JSON
-              </button>
-              <button onClick={exportTasksCSV} className="flex-1 rounded-lg py-1.5 text-[10px] font-bold transition hover:opacity-80" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                Export CSV
-              </button>
+          <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? "max-h-[200px] opacity-100 mt-5" : "max-h-0 opacity-0 mt-0"}`}>
+            <div className="rounded-xl p-3 text-xs minimal-inset feature-zoom">
+              <div className="flex items-center gap-2 font-medium whitespace-nowrap" style={{ color: "var(--m-text-heading)" }}>
+                <Flame size={14} style={{ color: "var(--m-warning)" }} className="shrink-0" />
+                <span>{streak.currentStreak} day streak</span>
+              </div>
+              <div className="mt-2.5 flex gap-1.5">
+                <button onClick={exportDataJSON} className="flex-1 rounded-lg py-1.5 text-[10px] font-bold transition hover:opacity-80 whitespace-nowrap" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                  Export JSON
+                </button>
+                <button onClick={exportTasksCSV} className="flex-1 rounded-lg py-1.5 text-[10px] font-bold transition hover:opacity-80 whitespace-nowrap" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                  Export CSV
+                </button>
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Bottom Controls */}
-          <div className="space-y-2 pt-2" style={{ borderTop: "1px solid var(--m-border-light)" }}>
-            {/* Theme Selector Button */}
-            <button onClick={() => setThemeSelectorOpen(true)} className="flex w-full items-center justify-between gap-2 rounded-xl px-3 py-2.5 text-xs font-medium transition hover:opacity-80 minimal-surface feature-chip">
-              <span className="flex items-center gap-2">
-                <Palette size={15} />
-                <span>{themeConfig.name}</span>
-              </span>
-              <span className="flex items-center gap-1.5">
-                {themeConfig.swatches.slice(0, 3).map((color, i) => (
-                  <span key={i} className="inline-block size-3 rounded-full" style={{ backgroundColor: color, border: '1px solid var(--m-border-light)' }} />
-                ))}
-              </span>
-            </button>
+        {/* Bottom Actions */}
+        <div className={`border-t transition-all duration-300 ${isExpanded ? "py-4 px-5 space-y-2" : "py-4 px-3 flex flex-col items-center space-y-3"}`} style={{ borderColor: "var(--m-border-light)" }}>
+          <button onClick={() => setThemeSelectorOpen(true)} className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip ${isExpanded ? "w-full px-3 py-2.5 justify-between" : "w-10 h-10 justify-center"}`} title={!isExpanded ? "Change Theme" : undefined}>
+            <span className="flex items-center">
+              <Palette size={15} className="shrink-0" />
+              <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[100px] opacity-100 ml-2" : "max-w-0 opacity-0 ml-0"}`}>{themeConfig.name}</span>
+            </span>
+            <span className={`flex items-center overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[100px] opacity-100 gap-1.5" : "max-w-0 opacity-0 gap-0"}`}>
+              {themeConfig.swatches.slice(0, 3).map((color, i) => (
+                <span key={i} className="inline-block size-3 shrink-0 rounded-full" style={{ backgroundColor: color, border: '1px solid var(--m-border-light)' }} />
+              ))}
+            </span>
+          </button>
 
-            <button onClick={onSignOut} className="flex w-full items-center justify-center gap-2 rounded-xl px-3 py-2 text-xs font-medium transition hover:opacity-80 minimal-surface feature-chip" style={{ color: "var(--m-danger)" }}>
-              <LogOut size={14} /><span>Sign out</span>
-            </button>
-          </div>
+          <button onClick={onSignOut} className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip ${isExpanded ? "w-full px-3 py-2 justify-center" : "w-10 h-10 justify-center"}`} style={{ color: "var(--m-danger)" }} title={!isExpanded ? "Sign Out" : undefined}>
+            <LogOut size={14} className="shrink-0" />
+            <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[100px] opacity-100 ml-2" : "max-w-0 opacity-0 ml-0"}`}>Sign out</span>
+          </button>
         </div>
       </aside>
 
@@ -1272,7 +1520,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
       )}
 
       {/* ─── Main Content ─── */}
-      <section className="lg:pl-[240px]">
+      <section className="transition-all duration-300 w-full lg:pl-[76px]">
         {/* Top Bar */}
         <header className="sticky top-0 z-20 flex items-center justify-between px-3.5 sm:px-6 py-2.5 sm:py-3.5 md:px-8 minimal-surface shadow-xs" style={{ backgroundColor: "var(--m-surface-solid)", borderBottom: "1px solid var(--m-border-light)" }}>
           <div className="flex items-center gap-2.5 sm:gap-3">
@@ -1318,6 +1566,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 </button>
               </div>
             </div>
+          )}
+
+          {/* ═══════════ FINANCE VIEW ═══════════ */}
+          {activeNav === "Money" && (
+            <FinanceApp 
+              financeData={finance} 
+              onUpdateFinance={(newData) => setFinance(newData)} 
+            />
           )}
 
           {/* ═══════════ TODAY VIEW ═══════════ */}
@@ -1499,6 +1755,11 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                                     {daysUntil(task.deadline) <= 0 ? "⚠️ Due!" : `📅 ${daysUntil(task.deadline)}d`}
                                   </span>
                                 )}
+                                {task.createdBy === "agent" && (
+                                  <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase" style={{ backgroundColor: "var(--m-primary-transparent)", color: "var(--m-primary)", border: "1px solid var(--m-primary)" }}>
+                                    <Sparkles size={9} /> Autopilot
+                                  </span>
+                                )}
                               </div>
                             </div>
                             <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-lg transition" style={{ color: "var(--m-danger)" }} title="Delete"><Trash2 size={16} /></button>
@@ -1516,7 +1777,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     </div>
 
                     {/* Add Task Form */}
-                    <form onSubmit={addTask} className="grid gap-2 px-4 py-3.5 sm:grid-cols-[1fr_140px_100px_100px_auto]" style={{ borderTop: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
+                    <form onSubmit={addTask} className="flex flex-col sm:grid gap-3 sm:gap-2 px-4 py-4 sm:py-3.5 sm:grid-cols-[1fr_140px_100px_100px_auto]" style={{ borderTop: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
                       <input id="new-task-input" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} placeholder="What needs to get done?" className="min-w-0 rounded-xl border px-3.5 py-2 text-sm outline-none transition focus:ring-2" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)", "--tw-ring-color": "var(--m-primary)" } as any} />
                       <div className="flex items-center gap-1 min-w-0">
                         <select
@@ -1565,6 +1826,115 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     </form>
                   </div>
                 </section>
+
+                {/* Autopilot Widget */}
+                <section className="mt-5 rounded-xl p-5 minimal-surface feature-zoom" style={{ border: "1px solid var(--m-primary-transparent)" }}>
+                  <div className="flex items-center gap-2 mb-3">
+                    <Sparkles size={16} style={{ color: "var(--m-primary)" }} />
+                    <h3 className="font-[Roboto_Slab] text-base font-semibold" style={{ color: "var(--m-text-heading)" }}>Autopilot Taskmaster</h3>
+                  </div>
+                  <p className="text-xs mb-3" style={{ color: "var(--m-text-muted)" }}>Paste a syllabus, email, or meeting notes to automatically generate your tasks and schedule.</p>
+                  
+                  <form onSubmit={handleAutopilotSubmit} className="mb-6">
+                    <textarea 
+                      value={autopilotText}
+                      onChange={(e) => setAutopilotText(e.target.value)}
+                      placeholder="Paste syllabus, email, assignment brief, or meeting notes here..."
+                      className="w-full rounded-xl border p-3 text-xs outline-none resize-y min-h-[80px]"
+                      style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
+                    />
+                    <div className="flex justify-end mt-2">
+                      <button type="submit" disabled={isSubmittingAutopilot || !autopilotText.trim()} className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                        {isSubmittingAutopilot ? (
+                          <><span className="flex gap-1 mr-1"><span className="size-1.5 animate-bounce rounded-full bg-white" /><span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:150ms]" /><span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:300ms]" /></span> Processing...</>
+                        ) : (
+                          <>Run Autopilot <Sparkles size={14} /></>
+                        )}
+                      </button>
+                    </div>
+                  </form>
+
+                  <h4 className="text-xs font-bold mb-3" style={{ color: "var(--m-text-heading)" }}>Agent Activity Log</h4>
+                  
+                  {autopilotRuns.length === 0 ? (
+                    <div className="rounded-xl border p-6 text-center" style={{ borderColor: "var(--m-border-light)" }}>
+                      <Bot size={24} className="mx-auto mb-2 opacity-50" style={{ color: "var(--m-text-sub)" }} />
+                      <p className="text-sm font-medium" style={{ color: "var(--m-text-muted)" }}>No agent activity yet.</p>
+                      <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>Paste text above to trigger Autopilot.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {autopilotRuns.map((run) => (
+                        <div key={run.id} className="overflow-hidden rounded-xl border shadow-sm" style={{ borderColor: "var(--m-border-light)" }}>
+                          {/* Run Header */}
+                          <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-surface-alt)" }}>
+                            <div className="flex items-center gap-2">
+                              <div className="grid size-6 place-items-center rounded-md" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                                <Bot size={13} />
+                              </div>
+                              <div>
+                                <p className="text-[11px] font-bold" style={{ color: "var(--m-text-heading)" }}>Autopilot Run</p>
+                                <p className="text-[9px]" style={{ color: "var(--m-text-sub)" }}>{new Date(run.timestamp).toLocaleTimeString()}</p>
+                              </div>
+                            </div>
+                            <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold" style={{
+                              backgroundColor: run.status === "done" ? "var(--m-surface)" : run.status === "error" ? "var(--m-surface)" : "var(--m-surface)",
+                              color: run.status === "done" ? "var(--m-success)" : run.status === "error" ? "var(--m-danger)" : "var(--m-primary)",
+                              border: "1px solid var(--m-border)",
+                            }}>
+                              {run.status === "done" ? <><CheckCircle2 size={9} /> Complete</> :
+                               run.status === "error" ? <><AlertCircle size={9} /> Error</> :
+                               <><span className="size-1.5 animate-pulse rounded-full" style={{ backgroundColor: "var(--m-primary)" }} /> {run.status === "extracting" ? "Extracting..." : run.status === "planning" ? "Planning..." : "Executing..."}</>
+                              }
+                            </span>
+                          </div>
+
+                          <div className="p-3 space-y-3">
+                            {/* Extracted Items */}
+                            {run.extractedItems.length > 0 && (
+                              <div>
+                                <p className="text-[10px] font-bold mb-1.5 flex items-center gap-1" style={{ color: "var(--m-text)" }}>
+                                  <FileText size={10} style={{ color: "var(--m-primary)" }} /> Extracted {run.extractedItems.length} item(s)
+                                </p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                  {run.extractedItems.map((item, idx) => (
+                                    <div key={idx} className="rounded-lg border p-2 text-[9px]" style={{ borderColor: "var(--m-border-light)" }}>
+                                      <p className="font-bold truncate" style={{ color: "var(--m-text-heading)" }}>{item.title}</p>
+                                      <div className="flex justify-between mt-0.5" style={{ color: "var(--m-text-sub)" }}>
+                                        <span>{item.type} • {item.priority}</span>
+                                        {item.course && <span>{item.course}</span>}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* Results */}
+                            {run.status === "done" && (run.createdTasks.length > 0 || run.createdSchedule.length > 0) && (
+                              <div className="pt-2 border-t" style={{ borderColor: "var(--m-border-light)" }}>
+                                <p className="text-[10px] font-bold mb-1 flex items-center gap-1" style={{ color: "var(--m-success)" }}>
+                                  <CheckCircle2 size={10} /> Actions Taken
+                                </p>
+                                <ul className="list-disc list-inside text-[9px] space-y-0.5" style={{ color: "var(--m-text-sub)" }}>
+                                  {run.createdTasks.map((t, i) => <li key={`t-${i}`}>Created task: <b>{t}</b></li>)}
+                                  {run.createdSchedule.map((s, i) => <li key={`s-${i}`}>Scheduled: <b>{s}</b></li>)}
+                                </ul>
+                              </div>
+                            )}
+
+                            {/* Error */}
+                            {run.errorMsg && (
+                              <p className="text-[10px] italic" style={{ color: run.status === "error" ? "var(--m-danger)" : "var(--m-text-sub)" }}>
+                                {run.errorMsg}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </section>
               </div>
 
               {/* ─── Right: AI Chat Panel ─── */}
@@ -1572,27 +1942,41 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                 {/* Side Panel Header */}
                 <div className="flex items-center justify-between p-3.5 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                   <div className="flex items-center gap-2">
-                    <div className="grid size-8 place-items-center rounded-lg" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                    <div className="grid size-8 place-items-center rounded-lg" style={{ backgroundColor: chatSubjectId ? "var(--m-warning)" : "var(--m-primary)", color: chatSubjectId ? "var(--m-warning-text)" : "var(--m-primary-text)" }}>
                       <Brain size={16} />
                     </div>
                     <div>
-                      <p className="text-sm font-medium" style={{ color: "var(--m-text-heading)" }}>Dream It AI</p>
+                      <p className="text-sm font-medium" style={{ color: "var(--m-text-heading)" }}>{chatSubjectId ? "Grounded Tutor" : "Dream It AI"}</p>
                       <p className="flex items-center gap-1 text-[10px]" style={{ color: "var(--m-text-muted)" }}>
                         <span className="size-1.5 rounded-full" style={{ backgroundColor: "var(--m-success)" }} />
-                        Online
+                        {chatSubjectId ? "Sourced Mode" : "Online"}
                       </p>
                     </div>
                   </div>
-                  <button onClick={() => setIsChatMaximized(true)} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-primary)" }} title="Full screen">
-                    <Maximize2 size={13} />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={chatSubjectId || ""}
+                      onChange={(e) => setChatSubjectId(e.target.value ? Number(e.target.value) : null)}
+                      className="rounded-lg border px-2 py-1 text-[10px] outline-none max-w-[100px]"
+                      style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
+                      title="Grounded Subject Mode"
+                    >
+                      <option value="">General AI</option>
+                      {subjects.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name} Tutor</option>
+                      ))}
+                    </select>
+                    <button onClick={() => setIsChatMaximized(true)} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-primary)" }} title="Full screen">
+                      <Maximize2 size={13} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Messages Container (Fills middle area perfectly) */}
                 <div ref={chatContainerRef} className="flex-1 space-y-3 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
                   {messages.map((m, idx) => (
-                    <div key={idx} className="max-w-[92%] rounded-2xl px-4 py-3 whitespace-pre-wrap shadow-xs" style={m.role === "assistant" ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" } : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px", marginLeft: "auto" }}>
-                      {m.content}
+                    <div key={idx} className="max-w-[92%] rounded-2xl px-4 py-3 shadow-xs" style={m.role === "assistant" ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" } : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px", marginLeft: "auto" }}>
+                      {renderSimpleMarkdown(m.content)}
                     </div>
                   ))}
                   {isAsking && (
@@ -1632,10 +2016,16 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                     </div>
                   )}
                   <div className="flex items-center gap-2 rounded-2xl p-1.5 pl-2.5" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
-                    <button type="button" onClick={() => chatFileInputRef.current?.click()} className="p-1 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
+                    <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
                       <Paperclip size={17} />
                     </button>
                     <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything..." />
+                    <VoiceInputButton
+                      value={chatDraft}
+                      onChange={setChatDraft}
+                      disabled={isAsking}
+                      size={15}
+                    />
                     <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="grid size-9 place-items-center rounded-xl transition hover:scale-105 disabled:opacity-40 shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                       <Send size={15} />
                     </button>
@@ -1707,10 +2097,16 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                       </div>
                     )}
                     <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
-                      <button type="button" onClick={() => chatFileInputRef.current?.click()} className="p-1.5 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
+                      <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
                         <Paperclip size={18} />
                       </button>
                       <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything... (Press Enter to send)" />
+                      <VoiceInputButton
+                        value={chatDraft}
+                        onChange={setChatDraft}
+                        disabled={isAsking}
+                        size={15}
+                      />
                       <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:scale-105 disabled:opacity-40 shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                         <Send size={15} /><span>Send</span>
                       </button>
@@ -1794,7 +2190,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
                       <span className="w-16 font-[DM_Mono] text-xs font-bold" style={{ color: "var(--m-primary)" }}>{item.time}</span>
                       <span className={`h-10 w-1 shrink-0 rounded-full ${item.tone}`} />
                       <div className="min-w-0 flex-1">
-                        <b className={`block text-sm ${item.done ? "line-through" : ""}`} style={{ color: "var(--m-text-heading)" }}>{item.title}</b>
+                        <b className={`block text-sm ${item.done ? "line-through" : ""}`} style={{ color: "var(--m-text-heading)" }}>
+                          {item.title}
+                          {item.createdBy === "agent" && (
+                            <span className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase align-middle" style={{ backgroundColor: "var(--m-primary-transparent)", color: "var(--m-primary)", border: "1px solid var(--m-primary)" }}>
+                              <Sparkles size={9} /> Autopilot
+                            </span>
+                          )}
+                        </b>
                         <small className="block text-xs" style={{ color: "var(--m-text-sub)" }}>{item.course ? `${item.course} • ` : ""}{item.note}</small>
                       </div>
                       <button onClick={() => deleteScheduleItem(item.id, item.title)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition" style={{ color: "var(--m-danger)" }}><Trash2 size={16} /></button>
@@ -2447,7 +2850,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
             <div className="mt-5 flex-1 overflow-y-auto space-y-6 pr-1">
               <div>
                 <p className="text-xs font-bold mb-2" style={{ color: "var(--m-text-heading)" }}>Upload (Max 20MB)</p>
-                <FileUpload accessToken={accessToken} userId={userId} subjectId={filesModalSubject.id} onUploadSuccess={handleUploadSuccess} />
+                <FileUpload accessToken={accessToken} userId={userId} subjectId={filesModalSubject.id} onUploadSuccess={handleUploadSuccess} allowAutopilot={true} />
               </div>
               <div>
                 <h3 className="font-[Roboto_Slab] text-base font-semibold mb-3" style={{ color: "var(--m-text-heading)" }}>Files ({attachedFiles.filter((f) => f.subjectId === filesModalSubject.id).length})</h3>

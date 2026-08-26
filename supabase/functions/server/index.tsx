@@ -2,6 +2,7 @@ import { Hono } from "npm:hono";
 import { cors } from "npm:hono/cors";
 import { logger } from "npm:hono/logger";
 import * as kv from "./kv_store.tsx";
+import { runAutopilot } from "./autopilot_orchestrator.tsx";
 import { createClient } from "jsr:@supabase/supabase-js@2.49.8";
 
 const app = new Hono();
@@ -34,6 +35,7 @@ interface AttachedFileMetadata {
   size: number;
   subjectId: number;
   taskId?: number;
+  kind?: string; // e.g. syllabus, transcript
   storagePath: string;
   createdAt: string;
 }
@@ -117,9 +119,10 @@ app.post(`${serverPrefix}/study-coach`, async (c) => {
     }
     await kv.set(rateKey, { count: (windowState.count ?? 0) + 1, resetAt: windowState.resetAt });
 
-    const groqApiKey = Deno.env.get("GROQ_API_KEY") || Deno.env.get("VITE_GROQ_API_KEY") || "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";
+    const geminiApiKey = Deno.env.get("GEMINI_API_KEY") || Deno.env.get("VITE_GEMINI_API_KEY") || "your_api_key_here";
     
-    const systemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting.`;
+    const defaultSystemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting.`;
+    const systemPrompt = typeof body?.systemPrompt === "string" && body.systemPrompt.trim() ? body.systemPrompt.trim() : defaultSystemPrompt;
 
     const formattedMessages = [
       { role: "system", content: systemPrompt },
@@ -130,14 +133,14 @@ app.post(`${serverPrefix}/study-coach`, async (c) => {
       { role: "user", content: message },
     ];
 
-    const aiResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    const aiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${groqApiKey.trim()}`,
+        "Authorization": `Bearer ${geminiApiKey.trim()}`,
       },
       body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
+        model: "gemini-3.6-flash",
         messages: formattedMessages,
         max_tokens: 4096,
         temperature: 0.7,
@@ -187,6 +190,7 @@ app.post(`${serverPrefix}/files`, async (c) => {
     let size = 0;
     let subjectId = 0;
     let taskId: number | undefined = undefined;
+    let kind: string | undefined = undefined;
     let fileBuffer: Uint8Array | ArrayBuffer | null = null;
 
     const contentType = c.req.header("Content-Type") || "";
@@ -195,6 +199,7 @@ app.post(`${serverPrefix}/files`, async (c) => {
       const formData = await c.req.formData();
       const file = formData.get("file") as File | null;
       subjectId = Number(formData.get("subjectId") || 0);
+      kind = formData.get("kind") as string | undefined;
       const taskIdVal = formData.get("taskId");
       if (taskIdVal) taskId = Number(taskIdVal);
 
@@ -212,6 +217,7 @@ app.post(`${serverPrefix}/files`, async (c) => {
       fileName = body.fileName || "file";
       mimeType = body.mimeType || "application/octet-stream";
       subjectId = Number(body.subjectId || 0);
+      kind = body.kind;
       if (body.taskId) taskId = Number(body.taskId);
 
       if (!body.fileData) {
@@ -263,12 +269,28 @@ app.post(`${serverPrefix}/files`, async (c) => {
       size,
       subjectId,
       taskId,
+      kind,
       storagePath,
       createdAt: new Date().toISOString(),
     };
 
     const existingFiles = (await kv.get(`files:${user.id}`)) as AttachedFileMetadata[] || [];
     await kv.set(`files:${user.id}`, [...existingFiles, meta]);
+
+    // Autopilot Hook
+    if (kind === "syllabus" || kind === "transcript") {
+      let text = "";
+      if (mimeType === "text/plain") {
+        text = new TextDecoder().decode(fileBuffer as Uint8Array);
+      } else {
+        // Fallback for hackathon: just grab whatever string we can or use a placeholder text
+        // (In a real app, we'd use a PDF parser here)
+        text = new TextDecoder().decode(fileBuffer as Uint8Array).substring(0, 5000);
+      }
+      
+      // Run asynchronously so we don't block the upload response
+      runAutopilot(user.id, `File Upload (${fileName})`, text).catch(e => console.error("Autopilot error:", e));
+    }
 
     return c.json({ file: meta }, 201);
   } catch (err: any) {
@@ -308,7 +330,7 @@ app.get(`${serverPrefix}/files/:id/url`, async (c) => {
   return c.json({ url: data.signedUrl, fileName: targetFile.fileName });
 });
 
-// 4. DELETE /files/:id - Delete storage object & KV metadata
+// 4. DELETE /files/:id - Delete file
 app.delete(`${serverPrefix}/files/:id`, async (c) => {
   const user = await getAuthenticatedUser(c);
   if (!user) return c.json({ error: "Sign in is required." }, 401);
@@ -326,15 +348,49 @@ app.delete(`${serverPrefix}/files/:id`, async (c) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
 
-  // Delete object from Supabase storage
-  await admin.storage.from("attachments").remove([targetFile.storagePath]);
+  const { error } = await admin.storage
+    .from("attachments")
+    .remove([targetFile.storagePath]);
 
-  // Remove metadata from KV store
+  if (error) {
+    console.error("Storage delete failed:", error);
+  }
+
   const updatedFiles = files.filter((f) => f.id !== fileId);
   await kv.set(`files:${user.id}`, updatedFiles);
 
-  return c.json({ deleted: true, id: fileId });
+  return c.json({ success: true, deleted: fileId });
+});
+
+// =========================================
+// AUTOPILOT ENDPOINTS
+// =========================================
+
+// POST /autopilot/paste
+app.post(`${serverPrefix}/autopilot/paste`, async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) return c.json({ error: "Sign in is required." }, 401);
+
+  const body = await c.req.json();
+  const text = typeof body?.text === "string" ? body.text.trim() : "";
+
+  if (!text) {
+    return c.json({ error: "No text provided." }, 400);
+  }
+
+  // Run autopilot asynchronously
+  runAutopilot(user.id, "Dashboard Paste", text).catch(e => console.error("Autopilot paste error:", e));
+
+  return c.json({ success: true, message: "Autopilot triggered successfully." });
+});
+
+// GET /autopilot/runs
+app.get(`${serverPrefix}/autopilot/runs`, async (c) => {
+  const user = await getAuthenticatedUser(c);
+  if (!user) return c.json({ error: "Sign in is required." }, 401);
+
+  const runs = (await kv.get(`agent_runs:${user.id}`)) || [];
+  return c.json({ runs });
 });
 
 Deno.serve(app.fetch);
-

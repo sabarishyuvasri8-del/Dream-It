@@ -17,6 +17,7 @@ interface FileUploadProps {
   subjectId: number;
   taskId?: number;
   onUploadSuccess: (newFile: AttachedFile) => void;
+  allowAutopilot?: boolean;
 }
 
 const ALLOWED_EXTENSIONS = [
@@ -37,12 +38,14 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   subjectId,
   taskId,
   onUploadSuccess,
+  allowAutopilot = false,
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [selectedKind, setSelectedKind] = useState<string>("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const validateAndUpload = async (file: File) => {
@@ -71,7 +74,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         setUploadProgress((p) => (p < 85 ? p + 15 : p));
       }, 150);
 
-      const newFile = await uploadAttachedFile(accessToken, userId, file, subjectId, taskId);
+      const newFile = await uploadAttachedFile(accessToken, userId, file, subjectId, taskId, selectedKind || undefined);
 
       window.clearInterval(timer);
       setUploadProgress(100);
@@ -171,6 +174,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           </div>
         )}
       </div>
+      
+      {allowAutopilot && (
+        <div className="flex items-center gap-2 px-2 text-xs" style={{ color: "var(--m-text-sub)" }}>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="checkbox" checked={selectedKind === "syllabus"} onChange={(e) => setSelectedKind(e.target.checked ? "syllabus" : "")} className="rounded" />
+            Process with Autopilot (Syllabus/Transcript)
+          </label>
+        </div>
+      )}
 
       {/* Error Toast Banner */}
       {errorMessage && (
