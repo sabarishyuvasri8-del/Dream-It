@@ -1214,6 +1214,9 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
 
     // 2. Fallback via the central AI client if backend is unreachable
     try {
+      // Create empty message for streaming
+      setMessages((curr) => [...curr, { role: "assistant", content: "" }]);
+
       const response = await fetchAI({
         model: "gemini-3.6-flash",
         messages: [
@@ -1222,23 +1225,30 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
           { role: "user", content: promptForAI },
         ],
         max_tokens: 4096,
-        temperature: chatSubjectId ? 0.1 : 0.7, // Lower temperature for grounded mode
+        temperature: chatSubjectId ? 0.1 : 0.7,
+        onChunk: (chunk) => {
+          setMessages((curr) => {
+            const updated = [...curr];
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") {
+              last.content += chunk;
+            }
+            return updated;
+          });
+        }
       });
 
-      if (response.content) {
-        setMessages((curr) => [...curr, { role: "assistant", content: response.content }]);
-        setIsAsking(false);
-        addXP(2);
-        return;
+      if (response.error) {
+        setMessages((curr) => {
+          const updated = [...curr];
+          updated[updated.length - 1].content = `⚠️ **Dream It AI**: ${response.error}`;
+          return updated;
+        });
       } else {
-        setMessages((curr) => [
-          ...curr,
-          {
-            role: "assistant",
-            content: `⚠️ **Dream It AI**: ${response.error || "Service is temporarily busy. Please try again shortly."}`,
-          },
-        ]);
+        addXP(2);
       }
+      setIsAsking(false);
+      return;
     } catch (e) {
       console.warn("AI fallback notice:", e);
       setMessages((curr) => [

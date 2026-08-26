@@ -227,6 +227,8 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
       .map((m) => ({ role: m.role, content: m.content }));
 
     try {
+      setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
+
       const response = await fetchAI({
         model: "gemini-3.5-flash-lite",
         messages: [
@@ -237,15 +239,24 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
         max_tokens: 4096,
         temperature: 0.4,
         top_p: 0.9,
+        onChunk: (chunk) => {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last && last.role === "assistant") {
+              last.content += chunk;
+            }
+            return updated;
+          });
+        }
       });
 
-      if (response.content) {
-        setMessages((prev) => [...prev, { role: "assistant", content: response.content }]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `⚠️ **AI Money Coach**: ${response.error || "Temporarily unavailable."}` },
-        ]);
+      if (response.error) {
+        setMessages((prev) => {
+          const updated = [...prev];
+          updated[updated.length - 1].content = `⚠️ **AI Money Coach**: ${response.error}`;
+          return updated;
+        });
       }
     } catch (error) {
       console.warn("AI Money Coach fallback notice:", error);

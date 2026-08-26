@@ -14,6 +14,7 @@ export interface AIChatRequest {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
+  onChunk?: (text: string) => void;
 }
 
 export interface AIResponse {
@@ -25,6 +26,7 @@ export interface AIResponse {
 /**
  * Fetches a response from the Gemini/Gemma models.
  * Automatically handles API key retrieval, fallback obfuscation, and rate limit errors.
+ * Supports Server-Sent Events (SSE) streaming if onChunk is provided.
  */
 export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
   const envKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
@@ -51,6 +53,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         temperature: params.temperature ?? 0.7,
         max_tokens: params.max_tokens ?? 2048,
         top_p: params.top_p,
+        stream: !!params.onChunk,
       }),
     });
 
@@ -65,14 +68,50 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
       return { content: "", error: `API connection error: ${res.status} ${res.statusText}` };
     }
 
-    const data = await res.json();
-    const content = data.choices?.[0]?.message?.content?.trim();
-    
-    if (!content) {
-      return { content: "", error: "The AI returned an empty response. Please try asking again." };
-    }
+    if (params.onChunk && res.body) {
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      let buffer = "";
 
-    return { content };
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || "";
+          
+          for (const line of lines) {
+            if (line.trim() === "data: [DONE]") continue;
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                const textChunk = data.choices?.[0]?.delta?.content;
+                if (textChunk) {
+                  fullContent += textChunk;
+                  params.onChunk(textChunk);
+                }
+              } catch (e) {
+                // Ignore parsing errors for incomplete JSON chunks
+              }
+            }
+          }
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      return { content: fullContent.trim() };
+    } else {
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content?.trim();
+      
+      if (!content) {
+        return { content: "", error: "The AI returned an empty response. Please try asking again." };
+      }
+      return { content };
+    }
   } catch (error: any) {
     console.error("AI client fetch network error:", error);
     return { content: "", error: "Failed to connect to the AI service. Please check your network connection." };
