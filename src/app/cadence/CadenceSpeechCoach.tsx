@@ -23,26 +23,14 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 export default function CadenceSpeechCoach({ report }: CadenceSpeechCoachProps) {
-  const { user } = useUser();
-  const CADENCE_CHAT_KEY = `dreamit-cadence-coach-chat-${user?.id || 'guest'}`;
-
   const [isOpen, setIsOpen] = useState(false);
   const [isWide, setIsWide] = useState(false);
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try {
-      const saved = sessionStorage.getItem(CADENCE_CHAT_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as ChatMessage[];
-        if (parsed.length > 0) return parsed;
-      }
-    } catch { /* ignore */ }
-    return [
-      {
-        role: "assistant" as const,
-        content: `Hi! I'm your **Speech Coach AI** 🎙️\n\nI've reviewed your screening results (Score: **${report.score}/100**). I can help you understand your performance and give you personalized exercises to improve.\n\nTry asking me anything about your speech analysis!`,
-      },
-    ];
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    {
+      role: "assistant" as const,
+      content: `Hi! I'm your **Speech Coach AI** 🎙️\n\nI've reviewed your screening results (Score: **${report.score}/100**). I can help you understand your performance and give you personalized exercises to improve.\n\nTry asking me anything about your speech analysis!`,
+    },
+  ]);
   
   const clearChat = () => {
     setMessages([
@@ -51,9 +39,6 @@ export default function CadenceSpeechCoach({ report }: CadenceSpeechCoachProps) 
         content: `Hi! I'm your **Speech Coach AI** 🎙️\n\nI've reviewed your screening results (Score: **${report.score}/100**). I can help you understand your performance and give you personalized exercises to improve.\n\nTry asking me anything about your speech analysis!`,
       },
     ]);
-    if (CADENCE_CHAT_KEY) {
-      try { sessionStorage.removeItem(CADENCE_CHAT_KEY); } catch { /* ignore */ }
-    }
   };
 
   const [input, setInput] = useState("");
@@ -61,12 +46,6 @@ export default function CadenceSpeechCoach({ report }: CadenceSpeechCoachProps) 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Persist messages to sessionStorage
-  useEffect(() => {
-    if (CADENCE_CHAT_KEY) {
-      try { sessionStorage.setItem(CADENCE_CHAT_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
-    }
-  }, [messages, CADENCE_CHAT_KEY]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });

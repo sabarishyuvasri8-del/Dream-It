@@ -199,26 +199,11 @@ Structure EVERY response using this well-organized format:
 // ─── Component ──────────────────────────────────────────────────
 
 export default function FinanceCoach({ data }: { data: FinanceData }) {
-  const { user } = useUser();
-  const FINANCE_CHAT_KEY = `dreamit-finance-coach-chat-${user?.id || 'guest'}`;
-
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
-    try {
-      const saved = sessionStorage.getItem(FINANCE_CHAT_KEY);
-      if (saved) return JSON.parse(saved) as ChatMessage[];
-    } catch { /* ignore */ }
-    return [];
-  });
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Persist messages to sessionStorage
-  useEffect(() => {
-    if (FINANCE_CHAT_KEY) {
-      try { sessionStorage.setItem(FINANCE_CHAT_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
-    }
-  }, [messages, FINANCE_CHAT_KEY]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -274,9 +259,6 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
 
   const clearChat = () => {
     setMessages([]);
-    if (FINANCE_CHAT_KEY) {
-      try { sessionStorage.removeItem(FINANCE_CHAT_KEY); } catch { /* ignore */ }
-    }
   };
 
   // Rich markdown-ish renderer for coach responses

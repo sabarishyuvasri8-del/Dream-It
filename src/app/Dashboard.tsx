@@ -279,21 +279,11 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
   const [isBreak, setIsBreak] = useState(false);
 
   // ─── AI Chat — Dream It AI ───
-  const DASH_CHAT_KEY = `dreamit-dashboard-chat-${userId}`;
   const DEFAULT_WELCOME: Message = {
     role: "assistant",
     content: "Welcome! I'm **Dream It AI**, your intelligent study assistant.\n\nAsk me study questions, math problems, code debugging, or attach files — I'm here to help you excel!",
   };
-  const [messages, setMessages] = useState<Message[]>(() => {
-    try {
-      const saved = sessionStorage.getItem(DASH_CHAT_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as Message[];
-        if (parsed.length > 0) return parsed;
-      }
-    } catch { /* ignore */ }
-    return [DEFAULT_WELCOME];
-  });
+  const [messages, setMessages] = useState<Message[]>([DEFAULT_WELCOME]);
   const [chatDraft, setChatDraft] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [chatSubjectId, setChatSubjectId] = useState<number | null>(null);
@@ -302,10 +292,6 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatMaxContainerRef = useRef<HTMLDivElement>(null);
 
-  // Persist dashboard chat to sessionStorage
-  useEffect(() => {
-    try { sessionStorage.setItem(DASH_CHAT_KEY, JSON.stringify(messages)); } catch { /* ignore */ }
-  }, [messages]);
 
   // ─── AI File Attachment ───
   const [chatFile, setChatFile] = useState<{
