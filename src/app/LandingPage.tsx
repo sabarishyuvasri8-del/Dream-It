@@ -534,6 +534,8 @@ export default function LandingPage({
                 e.currentTarget.style.transform = "none";
                 e.currentTarget.style.boxShadow = "none";
               }}
+            >
+              Get Started
             </button>
           </motion.div>
           

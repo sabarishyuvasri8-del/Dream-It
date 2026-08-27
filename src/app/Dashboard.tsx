@@ -979,6 +979,19 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     };
     setAutopilotRuns((prev) => [runEntry, ...prev]);
 
+    const extractionPrompt = `You are an AI tasked with extracting tasks and schedule items from the following raw text. 
+Please output ONLY a valid JSON array of objects.
+Each object must have the following fields:
+- "title": A short, descriptive title of the task or event.
+- "type": Either "task" or "event".
+- "priority": Either "High", "Medium", or "Low".
+- "deadline": (Optional) The deadline or date of the event if applicable.
+- "time": (Optional) The time of the event if applicable.
+- "course": (Optional) The relevant subject or course name if mentioned.
+
+Here is the raw text to analyze:
+"${autopilotText}"`;
+
     try {
       const response = await fetchAI({
         model: "gemini-3.6-flash",
