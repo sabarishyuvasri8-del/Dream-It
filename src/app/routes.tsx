@@ -39,7 +39,7 @@ function PageLoader() {
 function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
   const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
   const { isLoaded: isSignUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
-  const [emailAddress, setEmailAddress] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -53,14 +53,14 @@ function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
     setLoading(true);
     try {
       if (mode === "signin") {
-        const result = await signIn.create({ identifier: emailAddress, password });
+        const result = await signIn.create({ identifier: username, password });
         if (result.status === "complete") {
           await setSignInActive({ session: result.createdSessionId });
         } else {
           setError("Incomplete sign in. Please check your settings.");
         }
       } else {
-        const result = await signUp.create({ emailAddress, password });
+        const result = await signUp.create({ username, password });
         if (result.status === "complete") {
           await setSignUpActive({ session: result.createdSessionId });
         } else {
@@ -71,7 +71,12 @@ function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
       console.error("Clerk Auth Error:", err);
       let errorMsg = "An error occurred";
       if (err.errors && err.errors.length > 0) {
-        errorMsg = err.errors.map((e: any) => e.longMessage || e.message).join(", ");
+        const firstError = err.errors[0];
+        if (firstError.code === "form_identifier_exists") {
+          errorMsg = "That username is already taken. Please choose a unique username.";
+        } else {
+          errorMsg = err.errors.map((e: any) => e.longMessage || e.message).join(", ");
+        }
       } else if (err.message) {
         errorMsg = err.message;
       }
@@ -87,19 +92,19 @@ function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
     <div className="w-full flex flex-col gap-4">
       <div className="flex items-center gap-2 text-xs" style={{ color: "var(--m-text-sub)" }}>
         <div className="flex-1 border-t" style={{ borderColor: "var(--m-border-light)" }}></div>
-        <span>Sign in with your email</span>
+        <span>Sign in with your username</span>
         <div className="flex-1 border-t" style={{ borderColor: "var(--m-border-light)" }}></div>
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Email Address</label>
+          <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Username</label>
           <input
-            type="email"
-            value={emailAddress}
-            onChange={(e) => setEmailAddress(e.target.value)}
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
             required
-            placeholder="you@example.com"
+            placeholder="Unique username"
             className="rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border"
             style={{
               backgroundColor: "transparent",
