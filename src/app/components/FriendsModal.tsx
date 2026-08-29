@@ -1,6 +1,6 @@
-import React, { FormEvent } from "react";
+import React, { FormEvent, useState, useEffect } from "react";
 import { X, Users } from "lucide-react";
-import { Friendship } from "../../lib/supabase";
+import { Friendship, fetchUserProfiles, UserProfileData } from "../../lib/supabase";
 
 interface FriendsModalProps {
   isOpen: boolean;
@@ -23,6 +23,15 @@ export default function FriendsModal({
   isAddingFriend,
   onSendFriendRequest,
 }: FriendsModalProps) {
+  const [profiles, setProfiles] = useState<Record<string, UserProfileData>>({});
+
+  useEffect(() => {
+    if (isOpen && friends.length > 0) {
+      const friendIds = friends.map(f => f.requester_id === userId ? f.target_id : f.requester_id).filter(Boolean) as string[];
+      fetchUserProfiles(friendIds).then(setProfiles);
+    }
+  }, [isOpen, friends, userId]);
+
   if (!isOpen) return null;
 
   return (
@@ -66,14 +75,22 @@ export default function FriendsModal({
             </div>
           ) : (
             friends.map(f => {
+              const friendId = f.requester_id === userId ? f.target_id : f.requester_id;
+              const friendProfile = friendId ? profiles[friendId] : null;
+              
               const friendName = f.requester_id === userId 
                 ? f.target_actual_identifier || f.target_identifier 
                 : f.requester_identifier;
+                
               return (
                 <div key={f.id} className="p-3 rounded-2xl flex items-center gap-3 border" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-surface-alt)" }}>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shadow-inner shrink-0" style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
-                    {friendName?.charAt(0).toUpperCase()}
-                  </div>
+                  {friendProfile?.image_url ? (
+                    <img src={friendProfile.image_url} alt={friendName || ""} className="w-10 h-10 rounded-full object-cover shadow-inner shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shadow-inner shrink-0" style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
+                      {friendName?.charAt(0).toUpperCase()}
+                    </div>
+                  )}
                   <div className="flex-1">
                     <p className="text-xs font-bold">{friendName}</p>
                     <p className="text-[10px] opacity-70">Mutual Friend</p>

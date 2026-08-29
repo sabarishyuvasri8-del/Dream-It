@@ -9,7 +9,9 @@ import {
   uploadChatFile,
   markMessagesAsRead,
   deleteDirectMessage,
-  hideDirectMessage
+  hideDirectMessage,
+  fetchUserProfiles,
+  UserProfileData
 } from "../../lib/supabase";
 
 interface ChatModalProps {
@@ -29,6 +31,7 @@ export default function ChatModal({
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [profiles, setProfiles] = useState<Record<string, UserProfileData>>({});
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -59,6 +62,13 @@ export default function ChatModal({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  useEffect(() => {
+    if (friends.length > 0) {
+      const friendIds = friends.map(f => f.requester_id === userId ? f.target_id : f.requester_id).filter(Boolean) as string[];
+      fetchUserProfiles(friendIds).then(setProfiles);
+    }
+  }, [friends, userId]);
 
   // Load messages when active friend changes
   useEffect(() => {
@@ -197,23 +207,31 @@ export default function ChatModal({
             {friends.length === 0 ? (
               <p className="text-xs opacity-60 px-2 text-center mt-6">No friends yet. Add some from the Dashboard!</p>
             ) : (
-              friends.map(friend => {
-                const friendName = getFriendName(friend);
-                const isActive = activeFriend?.id === friend.id;
-                
+              friends.map(f => {
+                const friendId = f.requester_id === userId ? f.target_id : f.requester_id;
+                const friendProfile = friendId ? profiles[friendId] : null;
+                const friendName = getFriendName(f);
+                const isActive = activeFriend?.id === f.id;
+              
                 return (
                   <button
-                    key={friend.id}
-                    onClick={() => setActiveFriend(friend)}
-                    className="w-full flex items-center gap-3 p-3 rounded-2xl transition hover:opacity-80"
-                    style={{ 
+                    key={f.id}
+                    onClick={() => setActiveFriend(f)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all ${
+                      isActive ? "shadow-md" : "hover:bg-black/5"
+                    }`}
+                    style={{
                       backgroundColor: isActive ? "var(--m-surface-alt)" : "transparent",
-                      border: isActive ? "1px solid var(--m-border)" : "1px solid transparent"
                     }}
                   >
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shadow-inner shrink-0" style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
-                      {friendName.charAt(0).toUpperCase()}
-                    </div>
+                    {friendProfile?.image_url ? (
+                      <img src={friendProfile.image_url} alt={friendName || ""} className="size-10 rounded-full object-cover shadow-inner shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
+                    ) : (
+                      <div className="size-10 rounded-full flex items-center justify-center text-lg font-bold shadow-inner shrink-0" 
+                        style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
+                        {friendName?.charAt(0).toUpperCase()}
+                      </div>
+                    )}
                     <div className="text-left flex-1 overflow-hidden">
                       <p className="text-sm font-bold truncate">{friendName}</p>
                     </div>
@@ -227,13 +245,21 @@ export default function ChatModal({
         {/* Right Area: Chat History */}
         <div className="flex-1 flex flex-col relative" style={{ backgroundColor: "var(--m-bg)" }}>
           {/* Header */}
-          <div className="p-4 border-b flex items-center justify-between bg-inherit z-10" style={{ borderColor: "var(--m-border)" }}>
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col min-w-0" style={{ backgroundColor: "var(--m-surface)" }}>
+            <div className="p-4 flex items-center gap-3 border-b" style={{ borderColor: "var(--m-border)" }}>
               {activeFriend ? (
                 <>
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-md font-bold shadow-inner shrink-0" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
-                    {activeFriendName.charAt(0).toUpperCase()}
-                  </div>
+                  {(() => {
+                    const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+                    const friendProfile = friendId ? profiles[friendId] : null;
+                    return friendProfile?.image_url ? (
+                      <img src={friendProfile.image_url} alt={activeFriendName} className="size-10 rounded-full object-cover shadow-sm shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
+                    ) : (
+                      <div className="size-10 rounded-full flex items-center justify-center text-lg font-bold shadow-sm shrink-0" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border-light)" }}>
+                        {activeFriendName.charAt(0).toUpperCase()}
+                      </div>
+                    );
+                  })()}
                   <h3 className="font-bold font-[Roboto_Slab] text-base">{activeFriendName}</h3>
                 </>
               ) : (

@@ -395,6 +395,7 @@ function Root() {
           userId={user.id}
           userEmail={userEmail}
           userName={userName}
+          userImageUrl={user.imageUrl}
           onSignOut={() => signOut()}
         />
       </Suspense>

@@ -110,6 +110,7 @@ import {
   sendFriendRequest,
   fetchUnreadMessageCount,
   subscribeToDirectMessages,
+  upsertUserProfile,
 } from "../lib/supabase";
 const FinanceApp = lazy(() => import("./finance/FinanceApp"));
 import type { FinanceData } from "../lib/finance-types";
@@ -213,10 +214,11 @@ interface DashboardProps {
   userId: string;
   userEmail: string;
   userName?: string;
+  userImageUrl?: string;
   onSignOut: () => void;
 }
 
-export default function Dashboard({ accessToken, userId, userEmail, userName, onSignOut }: DashboardProps) {
+export default function Dashboard({ accessToken, userId, userEmail, userName, userImageUrl, onSignOut }: DashboardProps) {
   // ─── Main Data States ───
   const tasks = useAppStore((state) => state.tasks);
   const setTasks = useAppStore((state) => state.setTasks);
@@ -508,6 +510,13 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     const f = await fetchFriends(userId);
     setFriends(f);
   }, [userId]);
+
+  // ─── Auto-sync Profile Picture ───
+  useEffect(() => {
+    if (userId && userNameDisplay) {
+      upsertUserProfile(userId, userNameDisplay, userImageUrl);
+    }
+  }, [userId, userNameDisplay, userImageUrl]);
 
   useEffect(() => {
     checkInbox();
@@ -1472,9 +1481,13 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
             className={`rounded-xl minimal-inset feature-zoom transition-all duration-300 cursor-pointer hover:opacity-80 ${isExpanded ? "p-3" : "p-2 flex flex-col items-center"}`}
           >
             <div className="flex items-center w-full">
-              <div className="grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold mx-auto" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                {userNameDisplay.charAt(0)}
-              </div>
+              {userImageUrl ? (
+                <img src={userImageUrl} alt={userNameDisplay} className="size-8 rounded-full object-cover shrink-0 mx-auto" />
+              ) : (
+                <div className="grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold mx-auto" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                  {userNameDisplay.charAt(0)}
+                </div>
+              )}
               <div className={`min-w-0 flex-1 overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-2.5" : "max-w-0 opacity-0 ml-0"}`}>
                 <p className="truncate text-xs font-bold" style={{ color: "var(--m-primary)" }}>{userNameDisplay}</p>
                 <p className="truncate text-[10px]" style={{ color: "var(--m-text-sub)" }}>{userEmail}</p>

@@ -769,3 +769,38 @@ export async function uploadChatFile(
     size: file.size,
   };
 }
+
+export interface UserProfileData {
+  id: string;
+  username: string;
+  image_url: string;
+}
+
+export async function upsertUserProfile(id: string, username: string, imageUrl?: string) {
+  const { error } = await supabase
+    .from('user_profiles')
+    .upsert(
+      { id, username, image_url: imageUrl },
+      { onConflict: 'id' }
+    );
+  if (error) console.error("Error upserting user profile:", error);
+}
+
+export async function fetchUserProfiles(userIds: string[]): Promise<Record<string, UserProfileData>> {
+  if (userIds.length === 0) return {};
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('id, username, image_url')
+    .in('id', userIds);
+    
+  if (error) {
+    console.error("Error fetching user profiles:", error);
+    return {};
+  }
+  
+  const profileMap: Record<string, UserProfileData> = {};
+  data?.forEach(profile => {
+    profileMap[profile.id] = profile;
+  });
+  return profileMap;
+}
