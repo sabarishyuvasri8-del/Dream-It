@@ -280,9 +280,9 @@ export default function ChatModal({
                     onMouseEnter={() => setHoveredMessageId(msg.id)}
                     onMouseLeave={() => setHoveredMessageId(null)}
                   >
-                    <div className="flex items-center gap-2 max-w-[70%]">
+                    <div className="relative flex items-center max-w-[70%]">
                       {isMe && (
-                        <div className={`relative transition-opacity duration-200 ${(isHovered || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <div className={`absolute right-full mr-2 transition-opacity duration-200 ${(isHovered || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                           <button 
                             onClick={() => setMenuOpenId(isMenuOpen ? null : msg.id)}
                             className="p-1.5 rounded-full hover:bg-black/10 transition opacity-50 hover:opacity-100"
@@ -334,7 +334,7 @@ export default function ChatModal({
                       </div>
                       
                       {!isMe && (
-                        <div className={`relative transition-opacity duration-200 ${(isHovered || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <div className={`absolute left-full ml-2 transition-opacity duration-200 ${(isHovered || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                           <button 
                             onClick={() => setMenuOpenId(isMenuOpen ? null : msg.id)}
                             className="p-1.5 rounded-full hover:bg-black/10 transition opacity-50 hover:opacity-100"
