@@ -39,7 +39,7 @@ function PageLoader() {
 function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
   const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
   const { isLoaded: isSignUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
-  const [username, setUsername] = useState("");
+  const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
@@ -53,14 +53,14 @@ function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
     setLoading(true);
     try {
       if (mode === "signin") {
-        const result = await signIn.create({ identifier: username, password });
+        const result = await signIn.create({ identifier: emailAddress, password });
         if (result.status === "complete") {
           await setSignInActive({ session: result.createdSessionId });
         } else {
           setError("Incomplete sign in. Please check your settings.");
         }
       } else {
-        const result = await signUp.create({ username, password });
+        const result = await signUp.create({ emailAddress, password });
         if (result.status === "complete") {
           await setSignUpActive({ session: result.createdSessionId });
         } else {
@@ -87,19 +87,19 @@ function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
     <div className="w-full flex flex-col gap-4">
       <div className="flex items-center gap-2 text-xs" style={{ color: "var(--m-text-sub)" }}>
         <div className="flex-1 border-t" style={{ borderColor: "var(--m-border-light)" }}></div>
-        <span>Sign in with your username</span>
+        <span>Sign in with your email</span>
         <div className="flex-1 border-t" style={{ borderColor: "var(--m-border-light)" }}></div>
       </div>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Username</label>
+          <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Email Address</label>
           <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            type="email"
+            value={emailAddress}
+            onChange={(e) => setEmailAddress(e.target.value)}
             required
-            placeholder="Unique username"
+            placeholder="you@example.com"
             className="rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border"
             style={{
               backgroundColor: "transparent",
