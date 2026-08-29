@@ -246,7 +246,7 @@ export default function ChatModal({
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 min-h-0 relative">
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4 min-h-0 relative">
             <div className="text-center w-full py-1">
               <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest">
                 Chats are securely auto-deleted every 24 hours.
@@ -281,8 +281,8 @@ export default function ChatModal({
                     onMouseLeave={() => setHoveredMessageId(null)}
                   >
                     <div className="flex items-center gap-2 max-w-[70%]">
-                      {isMe && (isHovered || isMenuOpen) && (
-                        <div className="relative">
+                      {isMe && (
+                        <div className={`relative transition-opacity duration-200 ${(isHovered || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                           <button 
                             onClick={() => setMenuOpenId(isMenuOpen ? null : msg.id)}
                             className="p-1.5 rounded-full hover:bg-black/10 transition opacity-50 hover:opacity-100"
@@ -333,8 +333,8 @@ export default function ChatModal({
                         {msg.content && <span>{msg.content}</span>}
                       </div>
                       
-                      {!isMe && (isHovered || isMenuOpen) && (
-                        <div className="relative">
+                      {!isMe && (
+                        <div className={`relative transition-opacity duration-200 ${(isHovered || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
                           <button 
                             onClick={() => setMenuOpenId(isMenuOpen ? null : msg.id)}
                             className="p-1.5 rounded-full hover:bg-black/10 transition opacity-50 hover:opacity-100"
