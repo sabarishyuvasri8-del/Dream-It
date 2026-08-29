@@ -247,7 +247,7 @@ export default function ChatModal({
         </div>
 
         {/* Right Area: Chat History */}
-        <div className={`flex-1 flex-col relative ${!activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ backgroundColor: "var(--m-bg)" }}>
+        <div className={`flex-1 flex-col relative w-full md:w-auto min-w-0 ${!activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ backgroundColor: "var(--m-bg)" }}>
           {/* Header */}
           <div className="flex flex-col min-w-0" style={{ backgroundColor: "var(--m-surface)" }}>
             <div className="p-4 flex items-center justify-between border-b shrink-0" style={{ borderColor: "var(--m-border)" }}>
@@ -356,7 +356,7 @@ export default function ChatModal({
                       )}
                       
                       <div 
-                        className={`rounded-2xl px-4 py-2.5 text-sm shadow-sm flex flex-col gap-2 w-full`}
+                        className={`rounded-2xl px-4 py-2.5 text-sm shadow-sm flex flex-col gap-2 max-w-[90%] md:max-w-[85%] w-fit break-words whitespace-pre-wrap ${isMe ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}
                         style={{ 
                           backgroundColor: isMe ? "var(--m-primary)" : "var(--m-surface-solid)", 
                           color: isMe ? "var(--m-primary-text)" : "var(--m-text)",
@@ -422,7 +422,7 @@ export default function ChatModal({
 
           {/* Input Area */}
           {activeFriend && (
-            <div className="p-4 bg-inherit border-t flex flex-col gap-2" style={{ borderColor: "var(--m-border)" }}>
+            <div className="p-3 sm:p-4 bg-inherit border-t flex flex-col gap-2 w-full" style={{ borderColor: "var(--m-border)" }}>
               {selectedFile && (
                 <div className="flex items-center justify-between p-2 rounded-xl text-xs font-bold w-full" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text)" }}>
                   <div className="flex items-center gap-2 overflow-hidden">
@@ -436,7 +436,7 @@ export default function ChatModal({
                 </div>
               )}
               
-              <form onSubmit={handleSend} className="flex gap-2">
+              <form onSubmit={handleSend} className="flex gap-2 w-full min-w-0">
                 <input 
                   type="file" 
                   ref={fileInputRef} 
@@ -457,13 +457,13 @@ export default function ChatModal({
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   placeholder="Message..."
-                  className="flex-1 rounded-full px-5 py-3 text-sm focus:outline-none focus:ring-2 bg-transparent border"
+                  className="flex-1 min-w-0 rounded-full px-4 sm:px-5 py-3 text-sm focus:outline-none focus:ring-2 bg-transparent border"
                   style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
                 />
                 <button
                   type="submit"
                   disabled={(!draft.trim() && !selectedFile) || isUploading}
-                  className="rounded-full px-5 py-3 text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 min-w-[80px]"
+                  className="rounded-full px-4 sm:px-5 py-3 text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 shrink-0 min-w-[70px] sm:min-w-[80px]"
                   style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
                 >
                   {isUploading ? <Loader2 size={16} className="animate-spin" /> : "Send"}
