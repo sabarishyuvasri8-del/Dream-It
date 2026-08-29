@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File, Download } from "lucide-react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -8,6 +8,8 @@ import {
   subscribeToDirectMessages,
   uploadChatFile,
   markMessagesAsRead,
+  deleteDirectMessage,
+  hideDirectMessage
 } from "../../lib/supabase";
 
 interface ChatModalProps {
@@ -31,6 +33,21 @@ export default function ChatModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  
+  const handleDeleteForEveryone = async (msgId: string) => {
+    setMessages(prev => prev.filter(m => m.id !== msgId));
+    setMenuOpenId(null);
+    await deleteDirectMessage(msgId);
+  };
+  
+  const handleDeleteForMe = async (msgId: string, isSender: boolean) => {
+    setMessages(prev => prev.filter(m => m.id !== msgId));
+    setMenuOpenId(null);
+    await hideDirectMessage(msgId, isSender);
+  };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -66,27 +83,41 @@ export default function ChatModal({
 
   // Subscribe to real-time messages
   useEffect(() => {
-    const unsubscribe = subscribeToDirectMessages(userId, (newMsg) => {
-      // Check if this message belongs to the current active chat
-      if (!activeFriend) return;
-      
-      const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
-      
-      if (
-        (newMsg.sender_id === userId && newMsg.receiver_id === friendId) ||
-        (newMsg.sender_id === friendId && newMsg.receiver_id === userId)
-      ) {
-        setMessages((prev) => {
-          if (prev.find(m => m.id === newMsg.id)) return prev;
-          return [...prev, newMsg];
-        });
+    const unsubscribe = subscribeToDirectMessages(userId, 
+      (newMsg) => {
+        // Check if this message belongs to the current active chat
+        if (!activeFriend) return;
         
-        // If we received a message from them while chatting, mark it as read immediately
-        if (newMsg.sender_id === friendId && newMsg.receiver_id === userId) {
-          markMessagesAsRead(userId, friendId);
+        const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+        
+        if (
+          (newMsg.sender_id === userId && newMsg.receiver_id === friendId) ||
+          (newMsg.sender_id === friendId && newMsg.receiver_id === userId)
+        ) {
+          setMessages((prev) => {
+            if (prev.find(m => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          
+          // If we received a message from them while chatting, mark it as read immediately
+          if (newMsg.sender_id === friendId && newMsg.receiver_id === userId) {
+            markMessagesAsRead(userId, friendId);
+          }
+        }
+      },
+      (deletedMsgId) => {
+        setMessages(prev => prev.filter(m => m.id !== deletedMsgId));
+      },
+      (hiddenMsg) => {
+        // Check if it's hidden for the current user
+        if (hiddenMsg.sender_id === userId && hiddenMsg.deleted_by_sender) {
+          setMessages(prev => prev.filter(m => m.id !== hiddenMsg.id));
+        }
+        if (hiddenMsg.receiver_id === userId && hiddenMsg.deleted_by_receiver) {
+          setMessages(prev => prev.filter(m => m.id !== hiddenMsg.id));
         }
       }
-    });
+    );
 
     return () => {
       unsubscribe();
@@ -215,7 +246,12 @@ export default function ChatModal({
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+          <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4 min-h-0 relative">
+            <div className="text-center w-full py-1">
+              <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest">
+                Chats are securely auto-deleted every 24 hours.
+              </span>
+            </div>
             {!activeFriend ? (
               <div className="h-full flex flex-col items-center justify-center opacity-50 gap-4">
                 <MessageCircle size={48} strokeWidth={1.5} />
@@ -234,36 +270,87 @@ export default function ChatModal({
             ) : (
               messages.map(msg => {
                 const isMe = msg.sender_id === userId;
+                const isHovered = hoveredMessageId === msg.id;
+                const isMenuOpen = menuOpenId === msg.id;
+                
                 return (
-                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
-                    <div 
-                      className={`max-w-[70%] rounded-2xl px-4 py-2.5 text-sm shadow-sm flex flex-col gap-2`}
-                      style={{ 
-                        backgroundColor: isMe ? "var(--m-primary)" : "var(--m-surface-solid)", 
-                        color: isMe ? "var(--m-primary-text)" : "var(--m-text)",
-                        border: isMe ? "none" : "1px solid var(--m-border)"
-                      }}
-                    >
-                      {msg.file_url && (
-                        msg.file_type?.startsWith('image/') ? (
-                          <a href={msg.file_url} target="_blank" rel="noreferrer">
-                            <img src={msg.file_url} alt="Attachment" className="max-w-full rounded-xl object-contain max-h-64 cursor-pointer" />
-                          </a>
-                        ) : (
-                          <a 
-                            href={msg.file_url} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            className="flex items-center gap-2 p-2 rounded-lg transition hover:opacity-80"
-                            style={{ backgroundColor: "black", color: "white" }}
+                  <div 
+                    key={msg.id} 
+                    className={`flex ${isMe ? 'justify-end' : 'justify-start'} group relative`}
+                    onMouseEnter={() => setHoveredMessageId(msg.id)}
+                    onMouseLeave={() => setHoveredMessageId(null)}
+                  >
+                    <div className="flex items-center gap-2 max-w-[70%]">
+                      {isMe && (isHovered || isMenuOpen) && (
+                        <div className="relative">
+                          <button 
+                            onClick={() => setMenuOpenId(isMenuOpen ? null : msg.id)}
+                            className="p-1.5 rounded-full hover:bg-black/10 transition opacity-50 hover:opacity-100"
                           >
-                            <File size={16} />
-                            <span className="text-xs font-bold truncate flex-1">{msg.file_name}</span>
-                            <Download size={14} />
-                          </a>
-                        )
+                            <MoreHorizontal size={14} />
+                          </button>
+                          {isMenuOpen && (
+                            <div className="absolute right-0 top-full mt-1 z-50 rounded-xl shadow-lg border p-1 w-40 overflow-hidden" 
+                                 style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>
+                              <button onClick={() => handleDeleteForEveryone(msg.id)} className="w-full flex items-center gap-2 p-2 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition">
+                                <Trash2 size={12} /> Delete for everyone
+                              </button>
+                              <button onClick={() => handleDeleteForMe(msg.id, isMe)} className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 rounded-lg transition" style={{ color: "var(--m-text)" }}>
+                                <EyeOff size={12} /> Delete for me
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       )}
-                      {msg.content && <span>{msg.content}</span>}
+                      
+                      <div 
+                        className={`rounded-2xl px-4 py-2.5 text-sm shadow-sm flex flex-col gap-2 w-full`}
+                        style={{ 
+                          backgroundColor: isMe ? "var(--m-primary)" : "var(--m-surface-solid)", 
+                          color: isMe ? "var(--m-primary-text)" : "var(--m-text)",
+                          border: isMe ? "none" : "1px solid var(--m-border)"
+                        }}
+                      >
+                        {msg.file_url && (
+                          msg.file_type?.startsWith('image/') ? (
+                            <a href={msg.file_url} target="_blank" rel="noreferrer">
+                              <img src={msg.file_url} alt="Attachment" className="max-w-full rounded-xl object-contain max-h-64 cursor-pointer" />
+                            </a>
+                          ) : (
+                            <a 
+                              href={msg.file_url} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="flex items-center gap-2 p-2 rounded-lg transition hover:opacity-80"
+                              style={{ backgroundColor: "black", color: "white" }}
+                            >
+                              <File size={16} />
+                              <span className="text-xs font-bold truncate flex-1">{msg.file_name}</span>
+                              <Download size={14} />
+                            </a>
+                          )
+                        )}
+                        {msg.content && <span>{msg.content}</span>}
+                      </div>
+                      
+                      {!isMe && (isHovered || isMenuOpen) && (
+                        <div className="relative">
+                          <button 
+                            onClick={() => setMenuOpenId(isMenuOpen ? null : msg.id)}
+                            className="p-1.5 rounded-full hover:bg-black/10 transition opacity-50 hover:opacity-100"
+                          >
+                            <MoreHorizontal size={14} />
+                          </button>
+                          {isMenuOpen && (
+                            <div className="absolute left-0 top-full mt-1 z-50 rounded-xl shadow-lg border p-1 w-32 overflow-hidden" 
+                                 style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>
+                              <button onClick={() => handleDeleteForMe(msg.id, isMe)} className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 rounded-lg transition" style={{ color: "var(--m-text)" }}>
+                                <EyeOff size={12} /> Delete for me
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )

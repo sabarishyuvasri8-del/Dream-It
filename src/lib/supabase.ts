@@ -120,6 +120,8 @@ export interface DirectMessage {
   file_type?: string;
   file_size?: number;
   is_read?: boolean;
+  deleted_by_sender?: boolean;
+  deleted_by_receiver?: boolean;
 }
 
 export interface UserWorkspace {
@@ -636,40 +638,95 @@ export async function sendDirectMessage(
 }
 
 export async function fetchDirectMessages(
-  userId1: string,
-  userId2: string
+  userId1: string, // Current user
+  userId2: string  // Friend
 ): Promise<DirectMessage[]> {
   try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    
     const { data, error } = await supabase
       .from('direct_messages')
       .select('*')
       .or(`and(sender_id.eq.${userId1},receiver_id.eq.${userId2}),and(sender_id.eq.${userId2},receiver_id.eq.${userId1})`)
+      .gte('created_at', twentyFourHoursAgo)
       .order('created_at', { ascending: true });
 
     if (error) {
       console.error("Error fetching messages:", error);
       return [];
     }
-    return data || [];
+    
+    // Filter out messages hidden by the current user
+    const visibleMessages = (data || []).filter(msg => {
+      if (msg.sender_id === userId1 && msg.deleted_by_sender) return false;
+      if (msg.receiver_id === userId1 && msg.deleted_by_receiver) return false;
+      return true;
+    });
+    
+    return visibleMessages;
   } catch (err) {
     console.error("Exception fetching messages:", err);
     return [];
   }
 }
 
+export async function deleteDirectMessage(messageId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('direct_messages')
+      .delete()
+      .eq('id', messageId);
+    return !error;
+  } catch (err) {
+    console.error("Error deleting message:", err);
+    return false;
+  }
+}
+
+export async function hideDirectMessage(messageId: string, isSender: boolean): Promise<boolean> {
+  try {
+    const updatePayload = isSender 
+      ? { deleted_by_sender: true } 
+      : { deleted_by_receiver: true };
+      
+    const { error } = await supabase
+      .from('direct_messages')
+      .update(updatePayload)
+      .eq('id', messageId);
+    return !error;
+  } catch (err) {
+    console.error("Error hiding message:", err);
+    return false;
+  }
+}
+
 export function subscribeToDirectMessages(
   userId: string,
-  onNewMessage: (msg: DirectMessage) => void
+  onNewMessage: (msg: DirectMessage) => void,
+  onMessageDeleted?: (msgId: string) => void,
+  onMessageHidden?: (msg: DirectMessage) => void
 ) {
   const channel = supabase
     .channel(`public:direct_messages:${userId}`)
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+      { event: '*', schema: 'public', table: 'direct_messages' },
       (payload) => {
-        const newMsg = payload.new as DirectMessage;
-        if (newMsg.sender_id === userId || newMsg.receiver_id === userId) {
-          onNewMessage(newMsg);
+        if (payload.eventType === 'INSERT') {
+          const newMsg = payload.new as DirectMessage;
+          if (newMsg.sender_id === userId || newMsg.receiver_id === userId) {
+            onNewMessage(newMsg);
+          }
+        } else if (payload.eventType === 'DELETE') {
+          const oldMsg = payload.old as { id: string };
+          if (onMessageDeleted && oldMsg.id) {
+            onMessageDeleted(oldMsg.id);
+          }
+        } else if (payload.eventType === 'UPDATE') {
+          const updatedMsg = payload.new as DirectMessage;
+          if (onMessageHidden && (updatedMsg.sender_id === userId || updatedMsg.receiver_id === userId)) {
+            onMessageHidden(updatedMsg);
+          }
         }
       }
     )
