@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff } from "lucide-react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2 } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -32,6 +32,7 @@ export default function ChatModal({
   const [draft, setDraft] = useState("");
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, UserProfileData>>({});
+  const [isWide, setIsWide] = useState(false);
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -192,7 +193,7 @@ export default function ChatModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 sm:p-6">
       <div 
-        className="w-full max-w-4xl h-[85vh] rounded-3xl shadow-2xl flex overflow-hidden" 
+        className={`w-full h-[85vh] rounded-3xl shadow-2xl flex overflow-hidden transition-all duration-300 ${isWide ? 'max-w-[95vw]' : 'max-w-4xl'}`} 
         style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}
       >
         {/* Left Sidebar: Friends List */}
@@ -267,9 +268,14 @@ export default function ChatModal({
                   <h3 className="font-bold font-[Roboto_Slab] text-base opacity-60">Select a chat</h3>
                 )}
               </div>
-              <button onClick={onClose} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0">
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-1 shrink-0">
+                <button onClick={() => setIsWide(!isWide)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100">
+                  {isWide ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
+                </button>
+                <button onClick={onClose} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100">
+                  <X size={20} />
+                </button>
+              </div>
             </div>
           </div>
 
