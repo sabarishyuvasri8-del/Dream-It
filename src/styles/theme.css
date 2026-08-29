@@ -715,7 +715,6 @@
   scrollbar-width: thin;
   scrollbar-color: var(--m-border) transparent;
   -webkit-overflow-scrolling: touch;
-  touch-action: pan-y;
   overscroll-behavior-y: contain;
 }
 
