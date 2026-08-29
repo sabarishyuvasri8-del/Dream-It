@@ -5,6 +5,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
+import { UserProfile } from '@clerk/clerk-react';
 import {
   Activity,
   AlarmClock,
@@ -376,6 +377,9 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
 
   // ─── Theme (via ThemeContext) ───
   const { theme: currentThemeId, themeConfig, isDark: darkMode } = useTheme();
+  
+  // ─── Profile Modal ───
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   // ─── Derived User Display ───
   const userNameDisplay = useMemo(() => {
@@ -1462,7 +1466,10 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
         {/* Scrollable Body of Sidebar */}
         <div className={`flex-1 overflow-y-auto custom-scrollbar py-4 space-y-5 overflow-x-hidden transition-all duration-300 ${isExpanded ? "px-5" : "px-3"}`}>
           {/* User Info Card */}
-          <div className={`rounded-xl minimal-inset feature-zoom transition-all duration-300 ${isExpanded ? "p-3" : "p-2 flex flex-col items-center"}`}>
+          <div 
+            onClick={() => setIsProfileOpen(true)}
+            className={`rounded-xl minimal-inset feature-zoom transition-all duration-300 cursor-pointer hover:opacity-80 ${isExpanded ? "p-3" : "p-2 flex flex-col items-center"}`}
+          >
             <div className="flex items-center w-full">
               <div className="grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold mx-auto" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                 {userNameDisplay.charAt(0)}
@@ -3132,6 +3139,39 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
           friends={friends}
           onClose={() => setChatModalOpen(false)}
         />
+      )}
+
+      {/* ─── Profile Modal ─── */}
+      {isProfileOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 animate-in fade-in" style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(10px)" }}>
+          <div className="relative w-full max-w-4xl max-h-full overflow-y-auto custom-scrollbar rounded-3xl" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border)" }}>
+            <button 
+              onClick={() => setIsProfileOpen(false)} 
+              className="absolute top-4 right-4 z-50 p-2 rounded-full hover:bg-black/10 transition"
+              style={{ color: "var(--m-text)" }}
+            >
+              <X size={20} />
+            </button>
+            <div className="p-6">
+              <UserProfile 
+                appearance={{
+                  variables: {
+                    colorPrimary: 'var(--m-primary)',
+                    colorBackground: 'var(--m-bg)',
+                    colorText: 'var(--m-text)',
+                    colorTextSecondary: 'var(--m-text-sub)',
+                    colorInputBackground: 'var(--m-surface)',
+                    colorInputBorder: 'var(--m-border)',
+                  },
+                  elements: {
+                    card: 'shadow-none bg-transparent',
+                    navbar: 'hidden md:block', // Keep navbar for desktop, but clerk handles mobile well
+                  }
+                }}
+              />
+            </div>
+          </div>
+        </div>
       )}
 
     </main>
