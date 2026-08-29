@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2 } from "lucide-react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -191,13 +191,13 @@ export default function ChatModal({
   const activeFriendName = activeFriend ? getFriendName(activeFriend) : "";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-0 md:p-4 sm:p-6">
       <div 
-        className={`w-full h-[85vh] rounded-3xl shadow-2xl flex overflow-hidden transition-all duration-300 ${isWide ? 'max-w-[95vw]' : 'max-w-4xl'}`} 
+        className={`w-full h-full md:h-[85vh] rounded-none md:rounded-3xl shadow-2xl flex overflow-hidden transition-all duration-300 ${isWide ? 'max-w-full md:max-w-[95vw]' : 'max-w-4xl'}`} 
         style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}
       >
         {/* Left Sidebar: Friends List */}
-        <div className="w-1/3 md:w-80 flex flex-col border-r" style={{ borderColor: "var(--m-border)" }}>
+        <div className={`w-full md:w-80 flex-col border-r-0 md:border-r ${activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ borderColor: "var(--m-border)" }}>
           <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: "var(--m-border)" }}>
             <h3 className="font-bold font-[Roboto_Slab] text-lg truncate">{userNameDisplay}</h3>
           </div>
@@ -244,11 +244,17 @@ export default function ChatModal({
         </div>
 
         {/* Right Area: Chat History */}
-        <div className="flex-1 flex flex-col relative" style={{ backgroundColor: "var(--m-bg)" }}>
+        <div className={`flex-1 flex-col relative ${!activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ backgroundColor: "var(--m-bg)" }}>
           {/* Header */}
           <div className="flex flex-col min-w-0" style={{ backgroundColor: "var(--m-surface)" }}>
             <div className="p-4 flex items-center justify-between border-b" style={{ borderColor: "var(--m-border)" }}>
               <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => setActiveFriend(null)}
+                  className="md:hidden p-2 -ml-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0"
+                >
+                  <ArrowLeft size={20} />
+                </button>
                 {activeFriend ? (
                   <>
                     {(() => {
