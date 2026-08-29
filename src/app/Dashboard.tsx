@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState, useCallback, Suspense, lazy } from "react";
 import confetti from "canvas-confetti";
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -11,6 +11,7 @@ import {
   AlertCircle,
   ArrowUpRight,
   Award,
+  Bell,
   Bold,
   BookOpen,
   BookOpenCheck,
@@ -38,6 +39,7 @@ import {
   Heading1,
   Heading2,
   Image as ImageIcon,
+  Inbox,
   Italic,
   Key,
   Layers,
@@ -50,6 +52,7 @@ import {
   Moon,
   MoreHorizontal,
   Notebook,
+  MessageCircle,
   Paperclip,
   Pause,
   Play,
@@ -68,9 +71,11 @@ import {
   Trash2,
   Trophy,
   UserCheck,
+  Users,
   Wallet,
   X,
   Zap,
+  Loader2,
 } from "lucide-react";
 import {
   AttachedFile,
@@ -92,14 +97,29 @@ import {
   Task,
   ScheduleItem,
   UserWorkspace,
+  SharedNote,
+  shareNote,
+  fetchPendingShares,
+  respondToShare,
+  Friendship,
+  fetchFriends,
+  fetchPendingFriendRequests,
+  respondToFriendRequest,
+  sendFriendRequest,
+  fetchUnreadMessageCount,
+  subscribeToDirectMessages,
 } from "../lib/supabase";
-import FinanceApp from "./finance/FinanceApp";
+const FinanceApp = lazy(() => import("./finance/FinanceApp"));
 import type { FinanceData } from "../lib/finance-types";
 import { FileUpload, formatFileSize } from "../components/FileUpload";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
 import VoiceInputButton from "./components/VoiceInputButton";
+import InboxModal from "./components/InboxModal";
+import FriendsModal from "./components/FriendsModal";
+import { useAppStore } from "../lib/store";
 import { fetchAI } from "../lib/ai-client";
+import ChatModal from "./components/ChatModal";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -196,14 +216,20 @@ interface DashboardProps {
 
 export default function Dashboard({ accessToken, userId, userEmail, userName, onSignOut }: DashboardProps) {
   // ─── Main Data States ───
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [scheduleItems, setScheduleItems] = useState<ScheduleItem[]>([]);
-  const [subjects, setSubjects] = useState<Subject[]>([]);
+  const tasks = useAppStore((state) => state.tasks);
+  const setTasks = useAppStore((state) => state.setTasks);
+  const scheduleItems = useAppStore((state) => state.scheduleItems);
+  const setScheduleItems = useAppStore((state) => state.setScheduleItems);
+  const subjects = useAppStore((state) => state.subjects);
+  const setSubjects = useAppStore((state) => state.setSubjects);
+  const notes = useAppStore((state) => state.notes);
+  const setNotes = useAppStore((state) => state.setNotes);
+  const grades = useAppStore((state) => state.grades);
+  const setGrades = useAppStore((state) => state.setGrades);
+  const flashcards = useAppStore((state) => state.flashcards);
+  const setFlashcards = useAppStore((state) => state.setFlashcards);
   const [studyMinutes, setStudyMinutes] = useState<number[]>(Array(7).fill(0));
   const [focusLog, setFocusLog] = useState<FocusLogEntry[]>([]);
-  const [notes, setNotes] = useState<NoteEntry[]>([]);
-  const [grades, setGrades] = useState<GradeEntry[]>([]);
-  const [flashcards, setFlashcards] = useState<Flashcard[]>([]);
   const [streak, setStreak] = useState<StreakData>({
     currentStreak: 0, longestStreak: 0, lastActiveDate: "",
     totalXP: 0, level: 1, tasksCompleted: 0, focusSessionsCompleted: 0, flashcardsStudied: 0,
@@ -300,15 +326,43 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
   const chatFileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Notes State ───
-  const [activeNote, setActiveNote] = useState<NoteEntry | null>(null);
-  const [noteDraft, setNoteDraft] = useState("");
-  const [noteTitleDraft, setNoteTitleDraft] = useState("");
-  const [noteSubjectFilter, setNoteSubjectFilter] = useState<number | null>(null);
-  const [noteSubjectId, setNoteSubjectId] = useState<number>(0);
-  const [noteSearchQuery, setNoteSearchQuery] = useState("");
-  const [noteMode, setNoteMode] = useState<"edit" | "preview">("edit");
-  const [isSummarizingNote, setIsSummarizingNote] = useState(false);
+  const activeNote = useAppStore((state) => state.activeNote);
+  const setActiveNote = useAppStore((state) => state.setActiveNote);
+  const noteDraft = useAppStore((state) => state.noteDraft);
+  const setNoteDraft = useAppStore((state) => state.setNoteDraft);
+  const noteTitleDraft = useAppStore((state) => state.noteTitleDraft);
+  const setNoteTitleDraft = useAppStore((state) => state.setNoteTitleDraft);
+  const noteSubjectFilter = useAppStore((state) => state.noteSubjectFilter);
+  const setNoteSubjectFilter = useAppStore((state) => state.setNoteSubjectFilter);
+  const noteSubjectId = useAppStore((state) => state.noteSubjectId);
+  const setNoteSubjectId = useAppStore((state) => state.setNoteSubjectId);
+  const noteSearchQuery = useAppStore((state) => state.noteSearchQuery);
+  const setNoteSearchQuery = useAppStore((state) => state.setNoteSearchQuery);
+  const noteMode = useAppStore((state) => state.noteMode);
+  const setNoteMode = useAppStore((state) => state.setNoteMode);
+  const isSummarizingNote = useAppStore((state) => state.isSummarizingNote);
+  const setIsSummarizingNote = useAppStore((state) => state.setIsSummarizingNote);
   const noteTextAreaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ─── Inbox / Sharing State ───
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const pendingShares = useAppStore((state) => state.pendingShares);
+  const setPendingShares = useAppStore((state) => state.setPendingShares);
+  const [shareNoteModalOpen, setShareNoteModalOpen] = useState(false);
+  const [noteToShare, setNoteToShare] = useState<NoteEntry | null>(null);
+  const [shareRecipientIdentifier, setShareRecipientIdentifier] = useState("");
+  const [isSharing, setIsSharing] = useState(false);
+
+  // ─── Friends System ───
+  const [friendsModalOpen, setFriendsModalOpen] = useState(false);
+  const friends = useAppStore((state) => state.friends);
+  const setFriends = useAppStore((state) => state.setFriends);
+  const pendingFriendRequests = useAppStore((state) => state.pendingFriendRequests);
+  const setPendingFriendRequests = useAppStore((state) => state.setPendingFriendRequests);
+  const [addFriendDraft, setAddFriendDraft] = useState("");
+  const [isAddingFriend, setIsAddingFriend] = useState(false);
+  const [chatModalOpen, setChatModalOpen] = useState(false);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
 
   // ─── Grades State ───
   const [gradeForm, setGradeForm] = useState({ subjectId: 0, name: "", score: "", total: "", weight: "" });
@@ -430,6 +484,49 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
       .catch((err) => console.warn("Failed fetching user files:", err));
     return () => { alive = false; };
   }, [accessToken, userId]);
+
+  // ─── Load Inbox & Friends ───
+  const checkInbox = useCallback(async () => {
+    if (!userNameDisplay && !userEmail) return;
+    const [shares, requests, unreadCount] = await Promise.all([
+      fetchPendingShares(userNameDisplay, userEmail),
+      fetchPendingFriendRequests(userNameDisplay, userEmail),
+      userId ? fetchUnreadMessageCount(userId) : Promise.resolve(0)
+    ]);
+    setPendingShares(shares);
+    setPendingFriendRequests(requests);
+    setUnreadMessageCount(unreadCount);
+  }, [userNameDisplay, userEmail, userId]);
+
+  const loadFriends = useCallback(async () => {
+    if (!userId) return;
+    const f = await fetchFriends(userId);
+    setFriends(f);
+  }, [userId]);
+
+  useEffect(() => {
+    checkInbox();
+    loadFriends();
+    
+    // Poll every 30 seconds for new notes & requests
+    const interval = window.setInterval(checkInbox, 30000);
+    
+    // Listen for real-time messages when modal is closed
+    let unsubscribe: () => void = () => {};
+    if (userId) {
+      unsubscribe = subscribeToDirectMessages(userId, (newMsg) => {
+        // If we receive a new message directed at us, update inbox count
+        if (newMsg.receiver_id === userId && !newMsg.is_read) {
+          checkInbox();
+        }
+      });
+    }
+
+    return () => {
+      window.clearInterval(interval);
+      unsubscribe();
+    };
+  }, [checkInbox, loadFriends, userId]);
 
   // ─── Auto-save workspace (debounced) ───
   useEffect(() => {
@@ -805,6 +902,81 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     }
   };
 
+  const handleShareNoteSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!noteToShare || !shareRecipientIdentifier.trim()) return;
+    setIsSharing(true);
+    const success = await shareNote(
+      userId,
+      userNameDisplay,
+      shareRecipientIdentifier,
+      noteToShare.title || "Untitled Note",
+      noteToShare.content
+    );
+    setIsSharing(false);
+    if (success) {
+      showToast(`Note sent to ${shareRecipientIdentifier}!`);
+      setShareNoteModalOpen(false);
+      setShareRecipientIdentifier("");
+      setNoteToShare(null);
+    } else {
+      showToast("Failed to send note. Please try again.", "error");
+    }
+  };
+
+  const handleAcceptShare = async (share: SharedNote) => {
+    const defaultSubId = subjects.length > 0 ? subjects[0].id : 0;
+    const newNote: NoteEntry = {
+      id: crypto.randomUUID(),
+      subjectId: defaultSubId,
+      title: share.note_title,
+      content: share.note_content,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    
+    setNotes(curr => [newNote, ...curr]);
+    showToast(`Note "${share.note_title}" saved to your workspace!`);
+    
+    await respondToShare(share.id, 'accepted');
+    setPendingShares(curr => curr.filter(s => s.id !== share.id));
+  };
+
+  const handleDeclineShare = async (share: SharedNote) => {
+    await respondToShare(share.id, 'rejected');
+    setPendingShares(curr => curr.filter(s => s.id !== share.id));
+    showToast("Note declined.");
+  };
+
+  const handleSendFriendRequest = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!addFriendDraft.trim()) return;
+    setIsAddingFriend(true);
+    const success = await sendFriendRequest(userId, userNameDisplay, addFriendDraft);
+    setIsAddingFriend(false);
+    if (success) {
+      showToast(`Friend request sent to ${addFriendDraft}!`);
+      setAddFriendDraft("");
+    } else {
+      showToast("Failed to send friend request.", "error");
+    }
+  };
+
+  const handleAcceptFriendRequest = async (req: Friendship) => {
+    const success = await respondToFriendRequest(req.id, 'accepted', userId, userNameDisplay);
+    if (success) {
+      showToast(`You are now friends with ${req.requester_identifier}!`);
+      setPendingFriendRequests(curr => curr.filter(r => r.id !== req.id));
+      loadFriends();
+    }
+  };
+
+  const handleDeclineFriendRequest = async (req: Friendship) => {
+    await respondToFriendRequest(req.id, 'rejected', userId, userNameDisplay);
+    setPendingFriendRequests(curr => curr.filter(r => r.id !== req.id));
+    showToast("Friend request declined.");
+  };
+
   const deleteNote = (id: string) => {
     setNotes((curr) => curr.filter((n) => n.id !== id));
     if (activeNote?.id === id) {
@@ -842,27 +1014,23 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, on
     setIsSummarizingNote(true);
     showToast("Dream It AI is summarizing your note...", "info");
     try {
-      const res = await fetch(`${serverUrl}/study-coach`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          message: `Please summarize the following study note into bullet points with key takeaways:\n\nNote Title: ${noteTitleDraft}\n\nContent:\n${noteDraft}`,
-        }),
+      const res = await fetchAI({
+        model: "gemini-3.5-flash-lite",
+        messages: [{
+          role: "user",
+          content: `Please summarize the following study note into bullet points with key takeaways:\n\nNote Title: ${noteTitleDraft}\n\nContent:\n${noteDraft}`,
+        }],
+        temperature: 0.3,
+        max_tokens: 1000,
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.answer) {
-          const summarySection = `\n\n---\n### 💡 AI Key Summary\n${data.answer.trim()}\n`;
-          setNoteDraft((curr) => curr + summarySection);
-          showToast("AI Summary added to note! ✨");
-          setIsSummarizingNote(false);
-          addXP(5);
-          return;
-        }
+      if (!res.error && res.content) {
+        const summarySection = `\n\n---\n### 💡 AI Key Summary\n${res.content.trim()}\n`;
+        setNoteDraft((curr) => curr + summarySection);
+        showToast("AI Summary added to note! ✨");
+        setIsSummarizingNote(false);
+        addXP(5);
+        return;
       }
     } catch (e) {
       console.warn("AI summarize error:", e);
@@ -1197,35 +1365,6 @@ SUBJECT NOTES KNOWLEDGE BASE:
 ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You must refuse to answer any subject-specific questions until materials are provided.)"}`;
     }
 
-    // 1. Primary: Secure backend edge function request
-    try {
-      const res = await fetch(`${serverUrl}/study-coach`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({
-          message: promptForAI,
-          history: chatHistory,
-          systemPrompt,
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.answer) {
-          setMessages((curr) => [...curr, { role: "assistant", content: data.answer.trim() }]);
-          setIsAsking(false);
-          addXP(2);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn("Backend AI request notice:", e);
-    }
-
-    // 2. Fallback via the central AI client if backend is unreachable
     try {
       // Create empty message for streaming
       setMessages((curr) => [...curr, { role: "assistant", content: "" }]);
@@ -1517,6 +1656,25 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
             <button onClick={() => setIsChatMaximized(true)} className="flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }} title="Open AI Tutor">
               <Brain size={15} /><span className="hidden xs:inline">AI Tutor</span>
             </button>
+            <button onClick={() => setFriendsModalOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Friends">
+              <Users size={17} />
+            </button>
+            <button onClick={() => { setChatModalOpen(true); checkInbox(); }} className="relative p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Messages">
+              <MessageCircle size={17} />
+              {unreadMessageCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white shadow-sm ring-2 ring-[var(--m-header-bg)]">
+                  {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                </span>
+              )}
+            </button>
+            <button onClick={() => setInboxOpen(true)} className="relative p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Inbox">
+              <Bell size={17} />
+              {(pendingShares.length + pendingFriendRequests.length) > 0 && (
+                <span className="absolute top-1 right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
+                  {pendingShares.length + pendingFriendRequests.length}
+                </span>
+              )}
+            </button>
             <button onClick={() => setThemeSelectorOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Change theme">
               <Palette size={17} />
             </button>
@@ -1547,10 +1705,12 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
 
           {/* ═══════════ FINANCE VIEW ═══════════ */}
           {activeNav === "Money" && (
-            <FinanceApp 
-              financeData={finance} 
-              onUpdateFinance={(newData) => setFinance(newData)} 
-            />
+            <Suspense fallback={<div className="flex h-full items-center justify-center p-8"><Loader2 className="animate-spin text-white/50" size={32} /></div>}>
+              <FinanceApp 
+                financeData={finance} 
+                onUpdateFinance={(newData) => setFinance(newData)} 
+              />
+            </Suspense>
           )}
 
           {/* ═══════════ TODAY VIEW ═══════════ */}
@@ -2477,9 +2637,15 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   </div>
                   <div className="flex items-center gap-2">
                     {activeNote && (
-                      <button onClick={() => deleteNote(activeNote.id)} className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-danger)" }}>
-                        Delete
-                      </button>
+                      <>
+                        <button onClick={() => { setNoteToShare(activeNote); setShareNoteModalOpen(true); }} className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface flex items-center gap-1.5" style={{ color: "var(--m-primary)" }}>
+                          <Send className="w-3.5 h-3.5" />
+                          Share
+                        </button>
+                        <button onClick={() => deleteNote(activeNote.id)} className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-danger)" }}>
+                          Delete
+                        </button>
+                      </>
                     )}
                     <button onClick={saveNote} className="rounded-xl px-5 py-2 text-xs font-bold transition hover:scale-105 shadow-sm" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                       {activeNote ? "Save Changes" : "Save Note"}
@@ -2866,6 +3032,85 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
         </div>
       )}
 
+      {/* ─── Share Note Modal ─── */}
+      {shareNoteModalOpen && noteToShare && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-3xl p-6 shadow-2xl" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)" }}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-bold font-[Roboto_Slab]">Share Note</h3>
+              <button onClick={() => setShareNoteModalOpen(false)} className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition">
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs mb-4 opacity-80">
+              Sharing: <span className="font-bold">{noteToShare.title || "Untitled"}</span>
+            </p>
+            {friends.length === 0 ? (
+              <div className="py-6 text-center opacity-60">
+                <p className="text-xs mb-4">You need to add friends before you can share notes.</p>
+                <button onClick={() => { setShareNoteModalOpen(false); setFriendsModalOpen(true); }} className="px-4 py-2 rounded-xl text-xs font-bold transition hover:opacity-80" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                  Find Friends
+                </button>
+              </div>
+            ) : (
+              <form onSubmit={handleShareNoteSubmit} className="space-y-4">
+                <div>
+                  <label className="text-[10px] font-bold uppercase tracking-wider mb-1.5 block opacity-70">Select Friend</label>
+                  <select
+                    required
+                    value={shareRecipientIdentifier}
+                    onChange={(e) => setShareRecipientIdentifier(e.target.value)}
+                    className="w-full rounded-xl border p-3 text-xs focus:outline-none focus:ring-2 bg-transparent"
+                    style={{ borderColor: "var(--m-border-light)", color: "var(--m-text)" }}
+                  >
+                    <option value="" disabled style={{ color: "black" }}>Choose a mutual friend...</option>
+                    {friends.map(f => {
+                      const friendName = f.requester_id === userId 
+                        ? f.target_actual_identifier || f.target_identifier 
+                        : f.requester_identifier;
+                      return <option key={f.id} value={friendName} style={{ color: "black" }}>{friendName}</option>;
+                    })}
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  disabled={isSharing || !shareRecipientIdentifier.trim()}
+                  className="w-full rounded-xl py-3 text-xs font-bold transition flex items-center justify-center gap-2"
+                  style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                >
+                  {isSharing ? "Sending..." : "Send Note"}
+                  <Send size={14} />
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── Inbox Modal ─── */}
+      <InboxModal
+        isOpen={inboxOpen}
+        onClose={() => setInboxOpen(false)}
+        pendingShares={pendingShares}
+        pendingFriendRequests={pendingFriendRequests}
+        onAcceptFriendRequest={handleAcceptFriendRequest}
+        onDeclineFriendRequest={handleDeclineFriendRequest}
+        onAcceptShare={handleAcceptShare}
+        onDeclineShare={handleDeclineShare}
+      />
+
+      {/* ─── Friends Modal ─── */}
+      <FriendsModal
+        isOpen={friendsModalOpen}
+        onClose={() => setFriendsModalOpen(false)}
+        friends={friends}
+        userId={userId}
+        addFriendDraft={addFriendDraft}
+        setAddFriendDraft={setAddFriendDraft}
+        isAddingFriend={isAddingFriend}
+        onSendFriendRequest={handleSendFriendRequest}
+      />
+
       {/* Toast Notification */}
       {/* ─── Theme Selector Modal ─── */}
       <ThemeSelector isOpen={themeSelectorOpen} onClose={() => setThemeSelectorOpen(false)} />
@@ -2879,6 +3124,16 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
           <span>{toast.message}</span>
         </div>
       )}
+      {/* ─── Chat Modal ─── */}
+      {chatModalOpen && (
+        <ChatModal
+          userId={userId}
+          userNameDisplay={userNameDisplay}
+          friends={friends}
+          onClose={() => setChatModalOpen(false)}
+        />
+      )}
+
     </main>
   );
 }

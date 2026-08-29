@@ -1,0 +1,330 @@
+import React, { useState, useEffect, useRef } from "react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File, Download } from "lucide-react";
+import {
+  Friendship,
+  DirectMessage,
+  fetchDirectMessages,
+  sendDirectMessage,
+  subscribeToDirectMessages,
+  uploadChatFile,
+  markMessagesAsRead,
+} from "../../lib/supabase";
+
+interface ChatModalProps {
+  userId: string;
+  userNameDisplay: string;
+  friends: Friendship[];
+  onClose: () => void;
+}
+
+export default function ChatModal({
+  userId,
+  userNameDisplay,
+  friends,
+  onClose,
+}: ChatModalProps) {
+  const [activeFriend, setActiveFriend] = useState<Friendship | null>(null);
+  const [messages, setMessages] = useState<DirectMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to bottom when messages change
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+  
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  // Load messages when active friend changes
+  useEffect(() => {
+    if (!activeFriend) return;
+    
+    const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+    if (!friendId) return;
+
+    const loadMessages = async () => {
+      setLoadingMessages(true);
+      const msgs = await fetchDirectMessages(userId, friendId);
+      setMessages(msgs);
+      setLoadingMessages(false);
+      scrollToBottom();
+      
+      // Mark as read when we open the chat
+      await markMessagesAsRead(userId, friendId);
+    };
+    
+    loadMessages();
+  }, [activeFriend, userId]);
+
+  // Subscribe to real-time messages
+  useEffect(() => {
+    const unsubscribe = subscribeToDirectMessages(userId, (newMsg) => {
+      // Check if this message belongs to the current active chat
+      if (!activeFriend) return;
+      
+      const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+      
+      if (
+        (newMsg.sender_id === userId && newMsg.receiver_id === friendId) ||
+        (newMsg.sender_id === friendId && newMsg.receiver_id === userId)
+      ) {
+        setMessages((prev) => {
+          if (prev.find(m => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+        
+        // If we received a message from them while chatting, mark it as read immediately
+        if (newMsg.sender_id === friendId && newMsg.receiver_id === userId) {
+          markMessagesAsRead(userId, friendId);
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [userId, activeFriend]);
+
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if ((!draft.trim() && !selectedFile) || !activeFriend || isUploading) return;
+    
+    const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+    if (!friendId) return;
+
+    const content = draft.trim();
+    
+    // Process File if exists
+    let fileMeta = undefined;
+    if (selectedFile) {
+      setIsUploading(true);
+      try {
+        fileMeta = await uploadChatFile(userId, selectedFile);
+      } catch (err: any) {
+        alert(err.message || "Failed to upload file");
+        setIsUploading(false);
+        return;
+      }
+      setIsUploading(false);
+    }
+
+    setDraft(""); // Optimistic clear
+    setSelectedFile(null);
+
+    const newMsg = await sendDirectMessage(userId, friendId, content, fileMeta);
+    if (newMsg) {
+      setMessages((prev) => {
+        if (prev.find(m => m.id === newMsg.id)) return prev;
+        return [...prev, newMsg];
+      });
+      scrollToBottom();
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      alert("File size must be strictly under 25MB.");
+      return;
+    }
+    setSelectedFile(file);
+    e.target.value = ''; // reset
+  };
+
+  const getFriendName = (f: Friendship) => {
+    return f.requester_id === userId
+      ? f.target_actual_identifier || f.target_identifier
+      : f.requester_identifier;
+  };
+
+  const activeFriendName = activeFriend ? getFriendName(activeFriend) : "";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 sm:p-6">
+      <div 
+        className="w-full max-w-4xl h-[85vh] rounded-3xl shadow-2xl flex overflow-hidden" 
+        style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}
+      >
+        {/* Left Sidebar: Friends List */}
+        <div className="w-1/3 md:w-80 flex flex-col border-r" style={{ borderColor: "var(--m-border)" }}>
+          <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: "var(--m-border)" }}>
+            <h3 className="font-bold font-[Roboto_Slab] text-lg truncate">{userNameDisplay}</h3>
+          </div>
+          
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
+            <h4 className="text-[10px] font-bold uppercase tracking-wider opacity-60 px-2 mb-3">Messages</h4>
+            
+            {friends.length === 0 ? (
+              <p className="text-xs opacity-60 px-2 text-center mt-6">No friends yet. Add some from the Dashboard!</p>
+            ) : (
+              friends.map(friend => {
+                const friendName = getFriendName(friend);
+                const isActive = activeFriend?.id === friend.id;
+                
+                return (
+                  <button
+                    key={friend.id}
+                    onClick={() => setActiveFriend(friend)}
+                    className="w-full flex items-center gap-3 p-3 rounded-2xl transition hover:opacity-80"
+                    style={{ 
+                      backgroundColor: isActive ? "var(--m-surface-alt)" : "transparent",
+                      border: isActive ? "1px solid var(--m-border)" : "1px solid transparent"
+                    }}
+                  >
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold shadow-inner shrink-0" style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
+                      {friendName.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="text-left flex-1 overflow-hidden">
+                      <p className="text-sm font-bold truncate">{friendName}</p>
+                    </div>
+                  </button>
+                )
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Right Area: Chat History */}
+        <div className="flex-1 flex flex-col relative" style={{ backgroundColor: "var(--m-bg)" }}>
+          {/* Header */}
+          <div className="p-4 border-b flex items-center justify-between bg-inherit z-10" style={{ borderColor: "var(--m-border)" }}>
+            <div className="flex items-center gap-3">
+              {activeFriend ? (
+                <>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-md font-bold shadow-inner shrink-0" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
+                    {activeFriendName.charAt(0).toUpperCase()}
+                  </div>
+                  <h3 className="font-bold font-[Roboto_Slab] text-base">{activeFriendName}</h3>
+                </>
+              ) : (
+                <h3 className="font-bold font-[Roboto_Slab] text-base opacity-60">Select a chat</h3>
+              )}
+            </div>
+            <button onClick={onClose} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition">
+              <X size={20} />
+            </button>
+          </div>
+
+          {/* Chat Messages */}
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-4">
+            {!activeFriend ? (
+              <div className="h-full flex flex-col items-center justify-center opacity-50 gap-4">
+                <MessageCircle size={48} strokeWidth={1.5} />
+                <p className="text-sm font-bold">Your Messages</p>
+                <p className="text-xs">Send a direct message to a friend.</p>
+              </div>
+            ) : loadingMessages ? (
+              <div className="h-full flex items-center justify-center opacity-60">
+                <p className="text-xs font-bold animate-pulse">Loading messages...</p>
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center opacity-50 gap-2">
+                <p className="text-xs font-bold">No messages yet.</p>
+                <p className="text-[10px]">Send a message to start the conversation!</p>
+              </div>
+            ) : (
+              messages.map(msg => {
+                const isMe = msg.sender_id === userId;
+                return (
+                  <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                    <div 
+                      className={`max-w-[70%] rounded-2xl px-4 py-2.5 text-sm shadow-sm flex flex-col gap-2`}
+                      style={{ 
+                        backgroundColor: isMe ? "var(--m-primary)" : "var(--m-surface-solid)", 
+                        color: isMe ? "var(--m-primary-text)" : "var(--m-text)",
+                        border: isMe ? "none" : "1px solid var(--m-border)"
+                      }}
+                    >
+                      {msg.file_url && (
+                        msg.file_type?.startsWith('image/') ? (
+                          <a href={msg.file_url} target="_blank" rel="noreferrer">
+                            <img src={msg.file_url} alt="Attachment" className="max-w-full rounded-xl object-contain max-h-64 cursor-pointer" />
+                          </a>
+                        ) : (
+                          <a 
+                            href={msg.file_url} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="flex items-center gap-2 p-2 rounded-lg transition hover:opacity-80"
+                            style={{ backgroundColor: "black", color: "white" }}
+                          >
+                            <File size={16} />
+                            <span className="text-xs font-bold truncate flex-1">{msg.file_name}</span>
+                            <Download size={14} />
+                          </a>
+                        )
+                      )}
+                      {msg.content && <span>{msg.content}</span>}
+                    </div>
+                  </div>
+                )
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Input Area */}
+          {activeFriend && (
+            <div className="p-4 bg-inherit border-t flex flex-col gap-2" style={{ borderColor: "var(--m-border)" }}>
+              {selectedFile && (
+                <div className="flex items-center justify-between p-2 rounded-xl text-xs font-bold w-full" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text)" }}>
+                  <div className="flex items-center gap-2 overflow-hidden">
+                    <File size={14} />
+                    <span className="truncate">{selectedFile.name}</span>
+                    <span className="opacity-50">({(selectedFile.size / 1024 / 1024).toFixed(1)}MB)</span>
+                  </div>
+                  <button onClick={() => setSelectedFile(null)} className="p-1 rounded-full hover:bg-black/10 transition">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
+              
+              <form onSubmit={handleSend} className="flex gap-2">
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  onChange={handleFileSelect} 
+                />
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-3 rounded-full transition hover:opacity-80 shadow-sm shrink-0 flex items-center justify-center"
+                  style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text)" }}
+                  title="Attach File (Max 25MB)"
+                >
+                  <Paperclip size={18} />
+                </button>
+                <input
+                  type="text"
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  placeholder="Message..."
+                  className="flex-1 rounded-full px-5 py-3 text-sm focus:outline-none focus:ring-2 bg-transparent border"
+                  style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
+                />
+                <button
+                  type="submit"
+                  disabled={(!draft.trim() && !selectedFile) || isUploading}
+                  className="rounded-full px-5 py-3 text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 min-w-[80px]"
+                  style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                >
+                  {isUploading ? <Loader2 size={16} className="animate-spin" /> : "Send"}
+                </button>
+              </form>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

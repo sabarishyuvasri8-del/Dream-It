@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router";
-import { useUser, useClerk, SignIn, SignUp } from "@clerk/clerk-react";
+import { useUser, useClerk, useSignIn, useSignUp, AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 import {
   AlertTriangle,
   BookOpenCheck,
@@ -9,15 +9,153 @@ import {
   Palette,
   ShieldCheck,
   Sparkles,
+  Eye,
+  EyeOff,
 } from "lucide-react";
-import Dashboard from "./Dashboard";
+const Dashboard = lazy(() => import("./Dashboard"));
 import LandingPage from "./LandingPage";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
-import CadenceApp from "./cadence/CadenceApp";
-import PrivacyPolicy from "./PrivacyPolicy";
-import TermsOfService from "./TermsOfService";
-import ContactPage from "./ContactPage";
+const CadenceApp = lazy(() => import("./cadence/CadenceApp"));
+const PrivacyPolicy = lazy(() => import("./PrivacyPolicy"));
+const TermsOfService = lazy(() => import("./TermsOfService"));
+const ContactPage = lazy(() => import("./ContactPage"));
+
+function PageLoader() {
+  return (
+    <main
+      className="grid min-h-screen place-items-center"
+      style={{ backgroundColor: "var(--m-bg, #f6f4ee)" }}
+    >
+      <div className="flex flex-col items-center gap-3">
+        <LoaderCircle className="animate-spin text-[#315f48]" size={28} />
+        <p className="text-xs text-[#56725d] font-medium">Loading...</p>
+      </div>
+    </main>
+  );
+}
+
+/* ─────────────── Custom Auth Form ─────────────── */
+function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
+  const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
+  const { isLoaded: isSignUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    if (!isSignInLoaded || !isSignUpLoaded) return;
+    
+    setLoading(true);
+    try {
+      if (mode === "signin") {
+        const result = await signIn.create({ identifier: username, password });
+        if (result.status === "complete") {
+          await setSignInActive({ session: result.createdSessionId });
+        } else {
+          setError("Incomplete sign in. Please check your settings.");
+        }
+      } else {
+        const result = await signUp.create({ username, password });
+        if (result.status === "complete") {
+          await setSignUpActive({ session: result.createdSessionId });
+        } else {
+          setError("Incomplete sign up. Please check your settings.");
+        }
+      }
+    } catch (err: any) {
+      console.error("Clerk Auth Error:", err);
+      let errorMsg = "An error occurred";
+      if (err.errors && err.errors.length > 0) {
+        errorMsg = err.errors.map((e: any) => e.longMessage || e.message).join(", ");
+      } else if (err.message) {
+        errorMsg = err.message;
+      }
+      setError(errorMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+
+
+  return (
+    <div className="w-full flex flex-col gap-4">
+      <div className="flex items-center gap-2 text-xs" style={{ color: "var(--m-text-sub)" }}>
+        <div className="flex-1 border-t" style={{ borderColor: "var(--m-border-light)" }}></div>
+        <span>Sign in with your username</span>
+        <div className="flex-1 border-t" style={{ borderColor: "var(--m-border-light)" }}></div>
+      </div>
+
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-1.5">
+          <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Username</label>
+          <input
+            type="text"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+            placeholder="Unique username"
+            className="rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border"
+            style={{
+              backgroundColor: "transparent",
+              borderColor: "var(--m-border)",
+              color: "var(--m-text)",
+            }}
+          />
+        </div>
+        
+        <div className="flex flex-col gap-1.5 relative">
+          <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Password</label>
+          <div className="relative flex items-center">
+            <input
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full rounded-xl py-2.5 pl-3.5 pr-10 text-sm transition outline-none focus:ring-2 border"
+              style={{
+                backgroundColor: "transparent",
+                borderColor: "var(--m-border)",
+                color: "var(--m-text)",
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 opacity-60 hover:opacity-100 transition"
+              style={{ color: "var(--m-text)" }}
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
+        </div>
+
+        {error && (
+          <div className="text-xs font-semibold p-3 rounded-lg bg-red-500/10 text-red-500">
+            {error}
+          </div>
+        )}
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md mt-2 disabled:opacity-50 disabled:hover:scale-100"
+          style={{
+            backgroundColor: "var(--m-primary)",
+            color: "var(--m-primary-text)",
+          }}
+        >
+          {loading ? "Loading..." : mode === "signin" ? "Sign In" : "Sign Up"}
+        </button>
+      </form>
+    </div>
+  );
+}
 
 /* ─────────────── Clerk Auth Screen ─────────────── */
 function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
@@ -210,57 +348,7 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
 
             {/* Clerk Component Render */}
             <div className="w-full flex justify-center py-2">
-              {mode === "signin" ? (
-                <SignIn
-                  appearance={{
-                    layout: {
-                      socialButtonsVariant: "blockButton",
-                    },
-                    elements: {
-                      card: "shadow-none border-none bg-transparent w-full",
-                      headerTitle: "hidden",
-                      headerSubtitle: "hidden",
-                      footer: "hidden",
-                      socialButtonsBlockButton: "cl-social-btn rounded-xl py-2.5 transition hover:scale-[1.02] shadow-sm mb-4 border",
-                      socialButtonsBlockButtonText: "text-sm font-bold",
-                      dividerRow: "hidden",
-                      dividerText: "hidden",
-                      dividerLine: "hidden",
-                      formFieldInput:
-                        "rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border",
-                      formButtonPrimary:
-                        "rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md",
-                      formFieldLabel: "text-xs font-bold",
-                    },
-                  }}
-                  routing="virtual"
-                />
-              ) : (
-                <SignUp
-                  appearance={{
-                    layout: {
-                      socialButtonsVariant: "blockButton",
-                    },
-                    elements: {
-                      card: "shadow-none border-none bg-transparent w-full",
-                      headerTitle: "hidden",
-                      headerSubtitle: "hidden",
-                      footer: "hidden",
-                      socialButtonsBlockButton: "cl-social-btn rounded-xl py-2.5 transition hover:scale-[1.02] shadow-sm mb-4 border",
-                      socialButtonsBlockButtonText: "text-sm font-bold",
-                      dividerRow: "hidden",
-                      dividerText: "hidden",
-                      dividerLine: "hidden",
-                      formFieldInput:
-                        "rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border",
-                      formButtonPrimary:
-                        "rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md",
-                      formFieldLabel: "text-xs font-bold",
-                    },
-                  }}
-                  routing="virtual"
-                />
-              )}
+              <CustomAuthForm mode={mode} />
             </div>
           </div>
         </section>
@@ -282,17 +370,7 @@ function Root() {
   const [showAuth, setShowAuth] = useState(false);
 
   if (!isLoaded) {
-    return (
-      <main
-        className="grid min-h-screen place-items-center"
-        style={{ backgroundColor: "var(--m-bg, #f6f4ee)" }}
-      >
-        <div className="flex flex-col items-center gap-3">
-          <LoaderCircle className="animate-spin text-[#315f48]" size={28} />
-          <p className="text-xs text-[#56725d] font-medium">Loading Dream It...</p>
-        </div>
-      </main>
-    );
+    return <PageLoader />;
   }
 
   if (isSignedIn && user) {
@@ -305,14 +383,16 @@ function Root() {
       "Student";
 
     return (
-      <Dashboard
-        key={user.id}
-        accessToken={user.id}
-        userId={user.id}
-        userEmail={userEmail}
-        userName={userName}
-        onSignOut={() => signOut()}
-      />
+      <Suspense fallback={<PageLoader />}>
+        <Dashboard
+          key={user.id}
+          accessToken={user.id}
+          userId={user.id}
+          userEmail={userEmail}
+          userName={userName}
+          onSignOut={() => signOut()}
+        />
+      </Suspense>
     );
   }
 
@@ -392,10 +472,18 @@ function RouteErrorBoundary() {
   );
 }
 
+// Wrap route components in Suspense
+const withSuspense = (Component: React.ComponentType) => (
+  <Suspense fallback={<PageLoader />}>
+    <Component />
+  </Suspense>
+);
+
 export const router = createBrowserRouter([
-  { path: "/cadence", Component: CadenceApp },
-  { path: "/privacy", Component: PrivacyPolicy },
-  { path: "/terms", Component: TermsOfService },
-  { path: "/contact", Component: ContactPage },
+  { path: "/sso-callback", element: <AuthenticateWithRedirectCallback signUpForceRedirectUrl="/" signInForceRedirectUrl="/" /> },
+  { path: "/cadence", element: withSuspense(CadenceApp) },
+  { path: "/privacy", element: withSuspense(PrivacyPolicy) },
+  { path: "/terms", element: withSuspense(TermsOfService) },
+  { path: "/contact", element: withSuspense(ContactPage) },
   { path: "*", Component: Root, ErrorBoundary: RouteErrorBoundary },
 ]);

@@ -87,6 +87,41 @@ export interface StreakData {
   flashcardsStudied: number;
 }
 
+export interface SharedNote {
+  id: string;
+  sender_id: string;
+  sender_identifier: string;
+  recipient_identifier: string;
+  note_title: string;
+  note_content: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+}
+
+export interface Friendship {
+  id: string;
+  requester_id: string;
+  requester_identifier: string;
+  target_identifier: string;
+  target_id: string | null;
+  target_actual_identifier: string | null;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+}
+
+export interface DirectMessage {
+  id: string;
+  sender_id: string;
+  receiver_id: string;
+  content: string;
+  created_at: string;
+  file_url?: string;
+  file_name?: string;
+  file_type?: string;
+  file_size?: number;
+  is_read?: boolean;
+}
+
 export interface UserWorkspace {
   tasks: Task[];
   scheduleItems: ScheduleItem[];
@@ -340,4 +375,340 @@ export function getLevelTitle(level: number): string {
 export function getXPForNextLevel(level: number): number {
   const thresholds = [100, 250, 500, 1000, 2000, 4000, 7000, 11000, 16000, 99999];
   return thresholds[Math.min(level - 1, thresholds.length - 1)] || 99999;
+}
+
+/* ─────────────── Notes Sharing ─────────────── */
+
+/** Share a note with another user by their Username or Email */
+export async function shareNote(
+  senderId: string,
+  senderIdentifier: string,
+  recipientIdentifier: string,
+  noteTitle: string,
+  noteContent: string
+): Promise<boolean> {
+  if (!senderId || !recipientIdentifier) return false;
+  try {
+    const { error } = await supabase.from('shared_notes').insert({
+      sender_id: senderId,
+      sender_identifier: senderIdentifier,
+      recipient_identifier: recipientIdentifier.trim(),
+      note_title: noteTitle,
+      note_content: noteContent,
+      status: 'pending',
+    });
+    if (error) {
+      console.error("Error sharing note:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Exception sharing note:", err);
+    return false;
+  }
+}
+
+/** Fetch pending shared notes for a given username and email */
+export async function fetchPendingShares(
+  username?: string | null,
+  email?: string | null
+): Promise<SharedNote[]> {
+  const identifiers = [];
+  if (username) identifiers.push(username);
+  if (email) identifiers.push(email);
+
+  if (identifiers.length === 0) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('shared_notes')
+      .select('*')
+      .in('recipient_identifier', identifiers)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error("Error fetching shared notes:", error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error("Exception fetching shared notes:", err);
+    return [];
+  }
+}
+
+/** Accept or reject a shared note */
+export async function respondToShare(
+  shareId: string,
+  response: 'accepted' | 'rejected'
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('shared_notes')
+      .update({ status: response })
+      .eq('id', shareId);
+      
+    if (error) {
+      console.error(`Error updating shared note to ${response}:`, error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`Exception updating shared note to ${response}:`, err);
+    return false;
+  }
+}
+
+/* ─────────────── Friends System ─────────────── */
+
+export async function sendFriendRequest(
+  requesterId: string,
+  requesterIdentifier: string,
+  targetIdentifier: string
+): Promise<boolean> {
+  if (!requesterId || !targetIdentifier) return false;
+  try {
+    const { error } = await supabase.from('friendships').insert({
+      requester_id: requesterId,
+      requester_identifier: requesterIdentifier,
+      target_identifier: targetIdentifier.trim(),
+      status: 'pending',
+    });
+    if (error) {
+      console.error("Error sending friend request:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Exception sending friend request:", err);
+    return false;
+  }
+}
+
+export async function fetchPendingFriendRequests(
+  username?: string | null,
+  email?: string | null
+): Promise<Friendship[]> {
+  const identifiers = [];
+  if (username) identifiers.push(username);
+  if (email) identifiers.push(email);
+  if (identifiers.length === 0) return [];
+
+  try {
+    const { data, error } = await supabase
+      .from('friendships')
+      .select('*')
+      .in('target_identifier', identifiers)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error("Error fetching friend requests:", error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error("Exception fetching friend requests:", err);
+    return [];
+  }
+}
+
+export async function respondToFriendRequest(
+  friendshipId: string,
+  response: 'accepted' | 'rejected',
+  targetId: string,
+  targetIdentifier: string
+): Promise<boolean> {
+  try {
+    const updateData: any = { status: response };
+    if (response === 'accepted') {
+      updateData.target_id = targetId;
+      updateData.target_actual_identifier = targetIdentifier;
+    }
+    const { error } = await supabase
+      .from('friendships')
+      .update(updateData)
+      .eq('id', friendshipId);
+      
+    if (error) {
+      console.error(`Error updating friendship to ${response}:`, error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error(`Exception updating friendship to ${response}:`, err);
+    return false;
+  }
+}
+
+export async function fetchFriends(userId: string): Promise<Friendship[]> {
+  try {
+    // A friend is someone where you are the requester OR you are the target, and status is accepted.
+    const { data, error } = await supabase
+      .from('friendships')
+      .select('*')
+      .eq('status', 'accepted')
+      .or(`requester_id.eq.${userId},target_id.eq.${userId}`);
+
+    if (error) {
+      console.error("Error fetching friends:", error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error("Exception fetching friends:", err);
+    return [];
+  }
+}
+
+
+/* ─────────────── Direct Messaging System ─────────────── */
+
+export async function fetchUnreadMessageCount(userId: string): Promise<number> {
+  try {
+    const { count, error } = await supabase
+      .from('direct_messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('receiver_id', userId)
+      .eq('is_read', false);
+
+    if (error) {
+      console.error("Error fetching unread count:", error);
+      return 0;
+    }
+    return count || 0;
+  } catch (err) {
+    console.error("Exception fetching unread count:", err);
+    return 0;
+  }
+}
+
+export async function markMessagesAsRead(userId: string, friendId: string): Promise<void> {
+  try {
+    await supabase
+      .from('direct_messages')
+      .update({ is_read: true })
+      .eq('receiver_id', userId)
+      .eq('sender_id', friendId)
+      .eq('is_read', false);
+  } catch (err) {
+    console.error("Exception marking messages as read:", err);
+  }
+}
+
+export async function sendDirectMessage(
+  senderId: string,
+  receiverId: string,
+  content: string,
+  fileMeta?: { url: string; name: string; type: string; size: number }
+): Promise<DirectMessage | null> {
+  if (!senderId || !receiverId || (!content.trim() && !fileMeta)) return null;
+  try {
+    const payload: any = {
+      sender_id: senderId,
+      receiver_id: receiverId,
+      content: content.trim(),
+    };
+
+    if (fileMeta) {
+      payload.file_url = fileMeta.url;
+      payload.file_name = fileMeta.name;
+      payload.file_type = fileMeta.type;
+      payload.file_size = fileMeta.size;
+    }
+
+    const { data, error } = await supabase
+      .from('direct_messages')
+      .insert(payload)
+      .select()
+      .single();
+
+    if (error) {
+      console.error("Error sending message:", error);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error("Exception sending message:", err);
+    return null;
+  }
+}
+
+export async function fetchDirectMessages(
+  userId1: string,
+  userId2: string
+): Promise<DirectMessage[]> {
+  try {
+    const { data, error } = await supabase
+      .from('direct_messages')
+      .select('*')
+      .or(`and(sender_id.eq.${userId1},receiver_id.eq.${userId2}),and(sender_id.eq.${userId2},receiver_id.eq.${userId1})`)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.error("Error fetching messages:", error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error("Exception fetching messages:", err);
+    return [];
+  }
+}
+
+export function subscribeToDirectMessages(
+  userId: string,
+  onNewMessage: (msg: DirectMessage) => void
+) {
+  const channel = supabase
+    .channel(`public:direct_messages:${userId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+      (payload) => {
+        const newMsg = payload.new as DirectMessage;
+        if (newMsg.sender_id === userId || newMsg.receiver_id === userId) {
+          onNewMessage(newMsg);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
+export async function uploadChatFile(
+  userId: string,
+  file: File
+): Promise<{ url: string; name: string; type: string; size: number }> {
+  // Enforce Max 25MB
+  if (file.size > 25 * 1024 * 1024) {
+    throw new Error("File size exceeds the 25MB limit.");
+  }
+
+  const fileExt = file.name.split('.').pop();
+  const fileName = `${userId}_${Date.now()}.${fileExt}`;
+  const filePath = `${userId}/${fileName}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from('chat_attachments')
+    .upload(filePath, file);
+
+  if (uploadError) {
+    throw new Error(uploadError.message || "Failed to upload file");
+  }
+
+  const { data } = supabase.storage
+    .from('chat_attachments')
+    .getPublicUrl(filePath);
+
+  return {
+    url: data.publicUrl,
+    name: file.name,
+    type: file.type,
+    size: file.size,
+  };
 }
