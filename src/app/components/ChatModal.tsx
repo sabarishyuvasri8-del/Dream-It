@@ -198,8 +198,11 @@ export default function ChatModal({
       >
         {/* Left Sidebar: Friends List */}
         <div className={`w-full md:w-80 flex-col border-r-0 md:border-r ${activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ borderColor: "var(--m-border)" }}>
-          <div className="p-4 border-b flex items-center justify-between" style={{ borderColor: "var(--m-border)" }}>
-            <h3 className="font-bold font-[Roboto_Slab] text-lg truncate">{userNameDisplay}</h3>
+          <div className="p-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--m-border)" }}>
+            <h3 className="font-bold font-[Roboto_Slab] text-lg truncate flex-1">{userNameDisplay}</h3>
+            <button onClick={onClose} className="md:hidden p-2 -mr-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0 ml-2">
+              <X size={20} />
+            </button>
           </div>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
@@ -247,8 +250,8 @@ export default function ChatModal({
         <div className={`flex-1 flex-col relative ${!activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ backgroundColor: "var(--m-bg)" }}>
           {/* Header */}
           <div className="flex flex-col min-w-0" style={{ backgroundColor: "var(--m-surface)" }}>
-            <div className="p-4 flex items-center justify-between border-b" style={{ borderColor: "var(--m-border)" }}>
-              <div className="flex items-center gap-3">
+            <div className="p-4 flex items-center justify-between border-b shrink-0" style={{ borderColor: "var(--m-border)" }}>
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 <button 
                   onClick={() => setActiveFriend(null)}
                   className="md:hidden p-2 -ml-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0"
@@ -268,17 +271,17 @@ export default function ChatModal({
                         </div>
                       );
                     })()}
-                    <h3 className="font-bold font-[Roboto_Slab] text-base">{activeFriendName}</h3>
+                    <h3 className="font-bold font-[Roboto_Slab] text-base truncate">{activeFriendName}</h3>
                   </>
                 ) : (
-                  <h3 className="font-bold font-[Roboto_Slab] text-base opacity-60">Select a chat</h3>
+                  <h3 className="font-bold font-[Roboto_Slab] text-base opacity-60 truncate">Select a chat</h3>
                 )}
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button onClick={() => setIsWide(!isWide)} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100">
+              <div className="flex items-center gap-1 shrink-0 ml-2">
+                <button onClick={() => setIsWide(!isWide)} className="hidden md:block p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100">
                   {isWide ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                 </button>
-                <button onClick={onClose} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100">
+                <button onClick={onClose} className="p-2 -mr-2 md:mr-0 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100 shrink-0">
                   <X size={20} />
                 </button>
               </div>
