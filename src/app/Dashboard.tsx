@@ -1659,8 +1659,8 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
       {/* ─── Main Content ─── */}
       <section className="transition-all duration-300 w-full lg:pl-[76px]">
         {/* Top Bar */}
-        <header className="sticky top-0 z-20 flex items-center justify-between px-3.5 sm:px-6 py-2.5 sm:py-3.5 md:px-8 minimal-surface shadow-xs" style={{ backgroundColor: "var(--m-surface-solid)", borderBottom: "1px solid var(--m-border-light)" }}>
-          <div className="flex items-center gap-2.5 sm:gap-3">
+        <header className="sticky top-0 z-20 flex items-center justify-between px-3.5 sm:px-6 py-2.5 sm:py-3.5 md:px-8 minimal-surface shadow-xs overflow-x-auto custom-scrollbar gap-4" style={{ backgroundColor: "var(--m-surface-solid)", borderBottom: "1px solid var(--m-border-light)" }}>
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             <button className="lg:hidden p-2 rounded-xl hover:opacity-80 transition minimal-surface min-h-[40px] min-w-[40px] flex items-center justify-center" onClick={() => setMobileOpen(true)} aria-label="Open menu">
               <Menu size={20} />
             </button>
@@ -1673,7 +1673,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             <button onClick={() => setIsChatMaximized(true)} className="flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }} title="Open AI Tutor">
               <Brain size={15} /><span className="hidden xs:inline">AI Tutor</span>
             </button>
