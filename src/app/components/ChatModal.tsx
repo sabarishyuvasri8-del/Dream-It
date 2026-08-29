@@ -246,29 +246,31 @@ export default function ChatModal({
         <div className="flex-1 flex flex-col relative" style={{ backgroundColor: "var(--m-bg)" }}>
           {/* Header */}
           <div className="flex flex-col min-w-0" style={{ backgroundColor: "var(--m-surface)" }}>
-            <div className="p-4 flex items-center gap-3 border-b" style={{ borderColor: "var(--m-border)" }}>
-              {activeFriend ? (
-                <>
-                  {(() => {
-                    const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
-                    const friendProfile = friendId ? profiles[friendId] : null;
-                    return friendProfile?.image_url ? (
-                      <img src={friendProfile.image_url} alt={activeFriendName} className="size-10 rounded-full object-cover shadow-sm shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
-                    ) : (
-                      <div className="size-10 rounded-full flex items-center justify-center text-lg font-bold shadow-sm shrink-0" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border-light)" }}>
-                        {activeFriendName.charAt(0).toUpperCase()}
-                      </div>
-                    );
-                  })()}
-                  <h3 className="font-bold font-[Roboto_Slab] text-base">{activeFriendName}</h3>
-                </>
-              ) : (
-                <h3 className="font-bold font-[Roboto_Slab] text-base opacity-60">Select a chat</h3>
-              )}
+            <div className="p-4 flex items-center justify-between border-b" style={{ borderColor: "var(--m-border)" }}>
+              <div className="flex items-center gap-3">
+                {activeFriend ? (
+                  <>
+                    {(() => {
+                      const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+                      const friendProfile = friendId ? profiles[friendId] : null;
+                      return friendProfile?.image_url ? (
+                        <img src={friendProfile.image_url} alt={activeFriendName} className="size-10 rounded-full object-cover shadow-sm shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
+                      ) : (
+                        <div className="size-10 rounded-full flex items-center justify-center text-lg font-bold shadow-sm shrink-0" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border-light)" }}>
+                          {activeFriendName.charAt(0).toUpperCase()}
+                        </div>
+                      );
+                    })()}
+                    <h3 className="font-bold font-[Roboto_Slab] text-base">{activeFriendName}</h3>
+                  </>
+                ) : (
+                  <h3 className="font-bold font-[Roboto_Slab] text-base opacity-60">Select a chat</h3>
+                )}
+              </div>
+              <button onClick={onClose} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0">
+                <X size={20} />
+              </button>
             </div>
-            <button onClick={onClose} className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition">
-              <X size={20} />
-            </button>
           </div>
 
           {/* Chat Messages */}
