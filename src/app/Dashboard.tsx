@@ -6,6 +6,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { UserProfile } from '@clerk/clerk-react';
+import { dark } from '@clerk/themes';
 import {
   Activity,
   AlarmClock,
@@ -3155,6 +3156,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
             <div className="p-6">
               <UserProfile 
                 appearance={{
+                  baseTheme: dark,
                   variables: {
                     colorPrimary: 'var(--m-primary)',
                     colorBackground: 'var(--m-bg)',

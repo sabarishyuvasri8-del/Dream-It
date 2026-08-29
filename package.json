@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@clerk/clerk-react": "^5.61.9",
+    "@clerk/themes": "^2.4.57",
     "@radix-ui/react-accordion": "1.2.3",
     "@radix-ui/react-alert-dialog": "1.1.6",
     "@radix-ui/react-aspect-ratio": "1.1.2",
