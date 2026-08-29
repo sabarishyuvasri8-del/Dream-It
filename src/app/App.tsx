@@ -6,7 +6,7 @@ import { ClerkProvider } from "@clerk/clerk-react";
 // Get Publishable Key from environment or fallback key for Clerk App app_3HuZRwtbZLLkRdVouzpjzVA04UJ
 const PUBLISHABLE_KEY =
   import.meta.env.VITE_CLERK_PUBLISHABLE_KEY ||
-  "pk_test_Y2xldmVyLWFscGFjYS01NC5jbGVyay5hY2NvdW50cy5kZXYk";
+  "pk_test_Y29uY2lzZS1qYXdmaXNoLTEwLmNsZXJrLmFjY291bnRzLmRldiQ";
 
 export default function App() {
   return (
