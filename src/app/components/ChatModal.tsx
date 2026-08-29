@@ -290,15 +290,24 @@ export default function ChatModal({
                             <MoreHorizontal size={14} />
                           </button>
                           {isMenuOpen && (
-                            <div className="absolute right-0 top-full mt-1 z-50 rounded-xl shadow-lg border p-1 w-40 overflow-hidden" 
-                                 style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>
-                              <button onClick={() => handleDeleteForEveryone(msg.id)} className="w-full flex items-center gap-2 p-2 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition">
-                                <Trash2 size={12} /> Delete for everyone
-                              </button>
-                              <button onClick={() => handleDeleteForMe(msg.id, isMe)} className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 rounded-lg transition" style={{ color: "var(--m-text)" }}>
-                                <EyeOff size={12} /> Delete for me
-                              </button>
-                            </div>
+                            <>
+                              <div 
+                                className="fixed inset-0 z-40 cursor-default" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuOpenId(null);
+                                }} 
+                              />
+                              <div className="absolute right-0 top-full mt-1 z-50 rounded-xl shadow-lg border p-1 w-40 overflow-hidden" 
+                                   style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>
+                                <button onClick={() => handleDeleteForEveryone(msg.id)} className="w-full flex items-center gap-2 p-2 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition">
+                                  <Trash2 size={12} /> Delete for everyone
+                                </button>
+                                <button onClick={() => handleDeleteForMe(msg.id, isMe)} className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 rounded-lg transition" style={{ color: "var(--m-text)" }}>
+                                  <EyeOff size={12} /> Delete for me
+                                </button>
+                              </div>
+                            </>
                           )}
                         </div>
                       )}
@@ -342,12 +351,21 @@ export default function ChatModal({
                             <MoreHorizontal size={14} />
                           </button>
                           {isMenuOpen && (
-                            <div className="absolute left-0 top-full mt-1 z-50 rounded-xl shadow-lg border p-1 w-32 overflow-hidden" 
-                                 style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>
-                              <button onClick={() => handleDeleteForMe(msg.id, isMe)} className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 rounded-lg transition" style={{ color: "var(--m-text)" }}>
-                                <EyeOff size={12} /> Delete for me
-                              </button>
-                            </div>
+                            <>
+                              <div 
+                                className="fixed inset-0 z-40 cursor-default" 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setMenuOpenId(null);
+                                }} 
+                              />
+                              <div className="absolute left-0 top-full mt-1 z-50 rounded-xl shadow-lg border p-1 w-32 overflow-hidden" 
+                                   style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>
+                                <button onClick={() => handleDeleteForMe(msg.id, isMe)} className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 rounded-lg transition" style={{ color: "var(--m-text)" }}>
+                                  <EyeOff size={12} /> Delete for me
+                                </button>
+                              </div>
+                            </>
                           )}
                         </div>
                       )}
