@@ -307,6 +307,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [isRunning, setIsRunning] = useState(false);
   const [pomodoroSession, setPomodoroSession] = useState(0);
   const [isBreak, setIsBreak] = useState(false);
+  const [activeFocusSeconds, setActiveFocusSeconds] = useState(0);
 
   // ─── AI Chat — Dream It AI ───
   const DEFAULT_WELCOME: Message = {
@@ -558,13 +559,44 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     return () => window.clearTimeout(saveTimer);
   }, [accessToken, userId, workspaceReady, tasks, scheduleItems, subjects, studyMinutes, focusLog, notes, grades, flashcards, streak, finance]);
 
-  // ─── Pomodoro ───
+  // ─── Pomodoro Focus Tracking & Timer ───
   useEffect(() => {
     if (!isRunning || seconds === 0) return;
-    const timer = window.setInterval(() => setSeconds((val) => val - 1), 1000);
-    return () => window.clearInterval(timer);
-  }, [isRunning, seconds]);
+    const timer = window.setInterval(() => {
+      setSeconds((val) => Math.max(0, val - 1));
 
+      // Real-time synchronization: sync focus time with every timer tick during focus sessions
+      if (!isBreak) {
+        setActiveFocusSeconds((prevSec) => {
+          const nextSec = prevSec + 1;
+          if (nextSec >= 60) {
+            // 60 seconds elapsed: persist 1 minute immediately to studyMinutes and focusLog
+            const todayIndex = (new Date().getDay() + 6) % 7;
+            setStudyMinutes((curr) =>
+              curr.map((m, idx) => (idx === todayIndex ? m + 1 : m))
+            );
+
+            const todayKey = toDateKey(new Date());
+            setFocusLog((prevLog) => {
+              const existing = prevLog.find((e) => e.date === todayKey);
+              if (existing) {
+                return prevLog.map((e) => (e.date === todayKey ? { ...e, minutes: e.minutes + 1 } : e));
+              }
+              return [...prevLog, { date: todayKey, minutes: 1 }];
+            });
+
+            addXP(2);
+            updateDailyStreak();
+            return 0; // reset active seconds accumulator for the next minute
+          }
+          return nextSec;
+        });
+      }
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [isRunning, seconds, isBreak, addXP, updateDailyStreak]);
+
+  // Session completion effect
   useEffect(() => {
     if (seconds !== 0 || !isRunning) return;
     setIsRunning(false);
@@ -580,20 +612,22 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     // Focus session complete!
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
 
-    const todayIndex = (new Date().getDay() + 6) % 7;
-    setStudyMinutes((curr) =>
-      curr.map((m, idx) => (idx === todayIndex ? m + timerPreset : m))
-    );
+    // Flush any remaining activeFocusSeconds (round up if >= 30s)
+    if (activeFocusSeconds >= 30) {
+      const todayIndex = (new Date().getDay() + 6) % 7;
+      setStudyMinutes((curr) => curr.map((m, idx) => (idx === todayIndex ? m + 1 : m)));
+      const todayKey = toDateKey(new Date());
+      setFocusLog((prevLog) => {
+        const existing = prevLog.find((e) => e.date === todayKey);
+        if (existing) return prevLog.map((e) => (e.date === todayKey ? { ...e, minutes: e.minutes + 1 } : e));
+        return [...prevLog, { date: todayKey, minutes: 1 }];
+      });
+      addXP(2);
+    }
+    setActiveFocusSeconds(0);
 
-    const todayKey = toDateKey(new Date());
-    setFocusLog((prev) => {
-      const existing = prev.find((e) => e.date === todayKey);
-      if (existing) return prev.map((e) => e.date === todayKey ? { ...e, minutes: e.minutes + timerPreset } : e);
-      return [...prev, { date: todayKey, minutes: timerPreset }];
-    });
-
-    // XP & streak
-    addXP(timerPreset * 2);
+    // Completion bonus XP & streak
+    addXP(10);
     updateDailyStreak();
     setStreak((p) => ({ ...p, focusSessionsCompleted: p.focusSessionsCompleted + 1 }));
 
@@ -605,11 +639,35 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     setIsBreak(true);
     setSeconds(breakTime * 60);
     showToast(`🎉 Focus session complete! Starting ${breakTime}min break...`, "success");
-  }, [seconds, isRunning, timerPreset, isBreak, pomodoroSession, addXP, updateDailyStreak, showToast]);
+  }, [seconds, isRunning, timerPreset, isBreak, pomodoroSession, activeFocusSeconds, addXP, updateDailyStreak, showToast]);
+
+  const flushActiveFocusTime = () => {
+    if (activeFocusSeconds >= 30) {
+      const todayIndex = (new Date().getDay() + 6) % 7;
+      setStudyMinutes((curr) => curr.map((m, idx) => (idx === todayIndex ? m + 1 : m)));
+      const todayKey = toDateKey(new Date());
+      setFocusLog((prevLog) => {
+        const existing = prevLog.find((e) => e.date === todayKey);
+        if (existing) return prevLog.map((e) => (e.date === todayKey ? { ...e, minutes: e.minutes + 1 } : e));
+        return [...prevLog, { date: todayKey, minutes: 1 }];
+      });
+      addXP(2);
+      updateDailyStreak();
+    }
+    setActiveFocusSeconds(0);
+  };
 
   const changeTimerPreset = (mins: number) => {
+    flushActiveFocusTime();
     setTimerPreset(mins);
     setSeconds(mins * 60);
+    setIsRunning(false);
+    setIsBreak(false);
+  };
+
+  const handleResetTimer = () => {
+    flushActiveFocusTime();
+    setSeconds(timerPreset * 60);
     setIsRunning(false);
     setIsBreak(false);
   };
@@ -638,17 +696,39 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   });
 
   const last7Days = useMemo(() => getLast7Days(), []);
-  const graphData = useMemo(() => last7Days.map((dateKey) => {
-    const entry = focusLog.find((e) => e.date === dateKey);
-    return { dateKey, label: formatDayLabel(dateKey), minutes: entry ? entry.minutes : 0, isToday: dateKey === toDateKey(new Date()) };
-  }), [last7Days, focusLog]);
+  const graphData = useMemo(() => {
+    const todayKey = toDateKey(new Date());
+    return last7Days.map((dateKey) => {
+      const entry = focusLog.find((e) => e.date === dateKey);
+      const isToday = dateKey === todayKey;
+      const baseMinutes = entry ? entry.minutes : 0;
+      const liveFraction = isToday && isRunning && !isBreak ? activeFocusSeconds / 60 : 0;
+      const effectiveMinutes = baseMinutes + liveFraction;
+      return {
+        dateKey,
+        label: formatDayLabel(dateKey),
+        minutes: baseMinutes,
+        effectiveMinutes,
+        isToday,
+        isTimerActive: isToday && isRunning && !isBreak,
+      };
+    });
+  }, [last7Days, focusLog, isRunning, isBreak, activeFocusSeconds]);
 
-  const graphMaxMinutes = useMemo(() => Math.max(...graphData.map((d) => d.minutes), 300), [graphData]);
+  // Scaled dynamically to provide meaningful visual feedback as soon as focus starts
+  const graphMaxMinutes = useMemo(() => {
+    const maxVal = Math.max(...graphData.map((d) => d.effectiveMinutes || d.minutes), 0);
+    if (maxVal <= 25) return 30; // 30m scale so 25m Pomodoro fills over 80% of bar
+    if (maxVal <= 60) return 60; // 1-hour scale
+    if (maxVal <= 120) return 120; // 2-hour scale
+    return Math.ceil(maxVal / 60) * 60;
+  }, [graphData]);
+
   const totalLoggedMinutes = useMemo(() => graphData.reduce((sum, d) => sum + d.minutes, 0), [graphData]);
   const weeklyStudyMinutes = totalLoggedMinutes;
   const focusTargetMinutes = weeklyGoalHours * 60;
   const targetProgress = focusTargetMinutes > 0 ? Math.min(100, Math.round((weeklyStudyMinutes / focusTargetMinutes) * 100)) : 0;
-  const totalSessions = useMemo(() => Math.ceil(totalLoggedMinutes / 25), [totalLoggedMinutes]);
+  const totalSessions = useMemo(() => Math.max(streak.focusSessionsCompleted, Math.ceil(totalLoggedMinutes / 25)), [streak.focusSessionsCompleted, totalLoggedMinutes]);
   const todayMinutes = useMemo(() => {
     const todayEntry = focusLog.find((e) => e.date === toDateKey(new Date()));
     return todayEntry ? todayEntry.minutes : 0;
@@ -1820,10 +1900,17 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                       </div>
                       <div className="grid grid-cols-7 gap-2 items-end h-14 rounded-xl p-2" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
                         {graphData.map((d) => {
-                          const heightPct = graphMaxMinutes > 0 ? Math.min(100, Math.max(15, (d.minutes / graphMaxMinutes) * 100)) : 15;
+                          const heightPct = graphMaxMinutes > 0 ? Math.min(100, Math.max(15, (d.effectiveMinutes / graphMaxMinutes) * 100)) : 15;
                           return (
                             <div key={d.dateKey} className="flex flex-col items-center gap-1 h-full justify-end" title={`${d.label}: ${d.minutes} mins`}>
-                              <div className="w-full rounded-md transition-all duration-300" style={{ height: `${heightPct}%`, backgroundColor: d.isToday ? "var(--m-primary)" : d.minutes > 0 ? "var(--m-accent)" : "var(--m-border)" }} />
+                              <div
+                                className={`w-full rounded-md transition-all duration-300 ${d.isTimerActive ? "animate-pulse ring-1 ring-[var(--m-primary)]" : ""}`}
+                                style={{
+                                  height: `${heightPct}%`,
+                                  backgroundColor: d.isToday ? "var(--m-primary)" : d.minutes > 0 ? "var(--m-accent)" : "var(--m-border)",
+                                  boxShadow: d.isTimerActive ? "0 0 10px var(--m-primary)" : undefined,
+                                }}
+                              />
                               <span className={`text-[9px] font-[DM_Mono] ${d.isToday ? "font-bold" : ""}`} style={{ color: d.isToday ? "var(--m-primary)" : "var(--m-text-sub)" }}>{d.label.split(" ")[0]}</span>
                             </div>
                           );
@@ -1864,7 +1951,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                             {isRunning ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
                             <span>{isRunning ? "Pause" : "Start"}</span>
                           </button>
-                          <button onClick={() => { setSeconds(timerPreset * 60); setIsRunning(false); setIsBreak(false); }} className="p-2 rounded-full transition-colors duration-200 hover:opacity-100" style={{ color: "color-mix(in srgb, var(--m-primary-text) 80%, transparent)" }} title="Reset">
+                          <button onClick={handleResetTimer} className="p-2 rounded-full transition-colors duration-200 hover:opacity-100" style={{ color: "color-mix(in srgb, var(--m-primary-text) 80%, transparent)" }} title="Reset">
                             <RotateCcw size={14} />
                           </button>
                         </div>
@@ -2458,18 +2545,35 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                 </div>
                 <div className="mt-6 grid h-48 grid-cols-7 items-end gap-3 rounded-2xl p-5" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
                   {graphData.map((d) => {
-                    const barPct = graphMaxMinutes > 0 ? (d.minutes / graphMaxMinutes) * 100 : 0;
+                    const barPct = graphMaxMinutes > 0 ? (d.effectiveMinutes / graphMaxMinutes) * 100 : 0;
                     return (
                       <div key={d.dateKey} className="group relative flex h-full flex-col justify-end items-center gap-2" title={`${d.label}: ${d.minutes}m`}>
-                        {d.minutes > 0 && <span className="text-[10px] font-bold font-[DM_Mono]" style={{ color: "var(--m-primary)" }}>{d.minutes}m</span>}
-                        <div className="w-full max-w-[38px] rounded-t-xl transition-all duration-500" style={{ height: `${Math.max(6, barPct)}%`, backgroundColor: d.isToday ? "var(--m-primary)" : d.minutes > 0 ? "var(--m-accent)" : "var(--m-border)", opacity: d.minutes > 0 || d.isToday ? 1 : 0.4 }} />
+                        {d.isTimerActive ? (
+                          <span className="text-[10px] font-bold font-[DM_Mono] flex items-center gap-1 animate-pulse" style={{ color: "var(--m-primary)" }}>
+                            <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
+                            {d.minutes > 0 ? `${d.minutes}m` : `${activeFocusSeconds}s`}
+                          </span>
+                        ) : d.minutes > 0 ? (
+                          <span className="text-[10px] font-bold font-[DM_Mono]" style={{ color: "var(--m-primary)" }}>{d.minutes}m</span>
+                        ) : null}
+                        <div
+                          className={`w-full max-w-[38px] rounded-t-xl transition-all duration-300 ${
+                            d.isTimerActive ? "ring-2 ring-[var(--m-primary)] ring-offset-2 ring-offset-black/20" : ""
+                          }`}
+                          style={{
+                            height: `${Math.max(6, Math.min(100, barPct))}%`,
+                            backgroundColor: d.isToday ? "var(--m-primary)" : d.minutes > 0 ? "var(--m-accent)" : "var(--m-border)",
+                            opacity: d.minutes > 0 || d.isToday ? 1 : 0.4,
+                            boxShadow: d.isTimerActive ? "0 0 16px var(--m-primary)" : undefined,
+                          }}
+                        />
                         <span className={`text-[11px] font-[DM_Mono] ${d.isToday ? "font-bold" : ""}`} style={{ color: d.isToday ? "var(--m-primary)" : "var(--m-text-sub)" }}>{d.label}</span>
                       </div>
                     );
                   })}
                 </div>
                 <div className="mt-5 flex items-center justify-between text-xs" style={{ color: "var(--m-text-sub)" }}>
-                  <span>Today: <b style={{ color: "var(--m-primary)" }}>{formatStudyTime(todayMinutes)}</b></span>
+                  <span>Today: <b style={{ color: "var(--m-primary)" }}>{formatStudyTime(todayMinutes)} {isRunning && !isBreak && activeFocusSeconds > 0 ? `(${activeFocusSeconds}s live)` : ""}</b></span>
                   <span>7-Day Total: <b style={{ color: "var(--m-primary)" }}>{formatStudyTime(totalLoggedMinutes)}</b></span>
                 </div>
               </div>
@@ -2509,7 +2613,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                         {isRunning ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
                         <span>{isRunning ? "Pause" : "Start"}</span>
                       </button>
-                      <button onClick={() => { setSeconds(timerPreset * 60); setIsRunning(false); setIsBreak(false); }} className="p-2 rounded-full" style={{ color: "var(--m-text-sub)" }}><RotateCcw size={14} /></button>
+                      <button onClick={handleResetTimer} className="p-2 rounded-full" style={{ color: "var(--m-text-sub)" }} title="Reset"><RotateCcw size={14} /></button>
                     </div>
                   </div>
                   <div className="mt-3 flex items-center justify-between text-[11px]" style={{ color: "var(--m-text-sub)" }}>
@@ -3013,7 +3117,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
             </div>
             <div className="mt-5 flex-1 overflow-y-auto space-y-6 pr-1">
               <div>
-                <p className="text-xs font-bold mb-2" style={{ color: "var(--m-text-heading)" }}>Upload (Max 20MB)</p>
+                <p className="text-xs font-bold mb-2" style={{ color: "var(--m-text-heading)" }}>Upload (Max 25MB)</p>
                 <FileUpload accessToken={accessToken} userId={userId} subjectId={filesModalSubject.id} onUploadSuccess={handleUploadSuccess} allowAutopilot={true} />
               </div>
               <div>

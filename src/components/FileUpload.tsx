@@ -52,9 +52,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    // 1. Enforce max file size: ~20MB
-    if (file.size > 20 * 1024 * 1024) {
-      setErrorMessage(`File "${file.name}" exceeds the 20MB max size limit (${formatFileSize(file.size)}).`);
+    // 1. Enforce max file size: ~25MB
+    if (file.size > 25 * 1024 * 1024) {
+      setErrorMessage(`File "${file.name}" exceeds the 25MB max size limit (${formatFileSize(file.size)}).`);
       return;
     }
 
@@ -132,9 +132,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         onClick={() => fileInputRef.current?.click()}
         className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition cursor-pointer ${
           isDragging
-            ? "border-[var(--m-primary)] bg-[var(--m-surface-alt)] scale-[1.01]"
-            : "border-[#cbd8ca] bg-white/70 hover:border-[var(--m-primary)] hover:bg-white"
+            ? "scale-[1.01]"
+            : "hover:scale-[1.005]"
         }`}
+        style={{
+          borderColor: isDragging ? "var(--m-primary)" : "var(--m-border)",
+          backgroundColor: isDragging
+            ? "color-mix(in srgb, var(--m-primary) 12%, transparent)"
+            : "var(--m-surface-alt)",
+        }}
       >
         <input
           ref={fileInputRef}
@@ -144,31 +150,37 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.docx,.doc,.pptx,.xlsx,.txt"
         />
 
-        <div className="grid size-12 place-items-center rounded-2xl bg-[#eef4ec] text-[#244c3b] shadow-xs mb-2">
+        <div
+          className="grid size-12 place-items-center rounded-2xl shadow-xs mb-2"
+          style={{
+            backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)",
+            color: "var(--m-primary)",
+          }}
+        >
           <UploadCloud size={24} />
         </div>
 
-        <p className="text-xs font-bold text-[#172b20]">
+        <p className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>
           {isDragging ? "Drop your file here..." : "Drag & drop attachment here, or "}
-          <span className="text-[#244c3b] underline font-extrabold">browse files</span>
+          <span className="underline font-extrabold" style={{ color: "var(--m-primary)" }}>browse files</span>
         </p>
 
-        <p className="mt-1 text-[11px] text-[#55635a]">
-          Supports PDF, Images, Word, Slides, Sheets & Text (Max 20MB)
+        <p className="mt-1 text-[11px]" style={{ color: "var(--m-text-sub)" }}>
+          Supports PDF, Images, Word, Slides, Sheets & Text (Max 25MB)
         </p>
 
         {isUploading && (
           <div className="mt-4 w-full max-w-xs space-y-1.5">
-            <div className="flex items-center justify-between text-[11px] font-bold text-[#244c3b]">
+            <div className="flex items-center justify-between text-[11px] font-bold" style={{ color: "var(--m-primary)" }}>
               <span className="flex items-center gap-1">
                 <Loader2 size={13} className="animate-spin" /> Uploading to cloud...
               </span>
               <span>{uploadProgress}%</span>
             </div>
-            <div className="h-2 w-full overflow-hidden rounded-full bg-[#cbd8ca]">
+            <div className="h-2 w-full overflow-hidden rounded-full" style={{ backgroundColor: "var(--m-border)" }}>
               <div
-                className="h-full rounded-full bg-[#244c3b] transition-all duration-300"
-                style={{ width: `${uploadProgress}%` }}
+                className="h-full rounded-full transition-all duration-300"
+                style={{ width: `${uploadProgress}%`, backgroundColor: "var(--m-primary)" }}
               />
             </div>
           </div>

@@ -195,6 +195,31 @@ export async function fetchUserWorkspace(accessToken: string, userId: string): P
     console.warn("Supabase database workspace fetch failed:", e);
   }
 
+  // 1b. Try alternative ID (if userId is username or clerk ID)
+  try {
+    let altId = "";
+    if (userId.startsWith("user_")) {
+      const { data: prof } = await supabase.from("user_profiles").select("username").eq("id", userId).maybeSingle();
+      if (prof?.username) altId = prof.username;
+    } else {
+      const { data: prof } = await supabase.from("user_profiles").select("id").eq("username", userId).maybeSingle();
+      if (prof?.id) altId = prof.id;
+    }
+
+    if (altId) {
+      const { data: altDb } = await supabase.from("workspaces").select("data").eq("user_id", altId).maybeSingle();
+      if (altDb && altDb.data && typeof altDb.data === "object") {
+        return altDb.data as UserWorkspace;
+      }
+      const altCached = localStorage.getItem(`dreamit_workspace_${altId}`);
+      if (altCached) {
+        try { return JSON.parse(altCached); } catch {}
+      }
+    }
+  } catch (lookupErr) {
+    console.warn("Alt workspace lookup failed:", lookupErr);
+  }
+
   // 2. Fallback: Local Storage cached strictly for this specific user ID
   const cached = localStorage.getItem(cacheKey);
   if (cached) {
@@ -205,7 +230,6 @@ export async function fetchUserWorkspace(accessToken: string, userId: string): P
     }
   }
 
-  // Brand new user account — return null so a fresh empty workspace is created
   return null;
 }
 
@@ -219,19 +243,49 @@ export async function saveUserWorkspace(accessToken: string, userId: string, wor
 
   let savedRemote = false;
 
-  // Save to Supabase Database table 'workspaces' per user_id
+  // Save to Supabase Database table 'workspaces' per user_id with conflict resolution
   try {
     const { error } = await supabase
       .from("workspaces")
-      .upsert({ user_id: userId, data: workspaceData, updated_at: new Date().toISOString() });
+      .upsert(
+        { user_id: userId, data: workspaceData, updated_at: new Date().toISOString() },
+        { onConflict: "user_id" }
+      );
     if (!error) {
       savedRemote = true;
+    } else {
+      console.warn("Supabase database workspace save error:", error);
     }
   } catch (e) {
     console.warn("Supabase database workspace save failed:", e);
   }
 
   return savedRemote;
+}
+
+/** Subscribe to realtime workspace changes for live parent-child sync */
+export function subscribeToWorkspace(userId: string, onUpdate: (data: UserWorkspace) => void): () => void {
+  const channel = supabase
+    .channel(`workspace-sync-${userId}`)
+    .on(
+      "postgres_changes",
+      {
+        event: "*",
+        schema: "public",
+        table: "workspaces",
+        filter: `user_id=eq.${userId}`,
+      },
+      (payload: any) => {
+        if (payload.new && payload.new.data) {
+          onUpdate(payload.new.data as UserWorkspace);
+        }
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
 }
 
 /** Delete workspace data for a user (account cleanup) */
@@ -248,12 +302,14 @@ export async function fetchUserFiles(accessToken: string, userId: string): Promi
   if (!userId) return [];
   const cacheKey = `dreamit_files_${userId}`;
 
-  const cached = localStorage.getItem(cacheKey);
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch {
-      // Ignore parse error
+  if (typeof window !== "undefined" && window.localStorage) {
+    const cached = window.localStorage.getItem(cacheKey);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {
+        // Ignore parse error
+      }
     }
   }
 
@@ -272,36 +328,44 @@ export async function uploadAttachedFile(
   if (!userId) throw new Error("User authentication required");
   const cacheKey = `dreamit_files_${userId}`;
 
-  // Enforce Max 20MB
-  if (file.size > 20 * 1024 * 1024) {
-    throw new Error("File size exceeds the 20MB limit.");
+  // Enforce Max 25MB
+  if (file.size > 25 * 1024 * 1024) {
+    throw new Error("File size exceeds the 25MB limit.");
   }
 
-  const formData = new FormData();
-  formData.append("file", file);
-  formData.append("subjectId", subjectId.toString());
-  if (taskId !== undefined) formData.append("taskId", taskId.toString());
-  if (kind) formData.append("kind", kind);
+  // Sanitize file name and build storage path
+  const sanitizedName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+  const storagePath = `subject_files/${userId}/${subjectId}/${Date.now()}_${sanitizedName}`;
 
-  const res = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-d53fe46f/files`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-    },
-    body: formData,
-  });
+  // Direct upload to Supabase Storage bucket
+  const { error: uploadError } = await supabase.storage
+    .from("chat_attachments")
+    .upload(storagePath, file, {
+      contentType: file.type || "application/octet-stream",
+      upsert: true,
+    });
 
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.error || `Upload failed: ${res.statusText}`);
+  if (uploadError) {
+    console.error("Storage upload error:", uploadError);
+    throw new Error(uploadError.message || "Failed to upload file to storage.");
   }
 
-  const data = await res.json();
-  const meta: AttachedFile = data.file;
+  const meta: AttachedFile = {
+    id: `file_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+    fileName: file.name,
+    mimeType: file.type || "application/octet-stream",
+    size: file.size,
+    subjectId,
+    taskId,
+    storagePath,
+    createdAt: new Date().toISOString(),
+  };
 
   const existing = await fetchUserFiles(accessToken, userId);
-  const updated = [...existing, meta];
-  localStorage.setItem(cacheKey, JSON.stringify(updated));
+  const updated = [meta, ...existing];
+  if (typeof window !== "undefined" && window.localStorage) {
+    window.localStorage.setItem(cacheKey, JSON.stringify(updated));
+  }
   return meta;
 }
 
@@ -314,12 +378,12 @@ export async function getFileDownloadUrl(
 ): Promise<string> {
   try {
     const { data, error } = await supabase.storage
-      .from("attachments")
+      .from("chat_attachments")
       .createSignedUrl(storagePath, 3600);
     if (!error && data?.signedUrl) return data.signedUrl;
   } catch {}
 
-  const { data: pub } = supabase.storage.from("attachments").getPublicUrl(storagePath);
+  const { data: pub } = supabase.storage.from("chat_attachments").getPublicUrl(storagePath);
   return pub.publicUrl;
 }
 
@@ -334,12 +398,19 @@ export async function deleteAttachedFile(
   const cacheKey = `dreamit_files_${userId}`;
 
   try {
-    await supabase.storage.from("attachments").remove([storagePath]);
-  } catch {}
+    const { error } = await supabase.storage.from("chat_attachments").remove([storagePath]);
+    if (error) {
+      console.warn("Could not remove file from storage:", error);
+    }
+  } catch (e) {
+    console.warn("Storage file removal exception:", e);
+  }
 
   const existing = await fetchUserFiles(accessToken, userId);
   const updated = existing.filter((f) => f.id !== fileId);
-  localStorage.setItem(cacheKey, JSON.stringify(updated));
+  if (typeof window !== "undefined" && window.localStorage) {
+    window.localStorage.setItem(cacheKey, JSON.stringify(updated));
+  }
   return true;
 }
 
@@ -803,4 +874,120 @@ export async function fetchUserProfiles(userIds: string[]): Promise<Record<strin
     profileMap[profile.id] = profile;
   });
   return profileMap;
+}
+
+/* ─────────────── Parent Monitoring System ─────────────── */
+
+export interface ParentLink {
+  id: string;
+  parent_user_id: string;
+  parent_username: string;
+  child_user_id: string;
+  child_username: string;
+  created_at: string;
+}
+
+export interface ChatActivityReport {
+  friendId: string;
+  friendUsername: string;
+  messageCount: number;
+  lastMessageAt: string;
+  messages: DirectMessage[];
+}
+
+export interface ParentReport {
+  workspace: UserWorkspace | null;
+  chatActivity: ChatActivityReport[];
+  friends: Friendship[];
+  friendCount: number;
+}
+
+/** Check if a user has any parent links (for auto-redirecting returning parents) */
+export async function fetchParentLinks(parentUserId: string): Promise<ParentLink[]> {
+  try {
+    const { data, error } = await supabase
+      .from("parent_links")
+      .select("*")
+      .eq("parent_user_id", parentUserId);
+
+    if (error) {
+      console.error("Error fetching parent links:", error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error("Exception fetching parent links:", err);
+    return [];
+  }
+}
+
+/** Fetch all chat messages for a child user (full transparency for parents) */
+export async function fetchChildChatMessages(childUserId: string): Promise<DirectMessage[]> {
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    const { data, error } = await supabase
+      .from("direct_messages")
+      .select("*")
+      .or(`sender_id.eq.${childUserId},receiver_id.eq.${childUserId}`)
+      .gte("created_at", twentyFourHoursAgo)
+      .order("created_at", { ascending: false });
+
+    if (error) {
+      console.error("Error fetching child messages:", error);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error("Exception fetching child messages:", err);
+    return [];
+  }
+}
+
+/** Build comprehensive parent report for a child's account */
+export async function fetchParentReport(childUserId: string): Promise<ParentReport> {
+  // 1. Fetch child's workspace
+  const workspace = await fetchUserWorkspace("parent-access", childUserId);
+
+  // 2. Fetch child's friends
+  const friends = await fetchFriends(childUserId);
+
+  // 3. Fetch all child's messages (full transparency)
+  const allMessages = await fetchChildChatMessages(childUserId);
+
+  // 4. Group messages by friend for activity report
+  const friendMessageMap = new Map<string, DirectMessage[]>();
+  allMessages.forEach((msg) => {
+    const friendId = msg.sender_id === childUserId ? msg.receiver_id : msg.sender_id;
+    if (!friendMessageMap.has(friendId)) {
+      friendMessageMap.set(friendId, []);
+    }
+    friendMessageMap.get(friendId)!.push(msg);
+  });
+
+  // 5. Resolve friend usernames
+  const friendIds = Array.from(friendMessageMap.keys());
+  const friendProfiles = await fetchUserProfiles(friendIds);
+
+  // 6. Build chat activity report
+  const chatActivity: ChatActivityReport[] = [];
+  friendMessageMap.forEach((messages, friendId) => {
+    chatActivity.push({
+      friendId,
+      friendUsername: friendProfiles[friendId]?.username || "Unknown",
+      messageCount: messages.length,
+      lastMessageAt: messages[0]?.created_at || "",
+      messages: messages,
+    });
+  });
+
+  // Sort by most recent activity
+  chatActivity.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+
+  return {
+    workspace,
+    chatActivity,
+    friends,
+    friendCount: friends.length,
+  };
 }

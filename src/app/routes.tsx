@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router";
 import { useUser, useClerk, useSignIn, useSignUp, AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 import {
@@ -13,9 +13,13 @@ import {
   EyeOff,
 } from "lucide-react";
 const Dashboard = lazy(() => import("./Dashboard"));
+const ParentDashboard = lazy(() => import("./ParentDashboard"));
 import LandingPage from "./LandingPage";
+import RoleSelectionScreen from "./components/RoleSelectionScreen";
+import ParentLoginForm from "./components/ParentLoginForm";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
+import { fetchParentLinks, upsertUserProfile } from "../lib/supabase";
 const CadenceApp = lazy(() => import("./cadence/CadenceApp"));
 const PrivacyPolicy = lazy(() => import("./PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./TermsOfService"));
@@ -368,17 +372,96 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
   );
 }
 
-/* ─────────────── Root Component with Clerk Auth ─────────────── */
+/* ─────────────── Root Component with Clerk Auth & Parental Control ─────────────── */
+type AppScreen = "landing" | "role-select" | "auth" | "parent-auth" | "parent-dashboard";
+
 function Root() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { signOut } = useClerk();
-  const [showAuth, setShowAuth] = useState(false);
+  const [screen, setScreen] = useState<AppScreen>("landing");
+  const [isParentMode, setIsParentMode] = useState(false);
+  const [childUserId, setChildUserId] = useState("");
+  const [childUsername, setChildUsername] = useState("");
+  const [parentCheckDone, setParentCheckDone] = useState(false);
+
+  // Restore parent mode from session on reload
+  useEffect(() => {
+    const storedParent = sessionStorage.getItem("parentMode");
+    const storedChildId = sessionStorage.getItem("childUserId");
+    const storedChildName = sessionStorage.getItem("childUsername");
+    if (storedParent === "true" && storedChildId && storedChildName) {
+      setIsParentMode(true);
+      setChildUserId(storedChildId);
+      setChildUsername(storedChildName);
+    }
+  }, []);
+
+  // Check if signed-in user is a parent with existing links
+  useEffect(() => {
+    if (isSignedIn && user && !parentCheckDone) {
+      const checkParent = async () => {
+        // Upsert profile for the user
+        await upsertUserProfile(user.id, user.username || user.firstName || "User", user.imageUrl);
+
+        // If already in parent mode (from sessionStorage), skip check
+        if (isParentMode) {
+          setParentCheckDone(true);
+          return;
+        }
+
+        // Check if user has parent links
+        const links = await fetchParentLinks(user.id);
+        if (links.length > 0) {
+          // This is a returning parent
+          setIsParentMode(true);
+          setChildUserId(links[0].child_user_id);
+          setChildUsername(links[0].child_username);
+          sessionStorage.setItem("parentMode", "true");
+          sessionStorage.setItem("childUserId", links[0].child_user_id);
+          sessionStorage.setItem("childUsername", links[0].child_username);
+        }
+        setParentCheckDone(true);
+      };
+      checkParent();
+    } else if (!isSignedIn) {
+      setParentCheckDone(false);
+    }
+  }, [isSignedIn, user, parentCheckDone, isParentMode]);
 
   if (!isLoaded) {
     return <PageLoader />;
   }
 
   if (isSignedIn && user) {
+    const activeParentMode = isParentMode || sessionStorage.getItem("parentMode") === "true";
+    const activeChildId = childUserId || sessionStorage.getItem("childUserId") || user.id;
+    const activeChildUsername = childUsername || sessionStorage.getItem("childUsername") || user.username || "Child";
+
+    // Parent Mode → Show Parent Dashboard
+    if (activeParentMode && activeChildId) {
+      return (
+        <Suspense fallback={<PageLoader />}>
+          <ParentDashboard
+            parentUserId={user.id}
+            parentUsername="Parent"
+            childUserId={activeChildId}
+            childUsername={activeChildUsername}
+            onSignOut={() => {
+              setIsParentMode(false);
+              setChildUserId("");
+              setChildUsername("");
+              sessionStorage.removeItem("parentMode");
+              sessionStorage.removeItem("childUserId");
+              sessionStorage.removeItem("childUsername");
+              setScreen("landing");
+              signOut();
+            }}
+          />
+        </Suspense>
+      );
+    }
+
+    // Normal User → Show Dashboard
     const userEmail = user.primaryEmailAddress?.emailAddress || "";
     const userName =
       user.fullName ||
@@ -402,12 +485,40 @@ function Root() {
     );
   }
 
-  // Not signed in → show Landing Page or Auth Card
-  if (showAuth) {
-    return <ClerkAuthCard onBack={() => setShowAuth(false)} />;
+  // Not signed in → show Landing Page, Role Select, Auth Card, or Parent Auth
+  switch (screen) {
+    case "role-select":
+      return (
+        <RoleSelectionScreen
+          onSelectRole={(role) => {
+            if (role === "parent") {
+              setScreen("parent-auth");
+            } else {
+              setScreen("auth");
+            }
+          }}
+          onBack={() => setScreen("landing")}
+        />
+      );
+    case "auth":
+      return <ClerkAuthCard onBack={() => setScreen("role-select")} />;
+    case "parent-auth":
+      return (
+        <ParentLoginForm
+          onBack={() => setScreen("role-select")}
+          onParentReady={(cUserId, cUsername) => {
+            setIsParentMode(true);
+            setChildUserId(cUserId);
+            setChildUsername(cUsername);
+            sessionStorage.setItem("parentMode", "true");
+            sessionStorage.setItem("childUserId", cUserId);
+            sessionStorage.setItem("childUsername", cUsername);
+          }}
+        />
+      );
+    default:
+      return <LandingPage onGetStarted={() => setScreen("role-select")} />;
   }
-
-  return <LandingPage onGetStarted={() => setShowAuth(true)} />;
 }
 
 /* ─────────────── Error Boundary Component ─────────────── */
