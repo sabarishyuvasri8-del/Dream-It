@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 const Dashboard = lazy(() => import("./Dashboard"));
 const ParentDashboard = lazy(() => import("./ParentDashboard"));
-import LandingPage from "./LandingPage";
+const LandingPage = lazy(() => import("./LandingPage"));
 import RoleSelectionScreen from "./components/RoleSelectionScreen";
 import ParentLoginForm from "./components/ParentLoginForm";
 import { useTheme } from "../lib/ThemeContext";
@@ -517,7 +517,11 @@ function Root() {
         />
       );
     default:
-      return <LandingPage onGetStarted={() => setScreen("role-select")} />;
+      return (
+        <Suspense fallback={<PageLoader />}>
+          <LandingPage onGetStarted={() => setScreen("role-select")} />
+        </Suspense>
+      );
   }
 }
 

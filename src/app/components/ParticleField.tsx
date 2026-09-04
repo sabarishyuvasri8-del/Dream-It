@@ -35,7 +35,7 @@ const PALETTE_WEIGHTS = [
   0.05,                            // warm accent = 5%
 ];
 
-function pickColor(): { r: number; g: number; b: number } {
+function getRandomColor(): { r: number; g: number; b: number } {
   let r = Math.random();
   let cumulative = 0;
   for (let i = 0; i < PALETTE_WEIGHTS.length; i++) {
@@ -46,12 +46,15 @@ function pickColor(): { r: number; g: number; b: number } {
 }
 
 // ── Responsive particle count ──
-function getParticleCount(width: number): number {
-  if (width < 480) return 40;
-  if (width < 768) return 70;
-  if (width < 1024) return 100;
-  if (width < 1440) return 125;
-  return 150;
+function getParticleCount(width: number, isLowSpec: boolean): number {
+  if (isLowSpec) {
+    return width < 768 ? 16 : 26;
+  }
+  if (width < 480) return 32;
+  if (width < 768) return 50;
+  if (width < 1024) return 75;
+  if (width < 1440) return 90;
+  return 110;
 }
 
 // ── Hero safe zone (center of viewport, upper half) ──
@@ -78,20 +81,16 @@ function isInSafeZone(
 
 // ── Particle ──
 interface Particle {
-  // Position & base position
   baseX: number;
   baseY: number;
   x: number;
   y: number;
-  // Velocity
   vx: number;
   vy: number;
-  // Drift (autonomous micro-movement)
   driftVx: number;
   driftVy: number;
   driftPhase: number;
   driftSpeed: number;
-  // Appearance
   length: number;
   width: number;
   rotation: number;
@@ -100,7 +99,6 @@ interface Particle {
   color: { r: number; g: number; b: number };
   alpha: number;
   baseAlpha: number;
-  // Depth layer (0 = far, 1 = close)
   depth: number;
 }
 
@@ -110,71 +108,36 @@ function createParticle(canvasW: number, canvasH: number): Particle {
   let x = Math.random() * canvasW;
   let y = Math.random() * canvasH;
   
-  // Reduce probability of spawning in hero safe zone
-  // If in safe zone, 70% chance to reroll position
   if (isInSafeZone(x, y, safeZone) && Math.random() < 0.7) {
-    // Place outside safe zone
-    if (Math.random() < 0.5) {
-      x = Math.random() < 0.5
-        ? Math.random() * safeZone.x
-        : safeZone.x + safeZone.width + Math.random() * (canvasW - safeZone.x - safeZone.width);
-    } else {
-      y = Math.random() < 0.5
-        ? Math.random() * safeZone.y
-        : safeZone.y + safeZone.height + Math.random() * (canvasH - safeZone.y - safeZone.height);
-    }
+    x = Math.random() < 0.5
+      ? Math.random() * safeZone.x
+      : safeZone.x + safeZone.width + Math.random() * (canvasW - safeZone.x - safeZone.width);
+    y = Math.random() < 0.5
+      ? Math.random() * safeZone.y
+      : safeZone.y + safeZone.height + Math.random() * (canvasH - safeZone.y - safeZone.height);
   }
-  
+
+  const speedMultiplier = 0.6 + Math.random() * 0.8;
   const depth = Math.random();
-  const depthFactor = 0.3 + depth * 0.7; // 0.3 to 1.0
-  
-  // Particle dimensions: tiny directional strokes
-  const length = (2 + Math.random() * 4) * depthFactor; // 2-6px scaled by depth
-  // Rare chance for slightly longer particle
-  const finalLength = Math.random() < 0.08 ? length * 1.4 : length;
-  const width = 0.7 + Math.random() * 0.8; // 0.7-1.5px
-  
-  // Base alpha: very low for most, with depth influence
-  let baseAlpha: number;
-  const alphaRoll = Math.random();
-  if (alphaRoll < 0.5) {
-    baseAlpha = 0.08 + Math.random() * 0.12; // 0.08-0.20 (very faint)
-  } else if (alphaRoll < 0.85) {
-    baseAlpha = 0.20 + Math.random() * 0.15; // 0.20-0.35
-  } else {
-    baseAlpha = 0.35 + Math.random() * 0.10; // 0.35-0.45 (few bright ones)
-  }
-  
-  // Particles in safe zone get extra opacity reduction
-  if (isInSafeZone(x, y, safeZone)) {
-    baseAlpha *= 0.4;
-  }
-  
-  // Rotation: randomized with local coherence via seeding from position
-  const sectorAngle = Math.floor(x / 200) * 0.3 + Math.floor(y / 200) * 0.2;
-  const baseRotation = sectorAngle + (Math.random() - 0.5) * 1.2;
-  
-  // Autonomous drift: extremely subtle
-  const driftAngle = Math.random() * Math.PI * 2;
-  const driftMag = (0.02 + Math.random() * 0.06) * depthFactor;
-  
+  const baseAlpha = 0.25 + depth * 0.45;
+
   return {
     baseX: x,
     baseY: y,
     x,
     y,
-    vx: 0,
-    vy: 0,
-    driftVx: Math.cos(driftAngle) * driftMag,
-    driftVy: Math.sin(driftAngle) * driftMag,
+    vx: (Math.random() - 0.5) * 0.2,
+    vy: (Math.random() - 0.5) * 0.2,
+    driftVx: (Math.random() - 0.5) * 0.15 * speedMultiplier,
+    driftVy: (Math.random() - 0.5) * 0.15 * speedMultiplier,
     driftPhase: Math.random() * Math.PI * 2,
-    driftSpeed: 0.003 + Math.random() * 0.008,
-    length: finalLength,
-    width,
-    rotation: baseRotation,
-    rotationVelocity: 0,
-    baseRotation,
-    color: pickColor(),
+    driftSpeed: (0.003 + Math.random() * 0.006) * speedMultiplier,
+    length: 2 + depth * 5,
+    width: 0.8 + depth * 1.2,
+    rotation: Math.random() * Math.PI * 2,
+    rotationVelocity: (Math.random() - 0.5) * 0.003,
+    baseRotation: Math.random() * Math.PI * 2,
+    color: getRandomColor(),
     alpha: baseAlpha,
     baseAlpha,
     depth,
@@ -194,6 +157,12 @@ export default function ParticleField() {
     if (!canvas) return;
     const ctx = canvas.getContext('2d', { alpha: true });
     if (!ctx) return;
+
+    // Detect low-spec / low-RAM device
+    const isLowSpec = typeof navigator !== 'undefined' && (
+      ((navigator as any).deviceMemory && (navigator as any).deviceMemory <= 4) ||
+      (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4)
+    );
     
     // Check reduced motion preference
     const motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
@@ -201,20 +170,19 @@ export default function ParticleField() {
     const onMotionChange = () => { reducedMotionRef.current = motionQuery.matches; };
     motionQuery.addEventListener('change', onMotionChange);
     
-    // ── Canvas sizing with devicePixelRatio ──
+    // ── Canvas sizing with capped devicePixelRatio to save massive VRAM ──
     const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
+      const dpr = isLowSpec ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
       const w = window.innerWidth;
       const h = window.innerHeight;
-      canvas.width = w * dpr;
-      canvas.height = h * dpr;
+      canvas.width = Math.round(w * dpr);
+      canvas.height = Math.round(h * dpr);
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       
-      // Re-initialize particles on significant resize
-      const count = getParticleCount(w);
-      if (particlesRef.current.length === 0 || Math.abs(particlesRef.current.length - count) > 20) {
+      const count = getParticleCount(w, isLowSpec);
+      if (particlesRef.current.length === 0 || Math.abs(particlesRef.current.length - count) > 15) {
         particlesRef.current = Array.from({ length: count }, () => createParticle(w, h));
       }
     };
@@ -262,8 +230,22 @@ export default function ParticleField() {
     const ROTATION_DAMPING = 0.94;
     const ROTATION_RETURN = 0.02;
     
+    // ── Visibility-Aware Throttling (freeze loop when tab is hidden) ──
+    let isVisible = !document.hidden;
+    const handleVisibilityChange = () => {
+      isVisible = !document.hidden;
+      if (isVisible) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = requestAnimationFrame(animate);
+      } else {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // ── Animation loop ──
     const animate = () => {
+      if (!isVisible) return;
       const w = window.innerWidth;
       const h = window.innerHeight;
       const particles = particlesRef.current;
@@ -379,6 +361,7 @@ export default function ParticleField() {
       document.removeEventListener('mouseenter', onMouseEnter);
       window.removeEventListener('resize', resize);
       motionQuery.removeEventListener('change', onMotionChange);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
   

@@ -47,6 +47,7 @@ export default defineConfig({
           'supabase-vendor': ['@supabase/supabase-js'],
           'clerk-vendor': ['@clerk/clerk-react'],
           'markdown-vendor': ['react-markdown', 'remark-gfm'],
+          'katex-vendor': ['katex', 'rehype-katex', 'remark-math'],
         }
       }
     }

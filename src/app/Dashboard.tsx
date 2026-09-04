@@ -138,11 +138,15 @@ function renderSimpleMarkdown(text: string) {
   if (!text.trim()) {
     return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet. Switch to Edit mode to write your note!</p>;
   }
+  const hasMath = text.includes("$");
+  const remarkPlugins = hasMath ? [remarkGfm, remarkMath] : [remarkGfm];
+  const rehypePlugins = hasMath ? [rehypeKatex] : [];
+
   return (
     <div className="space-y-2 text-xs leading-relaxed font-[DM_Sans]">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        remarkPlugins={remarkPlugins}
+        rehypePlugins={rehypePlugins}
         components={{
           h1: ({node, ...props}) => <h1 className="font-[Roboto_Slab] text-xl font-bold mt-4 mb-2 pb-1 border-b" style={{ borderColor: "var(--m-border-light)", color: "var(--m-text-heading)" }} {...props} />,
           h2: ({node, ...props}) => <h2 className="font-[Roboto_Slab] text-lg font-semibold mt-3 mb-1" style={{ color: "var(--m-text-heading)" }} {...props} />,
@@ -747,6 +751,49 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     });
   }, [tasks, selectedSubject, taskFilterStatus]);
 
+  // Fast O(1) task counts per course for instant rendering on low-RAM devices
+  const openTaskCountByCourse = useMemo(() => {
+    const map = new Map<string, number>();
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (!t.done && t.course) {
+        map.set(t.course, (map.get(t.course) || 0) + 1);
+      }
+    }
+    return map;
+  }, [tasks]);
+
+  // Precomputed project metrics in single O(N) pass
+  const projectStatsByCourse = useMemo(() => {
+    const map = new Map<string, { total: number; open: number; done: number; pct: number }>();
+    for (let i = 0; i < tasks.length; i++) {
+      const t = tasks[i];
+      if (!t.course) continue;
+      let entry = map.get(t.course);
+      if (!entry) {
+        entry = { total: 0, open: 0, done: 0, pct: 0 };
+        map.set(t.course, entry);
+      }
+      entry.total++;
+      if (t.done) entry.done++;
+      else entry.open++;
+    }
+    map.forEach((entry) => {
+      entry.pct = entry.total ? Math.round((entry.done / entry.total) * 100) : 0;
+    });
+    return map;
+  }, [tasks]);
+
+  // Fast note count by subject ID
+  const noteCountBySubject = useMemo(() => {
+    const map = new Map<number, number>();
+    for (let i = 0; i < notes.length; i++) {
+      const sId = notes[i].subjectId;
+      map.set(sId, (map.get(sId) || 0) + 1);
+    }
+    return map;
+  }, [notes]);
+
   const completeCount = tasks.filter((t) => t.done).length;
   const progress = tasks.length ? Math.round((completeCount / tasks.length) * 100) : 0;
   const totalSeconds = (isBreak ? (pomodoroSession % 4 === 0 ? 15 : 5) : timerPreset) * 60;
@@ -762,13 +809,15 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   });
 
   const last7Days = useMemo(() => getLast7Days(), []);
+  // Throttled: recalculates on minute boundaries or status changes to eliminate 1-second render churn
+  const activeFocusQuarterMinute = Math.floor(activeFocusSeconds / 15);
   const graphData = useMemo(() => {
     const todayKey = toDateKey(new Date());
     return last7Days.map((dateKey) => {
       const entry = focusLog.find((e) => e.date === dateKey);
       const isToday = dateKey === todayKey;
       const baseMinutes = entry ? entry.minutes : 0;
-      const liveFraction = isToday && isRunning && !isBreak ? activeFocusSeconds / 60 : 0;
+      const liveFraction = isToday && isRunning && !isBreak ? activeFocusQuarterMinute * 0.25 : 0;
       const effectiveMinutes = baseMinutes + liveFraction;
       return {
         dateKey,
@@ -779,7 +828,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
         isTimerActive: isToday && isRunning && !isBreak,
       };
     });
-  }, [last7Days, focusLog, isRunning, isBreak, activeFocusSeconds]);
+  }, [last7Days, focusLog, isRunning, isBreak, activeFocusQuarterMinute]);
 
   // Scaled dynamically to provide meaningful visual feedback as soon as focus starts
   const graphMaxMinutes = useMemo(() => {
@@ -2481,7 +2530,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                       All ({tasks.length})
                     </button>
                     {subjects.map((s) => {
-                      const count = tasks.filter((t) => t.course === s.name && !t.done).length;
+                      const count = openTaskCountByCourse.get(s.name) || 0;
                       return (
                         <button key={s.id} onClick={() => { setSelectedSubject(s.name); setTaskCourse(s.name); }} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 feature-chip" style={selectedSubject === s.name ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
                           <span className="mr-2 inline-block size-2.5 rounded-full" style={{ backgroundColor: s.color }} />
@@ -2597,7 +2646,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                     <div className="divide-y" style={{ borderColor: "var(--m-border-light)" }}>
                       {filteredTasks.length ? (
                         filteredTasks.map((task) => (
-                          <div key={task.id} className={`group flex items-center gap-3.5 px-5 py-3.5 transition duration-200 hover:opacity-90 ${task.done ? "opacity-60" : ""}`}>
+                          <div key={task.id} className={`group flex items-center gap-3.5 px-5 py-3.5 transition duration-200 hover:opacity-90 contain-task ${task.done ? "opacity-60" : ""}`}>
                             <button onClick={() => toggleTask(task.id)} className="grid size-5 shrink-0 place-items-center rounded-full border transition" style={task.done ? { borderColor: "var(--m-primary)", backgroundColor: "var(--m-primary)", color: "white" } : { borderColor: "var(--m-border)", backgroundColor: "var(--m-surface)" }}>
                               {task.done && <Check size={13} strokeWidth={3} />}
                             </button>
@@ -2977,7 +3026,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                 {/* Messages Container (Fills middle area perfectly) */}
                 <div ref={chatContainerRef} className="flex-1 space-y-3 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
                   {messages.map((m, idx) => (
-                    <div key={idx} className="max-w-[92%] rounded-2xl px-4 py-3 shadow-xs" style={m.role === "assistant" ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" } : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px", marginLeft: "auto" }}>
+                    <div key={idx} className="max-w-[92%] rounded-2xl px-4 py-3 shadow-xs contain-chat" style={m.role === "assistant" ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" } : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px", marginLeft: "auto" }}>
                       {m.content ? (
                         renderSimpleMarkdown(m.content)
                       ) : (
@@ -3092,7 +3141,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                     {messages.map((m, idx) => (
                       <div
                         key={idx}
-                        className={`max-w-[90%] md:max-w-[80%] rounded-2xl p-4 md:p-5 leading-relaxed transition ${
+                        className={`max-w-[90%] md:max-w-[80%] rounded-2xl p-4 md:p-5 leading-relaxed transition contain-chat ${
                           m.role === "assistant" ? "shadow-xs" : "ml-auto shadow-sm"
                         }`}
                         style={
@@ -3224,7 +3273,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                 </div>
                 <div className="mt-6 space-y-3">
                   {scheduleItems.length ? scheduleItems.map((item, idx) => (
-                    <div key={item.id || idx} className={`group flex items-center gap-4 rounded-2xl p-4 transition feature-chip ${item.done ? "opacity-60" : ""}`} style={{ border: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
+                    <div key={item.id || idx} className={`group flex items-center gap-4 rounded-2xl p-4 transition feature-chip contain-schedule ${item.done ? "opacity-60" : ""}`} style={{ border: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
                       <button onClick={() => toggleScheduleDone(item.id, item.title)} className="grid size-6 shrink-0 place-items-center rounded-full border transition" style={item.done ? { borderColor: "var(--m-primary)", backgroundColor: "var(--m-primary)", color: "white" } : { borderColor: "var(--m-border)", backgroundColor: "var(--m-surface)" }}>
                         {item.done && <Check size={14} strokeWidth={3} />}
                       </button>
@@ -3269,11 +3318,11 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
               </div>
               <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
                 {subjects.length ? subjects.map((sub) => {
-                  const projectTasks = tasks.filter((t) => t.course === sub.name);
-                  const openCount = projectTasks.filter((t) => !t.done).length;
-                  const doneCount = projectTasks.filter((t) => t.done).length;
-                  const total = projectTasks.length;
-                  const projectPct = total ? Math.round((doneCount / total) * 100) : 0;
+                  const stats = projectStatsByCourse.get(sub.name) || { total: 0, open: 0, done: 0, pct: 0 };
+                  const openCount = stats.open;
+                  const doneCount = stats.done;
+                  const total = stats.total;
+                  const projectPct = stats.pct;
                   const subjectFiles = attachedFiles.filter((f) => f.subjectId === sub.id);
                   const gpa = subjectGPAs[sub.id];
 
@@ -3446,7 +3495,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   <select value={noteSubjectFilter ?? ""} onChange={(e) => setNoteSubjectFilter(e.target.value ? Number(e.target.value) : null)} className="w-full rounded-xl px-3 py-2 text-xs outline-none border cursor-pointer" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}>
                     <option value="">All Subjects ({notes.length})</option>
                     {subjects.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} ({notes.filter((n) => n.subjectId === s.id).length})</option>
+                      <option key={s.id} value={s.id}>{s.name} ({noteCountBySubject.get(s.id) || 0})</option>
                     ))}
                   </select>
                 </div>
@@ -3460,7 +3509,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                       const noteSub = subjects.find((s) => Number(s.id) === Number(note.subjectId));
                       const isSelected = activeNote?.id === note.id;
                       return (
-                        <button key={note.id} onClick={() => selectNote(note)} className="w-full text-left rounded-2xl p-3.5 transition duration-200 feature-chip" style={isSelected ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 4px 15px rgba(36,76,59,0.25)" } : { backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border-light)", color: "var(--m-text)" }}>
+                        <button key={note.id} onClick={() => selectNote(note)} className="w-full text-left rounded-2xl p-3.5 transition duration-200 feature-chip contain-note" style={isSelected ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 4px 15px rgba(36,76,59,0.25)" } : { backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border-light)", color: "var(--m-text)" }}>
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-xs font-bold truncate flex-1">{note.title || "Untitled Note"}</p>
                             {noteSub && (

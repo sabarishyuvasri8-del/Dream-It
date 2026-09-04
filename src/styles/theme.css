@@ -608,18 +608,19 @@
 .dreamit-dash .feature-widget,
 .dreamit-dash .feature-chip {
   transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.25s ease, border-color 0.25s ease;
-  will-change: transform;
 }
 
 .dreamit-dash .feature-zoom:hover,
 .dreamit-dash .feature-card:hover,
 .dreamit-dash .feature-widget:hover {
+  will-change: transform;
   transform: scale(1.018) translateY(-2px);
   box-shadow: 0 10px 26px -4px rgba(0, 0, 0, 0.08);
   z-index: 2;
 }
 
 .dreamit-dash .feature-chip:hover {
+  will-change: transform;
   transform: scale(1.035);
 }
 
@@ -649,7 +650,6 @@
 
 .anti-gravity {
   animation: anti-gravity-bob 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
-  will-change: transform;
   transition: 
     transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1),
     box-shadow 0.5s cubic-bezier(0.4, 0, 0.2, 1);
@@ -943,5 +943,46 @@
   .dreamit-dash .feature-chip:active {
     transform: scale(0.985);
     transition: transform 0.1s ease;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   LOW-RAM & PERFORMANCE OPTIMIZATIONS (CSS Containment & DOM Pruning)
+   - content-visibility: auto skips layout & painting for off-screen cards
+   - contain-intrinsic-size reserves height to eliminate scrollbar jumping
+   ═══════════════════════════════════════════════════════════════════════════ */
+.contain-card {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 90px;
+}
+
+.contain-task {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 64px;
+}
+
+.contain-note {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 120px;
+}
+
+.contain-chat {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 70px;
+}
+
+.contain-schedule {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 60px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anti-gravity {
+    animation: none !important;
+  }
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }
