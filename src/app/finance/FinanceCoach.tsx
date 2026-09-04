@@ -230,7 +230,7 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
 
       const response = await fetchAI({
-        model: "gemini-3.5-flash-lite",
+        model: "gemini-3.1-flash-lite",
         messages: [
           { role: "system", content: systemPrompt },
           ...history,

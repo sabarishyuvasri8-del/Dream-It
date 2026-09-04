@@ -1224,7 +1224,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     showToast("Dream It AI is summarizing your note...", "info");
     try {
       const res = await fetchAI({
-        model: "gemini-3.5-flash-lite",
+        model: "gemini-3.1-flash-lite",
         messages: [{
           role: "user",
           content: `Please summarize the following study note into bullet points with key takeaways:\n\nNote Title: ${noteTitleDraft}\n\nContent:\n${noteDraft}`,
@@ -1663,7 +1663,7 @@ Raw text to analyze:
 Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possible.`;
 
         const response = await fetchAI({
-          model: "gemini-3.6-flash",
+          model: "gemini-3.1-flash-lite",
           messages: [{ role: "user", content: extractionPrompt }],
           max_tokens: 1536,
           temperature: 0.1,

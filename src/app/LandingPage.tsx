@@ -1108,7 +1108,7 @@ export default function LandingPage({
               <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Speech Coach</span>
             </div>
             <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
-              gemini-3.5-flash-lite
+              gemini-3.1-flash-lite
               <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Finance Coach</span>
             </div>
           </AnimatedItem>
