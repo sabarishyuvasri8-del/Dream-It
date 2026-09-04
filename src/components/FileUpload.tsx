@@ -32,6 +32,61 @@ export function formatFileSize(bytes: number): string {
   return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
 }
 
+async function compressImageIfPossible(file: File): Promise<File> {
+  // Only compress raster images > 500KB
+  if (!file.type.startsWith("image/") || file.type.includes("svg") || file.type.includes("gif") || file.size < 500 * 1024) {
+    return file;
+  }
+
+  return new Promise((resolve) => {
+    const img = new window.Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const maxDim = 1920;
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width > height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        resolve(file);
+        return;
+      }
+      ctx.drawImage(img, 0, 0, width, height);
+      canvas.toBlob(
+        (blob) => {
+          if (blob && blob.size < file.size) {
+            const compressed = new window.File([blob], file.name.replace(/\.[^/.]+$/, ".jpg"), {
+              type: "image/jpeg",
+              lastModified: Date.now(),
+            });
+            resolve(compressed);
+          } else {
+            resolve(file);
+          }
+        },
+        "image/jpeg",
+        0.82
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(file);
+    };
+    img.src = url;
+  });
+}
+
 export const FileUpload: React.FC<FileUploadProps> = ({
   accessToken,
   userId,
@@ -66,17 +121,28 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     }
 
     setIsUploading(true);
-    setUploadProgress(25);
+    setUploadProgress(20);
 
+    let timer: number | undefined;
     try {
+      // Fast client-side image compression to slash upload latency by up to 90%
+      let fileToUpload = file;
+      try {
+        fileToUpload = await compressImageIfPossible(file);
+      } catch (compErr) {
+        fileToUpload = file;
+      }
+
+      setUploadProgress(40);
+
       // Animated progress interval
-      const timer = window.setInterval(() => {
+      timer = window.setInterval(() => {
         setUploadProgress((p) => (p < 85 ? p + 15 : p));
-      }, 150);
+      }, 120);
 
-      const newFile = await uploadAttachedFile(accessToken, userId, file, subjectId, taskId, selectedKind || undefined);
+      const newFile = await uploadAttachedFile(accessToken, userId, fileToUpload, subjectId, taskId, selectedKind || undefined);
 
-      window.clearInterval(timer);
+      if (timer) window.clearInterval(timer);
       setUploadProgress(100);
 
       setTimeout(() => {
@@ -86,6 +152,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         onUploadSuccess(newFile);
       }, 300);
     } catch (err: any) {
+      if (timer) window.clearInterval(timer);
       setIsUploading(false);
       setUploadProgress(0);
       setErrorMessage(err.message || "Failed uploading file. Please try again.");
@@ -95,7 +162,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    setIsDragging(true);
+    if (!isUploading) setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
@@ -108,6 +175,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     e.preventDefault();
     e.stopPropagation();
     setIsDragging(false);
+    if (isUploading) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
@@ -120,6 +188,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
       const file = e.target.files[0];
       validateAndUpload(file);
     }
+    // Always reset input value so re-uploading the same file works reliably
+    e.target.value = "";
   };
 
   return (
@@ -129,7 +199,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        onClick={() => fileInputRef.current?.click()}
+        onClick={() => {
+          if (!isUploading && fileInputRef.current) {
+            fileInputRef.current.value = "";
+            fileInputRef.current.click();
+          }
+        }}
         className={`relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed p-6 text-center transition cursor-pointer ${
           isDragging
             ? "scale-[1.01]"

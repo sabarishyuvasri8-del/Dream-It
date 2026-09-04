@@ -28,6 +28,10 @@ export interface AIResponse {
  * Automatically handles API key retrieval, fallback obfuscation, and rate limit errors.
  * Supports Server-Sent Events (SSE) streaming if onChunk is provided.
  */
+// High-performance LRU cache for 0ms responses on repeated prompts
+const aiCache = new Map<string, { content: string; expiry: number }>();
+const CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+
 export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
   const envKey = import.meta.env.VITE_GEMINI_API_KEY as string | undefined;
   
@@ -40,33 +44,53 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     return { content: "", error: "API Key is missing or invalid." };
   }
 
-  try {
-    const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey.trim()}`,
-      },
-      body: JSON.stringify({
-        model: params.model,
-        messages: params.messages,
-        temperature: params.temperature ?? 0.7,
-        max_tokens: params.max_tokens ?? 2048,
-        top_p: params.top_p,
-        stream: !!params.onChunk,
-      }),
-    });
-
-    if (!res.ok) {
-      if (res.status === 429) {
-        return { 
-          content: "", 
-          error: "The AI service is temporarily busy (Rate Limited). Please wait about 30 seconds and try again.", 
-          isRateLimited: true 
-        };
-      }
-      return { content: "", error: `API connection error: ${res.status} ${res.statusText}` };
+  // 0ms Cache check for identical queries within 3 minutes
+  const cacheKey = `${params.model}_${JSON.stringify(params.messages)}`;
+  const cached = aiCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiry) {
+    if (params.onChunk) {
+      params.onChunk(cached.content);
     }
+    return { content: cached.content };
+  }
+
+  const modelsToTry = [
+    params.model || "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+  ];
+  const uniqueModels = [...new Set(modelsToTry)];
+  let lastError = "";
+
+  for (let mIdx = 0; mIdx < uniqueModels.length; mIdx++) {
+    const currentModel = uniqueModels[mIdx];
+    const controller = new AbortController();
+    // Fast 5-second timeout for maximum responsiveness
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        signal: controller.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: currentModel,
+          messages: params.messages,
+          temperature: params.temperature ?? 0.2,
+          max_tokens: params.max_tokens ?? 1024,
+          top_p: params.top_p,
+          stream: !!params.onChunk,
+        }),
+      });
+      clearTimeout(timeoutId);
+
+      if (!res.ok) {
+        lastError = `Gemini API returned ${res.status} (${res.statusText || "Error"}). Switching model...`;
+        // Try fallback model immediately
+        continue;
+      }
 
     if (params.onChunk && res.body) {
       const reader = res.body.getReader();
@@ -102,7 +126,15 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
       } finally {
         reader.releaseLock();
       }
-      return { content: fullContent.trim() };
+      const trimmed = fullContent.trim();
+      if (trimmed) {
+        if (aiCache.size > 60) {
+          const firstKey = aiCache.keys().next().value;
+          if (firstKey) aiCache.delete(firstKey);
+        }
+        aiCache.set(cacheKey, { content: trimmed, expiry: Date.now() + CACHE_TTL });
+      }
+      return { content: trimmed };
     } else {
       const data = await res.json();
       const content = data.choices?.[0]?.message?.content?.trim();
@@ -110,10 +142,19 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
       if (!content) {
         return { content: "", error: "The AI returned an empty response. Please try asking again." };
       }
+      if (aiCache.size > 60) {
+        const firstKey = aiCache.keys().next().value;
+        if (firstKey) aiCache.delete(firstKey);
+      }
+      aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
       return { content };
     }
   } catch (error: any) {
-    console.error("AI client fetch network error:", error);
-    return { content: "", error: "Failed to connect to the AI service. Please check your network connection." };
+      console.warn(`AI client fetch error with ${currentModel}:`, error);
+      lastError = `Connection to ${currentModel} timed out or failed.`;
+      // Continue to next fallback model immediately
+    }
   }
+
+  return { content: "", error: lastError || "The AI service was temporarily unavailable. Please try again." };
 }

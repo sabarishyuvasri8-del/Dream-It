@@ -389,10 +389,10 @@ function Root() {
     const storedParent = sessionStorage.getItem("parentMode");
     const storedChildId = sessionStorage.getItem("childUserId");
     const storedChildName = sessionStorage.getItem("childUsername");
-    if (storedParent === "true" && storedChildId && storedChildName) {
+    if (storedParent === "true") {
       setIsParentMode(true);
-      setChildUserId(storedChildId);
-      setChildUsername(storedChildName);
+      if (storedChildId) setChildUserId(storedChildId);
+      if (storedChildName) setChildUsername(storedChildName);
     }
   }, []);
 

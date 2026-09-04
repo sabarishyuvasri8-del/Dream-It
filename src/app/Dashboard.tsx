@@ -113,7 +113,7 @@ import {
   upsertUserProfile,
 } from "../lib/supabase";
 const FinanceApp = lazy(() => import("./finance/FinanceApp"));
-import type { FinanceData } from "../lib/finance-types";
+import type { FinanceData, FinanceTransaction, FinanceProfile } from "../lib/finance-types";
 import { FileUpload, formatFileSize } from "../components/FileUpload";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
@@ -284,9 +284,32 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     id: string;
     timestamp: string;
     status: "extracting" | "planning" | "executing" | "done" | "error";
-    extractedItems: { title: string; type: string; priority: string; deadline?: string; time?: string; course?: string }[];
+    extractedItems: {
+      title: string;
+      type: string;
+      priority?: string;
+      deadline?: string;
+      time?: string;
+      course?: string;
+      amount?: number;
+      front?: string;
+      back?: string;
+      score?: number;
+      total?: number;
+      weight?: number;
+      content?: string;
+      description?: string;
+      color?: string;
+      difficulty?: string;
+      assignmentName?: string;
+    }[];
     createdTasks: string[];
     createdSchedule: string[];
+    createdSubjects?: string[];
+    createdFlashcards?: string[];
+    createdGrades?: string[];
+    createdNotes?: string[];
+    createdFinance?: string[];
     errorMsg?: string;
   }[]>([]);
 
@@ -430,10 +453,36 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     }
   }, [messages, isAsking, isChatMaximized]);
 
-  // ─── Load workspace ───
+  // ─── Load workspace (Optimistic Instant Hydration) ───
   useEffect(() => {
     let alive = true;
-    setWorkspaceReady(false);
+
+    // Instant 0ms hydration from local cache to eliminate loading latency
+    const cacheKey = `dreamit_workspace_${userId}`;
+    if (typeof window !== "undefined" && window.localStorage) {
+      const cachedStr = window.localStorage.getItem(cacheKey);
+      if (cachedStr) {
+        try {
+          const cached = JSON.parse(cachedStr);
+          if (cached && typeof cached === "object") {
+            if (Array.isArray(cached.tasks)) setTasks(cached.tasks);
+            if (Array.isArray(cached.scheduleItems)) setScheduleItems(cached.scheduleItems);
+            if (Array.isArray(cached.subjects)) setSubjects(cached.subjects);
+            if (Array.isArray(cached.studyMinutes) && cached.studyMinutes.length === 7) setStudyMinutes(cached.studyMinutes);
+            if (Array.isArray(cached.focusLog)) setFocusLog(cached.focusLog);
+            if (Array.isArray(cached.notes)) setNotes(cached.notes);
+            if (Array.isArray(cached.grades)) setGrades(cached.grades);
+            if (Array.isArray(cached.flashcards)) setFlashcards(cached.flashcards);
+            if (cached.streak) setStreak(cached.streak);
+            if (cached.finance) setFinance(cached.finance);
+            setWorkspaceReady(true);
+          }
+        } catch (e) {
+          // Fall through to remote fetch
+        }
+      }
+    }
+
     fetchUserWorkspace(accessToken, userId)
       .then((workspace) => {
         if (!alive) return;
@@ -543,11 +592,11 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     };
   }, [checkInbox, loadFriends, userId]);
 
-  // ─── Auto-save workspace (debounced) ───
+  // ─── Auto-save workspace (debounced with 0ms input latency) ───
   useEffect(() => {
     if (!workspaceReady) return;
-    setIsSaving(true);
     const saveTimer = window.setTimeout(async () => {
+      setIsSaving(true);
       const payload: UserWorkspace = {
         tasks, scheduleItems, subjects, studyMinutes, focusLog,
         notes, grades, flashcards, streak, finance
@@ -555,7 +604,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       await saveUserWorkspace(accessToken, userId, payload);
       setIsSaving(false);
       setLastSavedTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-    }, 800);
+    }, 1000);
     return () => window.clearTimeout(saveTimer);
   }, [accessToken, userId, workspaceReady, tasks, scheduleItems, subjects, studyMinutes, focusLog, notes, grades, flashcards, streak, finance]);
 
@@ -594,7 +643,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       }
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [isRunning, seconds, isBreak, addXP, updateDailyStreak]);
+  }, [isRunning, isBreak, addXP, updateDailyStreak]);
 
   // Session completion effect
   useEffect(() => {
@@ -1227,7 +1276,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
 
   const handleAutopilotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!autopilotText.trim()) return;
+    const rawInput = autopilotText.trim();
+    if (!rawInput) return;
 
     setIsSubmittingAutopilot(true);
     const runId = `run-${Date.now()}`;
@@ -1235,61 +1285,348 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       id: runId,
       timestamp: new Date().toISOString(),
       status: "extracting" as const,
-      extractedItems: [] as { title: string; type: string; priority: string; deadline?: string; time?: string; course?: string }[],
+      extractedItems: [] as {
+        title: string;
+        type: string;
+        priority?: string;
+        deadline?: string;
+        time?: string;
+        course?: string;
+        amount?: number;
+        front?: string;
+        back?: string;
+        score?: number;
+        total?: number;
+        weight?: number;
+        content?: string;
+        description?: string;
+        color?: string;
+        difficulty?: string;
+        assignmentName?: string;
+      }[],
       createdTasks: [] as string[],
       createdSchedule: [] as string[],
+      createdSubjects: [] as string[],
+      createdFlashcards: [] as string[],
+      createdGrades: [] as string[],
+      createdNotes: [] as string[],
+      createdFinance: [] as string[],
     };
     setAutopilotRuns((prev) => [runEntry, ...prev]);
 
-    const extractionPrompt = `You are an AI tasked with extracting tasks and schedule items from the following raw text. 
-Please output ONLY a valid JSON array of objects.
-Each object must have the following fields:
-- "title": A short, descriptive title of the task or event.
-- "type": Either "task" or "event".
-- "priority": Either "High", "Medium", or "Low".
-- "deadline": (Optional) The deadline or date of the event if applicable.
-- "time": (Optional) The time of the event if applicable.
-- "course": (Optional) The relevant subject or course name if mentioned.
-
-Here is the raw text to analyze:
-"${autopilotText}"`;
-
     try {
-      const response = await fetchAI({
-        model: "gemini-3.6-flash",
-        messages: [{ role: "user", content: extractionPrompt }],
-        max_tokens: 2048,
-        temperature: 0.2,
-      });
+      let items: any[] = [];
+      const lower = rawInput.toLowerCase();
 
-      if (response.error) {
-        throw new Error(`Gemini API error: ${response.error}`);
+      // ─── 1. Ultra-Fast 0ms Local Heuristic Matching (Zero Latency) ───
+      // A. Finance Income
+      const incomeMatch = rawInput.match(/(?:add\s+(?:his\s+|my\s+)?income(?:\s+as|\s+of)?|income[:\s]+)(?:rs\.?|inr|₹)?\s*([\d,]+)/i);
+      // B. Finance Expense
+      const expenseMatch = rawInput.match(/(?:add\s+(?:expense|spend|spent)(?:\s+as|\s+of)?|expense[:\s]+)(?:rs\.?|inr|₹)?\s*([\d,]+)/i);
+      // C. Subject Creation (e.g. "create a new subject called Machine Learning", "add subject Robotics: Advanced systems")
+      const subjectMatch = rawInput.match(/^(?:create|add|new)\s+(?:a\s+)?(?:new\s+)?(?:subject|course|project)(?:\s+named|\s+called)?\s+[:"']?([^:"'\n,]+?)["']?(?:\s+(?:with\s+color|color)\s+([#a-z0-9]+))?(?:\s*[:\-]\s*(.+))?$/i);
+      // D. Flashcards (e.g. "create flashcards for Biology: Mitochondria -> Powerhouse, Ribosome -> Protein synthesis")
+      const flashcardsMatch = rawInput.match(/^(?:create|make|add)\s+flashcards?\s+(?:for\s+)?([a-z0-9\s]+?)?[:\-]\s*(.+)$/is);
+      const singleCardMatch = rawInput.match(/^(?:flashcard|card)[:\s]+(.+?)(?:\s*(?:->|=>|::|\sis\s|\smeans\s|\s*-\s*)\s*)(.+)$/i);
+      // E. Grade entry / update (e.g. "add grade for Math: Midterm 95/100 weight 20%", "record grade 92/100 in Physics Quiz")
+      const gradeMatch1 = rawInput.match(/^(?:add|update|record|enter)\s+grade\s+(?:for\s+)?([a-z0-9\s]+?)?[:\-]?\s*([a-z0-9\s]+?)\s*(\d+(?:\.\d+)?)\s*(?:\/|\s*out of\s*)\s*(\d+(?:\.\d+)?)(?:\s*(?:weight|weightage)\s*(\d+(?:\.\d+)?%?))?/i);
+      const gradeMatch2 = rawInput.match(/^(?:add|update|record)\s+(?:grade|score)\s+(\d+(?:\.\d+)?)(?:\/(\d+(?:\.\d+)?))?\s+(?:in|for)\s+([a-z0-9\s]+?)(?:\s+for\s+([a-z0-9\s]+))?$/i);
+      const gradeMatch3 = rawInput.match(/^(?:grade|score)\s+(?:for\s+)?([a-z0-9\s]+?)[:\-]\s*([a-z0-9\s]+?)\s*[:\-]?\s*(\d+(?:\.\d+)?)\s*(?:\/|\s*out of\s*)?\s*(\d+(?:\.\d+)?)?/i);
+      // F. Note creation (e.g. "create note for History: The Industrial Revolution...", "take note for CS: React hooks...")
+      const noteMatch = rawInput.match(/^(?:create|add|take|write)\s+(?:a\s+)?note\s+(?:for|on|about)?\s*([a-z0-9\s]+?)?[:\-]\s*(.+)$/is);
+      // G. Task creation (e.g. "add task: Finish math homework by tomorrow")
+      const taskMatch = rawInput.match(/^(?:create|add|new)\s+task\s+[:\-]?\s*(.+)$/i);
+
+      if (incomeMatch) {
+        const amt = parseFloat(incomeMatch[1].replace(/,/g, ""));
+        if (!isNaN(amt) && amt > 0) {
+          items = [{
+            title: `Income: ₹${amt.toLocaleString("en-IN")}`,
+            type: "finance_income",
+            amount: amt,
+            priority: "High",
+          }];
+        }
+      } else if (expenseMatch) {
+        const amt = parseFloat(expenseMatch[1].replace(/,/g, ""));
+        if (!isNaN(amt) && amt > 0) {
+          items = [{
+            title: `Expense: ₹${amt.toLocaleString("en-IN")}`,
+            type: "finance_expense",
+            amount: amt,
+            priority: "Medium",
+          }];
+        }
+      } else if (subjectMatch && subjectMatch[1]?.trim()) {
+        const subName = subjectMatch[1].trim();
+        items = [{
+          title: subName,
+          type: "subject",
+          color: subjectMatch[2]?.trim(),
+          description: subjectMatch[3]?.trim() || `Course workspace for ${subName}`,
+          priority: "High",
+        }];
+      } else if (flashcardsMatch && flashcardsMatch[2]?.trim()) {
+        const courseName = flashcardsMatch[1]?.trim() || "General Study";
+        const body = flashcardsMatch[2].trim();
+        // Split by lines, semicolons, or commas with arrow
+        const rawSplits = body.split(/\n+|;/).map((s) => s.trim()).filter(Boolean);
+        const cardItems: any[] = [];
+        for (const segment of rawSplits) {
+          const arrowM = segment.match(/^(.+?)\s*(?:->|=>|::|\sis\s|\smeans\s|\s*-\s*)\s*(.+)$/i);
+          if (arrowM) {
+            cardItems.push({
+              title: arrowM[1].trim(),
+              front: arrowM[1].trim(),
+              back: arrowM[2].trim(),
+              type: "flashcard",
+              course: courseName,
+              difficulty: "medium",
+              priority: "Medium",
+            });
+          } else if (segment.includes(",")) {
+            const subCards = segment.split(",").map((s) => s.trim()).filter(Boolean);
+            for (const sub of subCards) {
+              const subM = sub.match(/^(.+?)\s*(?:->|=>|::|\sis\s|\smeans\s|\s*-\s*)\s*(.+)$/i);
+              if (subM) {
+                cardItems.push({
+                  title: subM[1].trim(),
+                  front: subM[1].trim(),
+                  back: subM[2].trim(),
+                  type: "flashcard",
+                  course: courseName,
+                  difficulty: "medium",
+                  priority: "Medium",
+                });
+              }
+            }
+          }
+        }
+        if (cardItems.length > 0) {
+          items = cardItems;
+        }
+      } else if (singleCardMatch && singleCardMatch[1]?.trim() && singleCardMatch[2]?.trim()) {
+        items = [{
+          title: singleCardMatch[1].trim(),
+          front: singleCardMatch[1].trim(),
+          back: singleCardMatch[2].trim(),
+          type: "flashcard",
+          course: "General Study",
+          difficulty: "medium",
+          priority: "Medium",
+        }];
+      } else if (gradeMatch1) {
+        const course = gradeMatch1[1]?.trim() || "General Study";
+        const asgName = gradeMatch1[2]?.trim() || "Assessment";
+        const score = parseFloat(gradeMatch1[3]);
+        const total = parseFloat(gradeMatch1[4]) || 100;
+        const weight = gradeMatch1[5] ? parseFloat(gradeMatch1[5].replace("%", "")) : 100;
+        items = [{
+          title: `${course}: ${asgName}`,
+          type: "grade",
+          assignmentName: asgName,
+          score,
+          total,
+          weight,
+          course,
+          priority: "High",
+        }];
+      } else if (gradeMatch2) {
+        const score = parseFloat(gradeMatch2[1]);
+        const total = gradeMatch2[2] ? parseFloat(gradeMatch2[2]) : 100;
+        const course = gradeMatch2[3]?.trim() || "General Study";
+        const asgName = gradeMatch2[4]?.trim() || "Assessment";
+        items = [{
+          title: `${course}: ${asgName}`,
+          type: "grade",
+          assignmentName: asgName,
+          score,
+          total,
+          weight: 100,
+          course,
+          priority: "High",
+        }];
+      } else if (gradeMatch3) {
+        const course = gradeMatch3[1]?.trim() || "General Study";
+        const asgName = gradeMatch3[2]?.trim() || "Assessment";
+        const score = parseFloat(gradeMatch3[3]);
+        const total = gradeMatch3[4] ? parseFloat(gradeMatch3[4]) : 100;
+        items = [{
+          title: `${course}: ${asgName}`,
+          type: "grade",
+          assignmentName: asgName,
+          score,
+          total,
+          weight: 100,
+          course,
+          priority: "High",
+        }];
+      } else if (noteMatch && noteMatch[2]?.trim()) {
+        const course = noteMatch[1]?.trim() || "General Study";
+        const noteContent = noteMatch[2].trim();
+        const noteTitle = noteContent.length > 40 ? `${noteContent.slice(0, 37)}...` : noteContent;
+        items = [{
+          title: noteTitle,
+          type: "note",
+          content: noteContent,
+          course,
+          priority: "Medium",
+        }];
+      } else if (
+        lower.includes("schedule based on") ||
+        lower.includes("schedule my tasks") ||
+        lower.includes("plan my tasks") ||
+        lower.includes("make a schedule based on my tasks") ||
+        lower.includes("make schedule based on") ||
+        lower.includes("schedule assigned tasks")
+      ) {
+        const pending = tasks.filter((t) => !t.done);
+        const sourceTasks = pending.length > 0 ? pending : tasks;
+        if (sourceTasks.length > 0) {
+          const timeSlots = ["09:00", "11:00", "14:00", "16:00", "18:00", "20:00"];
+          items = sourceTasks.slice(0, 6).map((t, idx) => ({
+            title: `Study: ${t.title}`,
+            type: "schedule",
+            time: timeSlots[idx % timeSlots.length],
+            deadline: "Today",
+            course: t.course,
+            priority: t.priority || "Medium",
+          }));
+        }
+      } else if (taskMatch && taskMatch[1]?.trim()) {
+        items = [{
+          title: taskMatch[1].trim(),
+          type: "task",
+          course: "General Study",
+          priority: "Medium",
+          time: "Today",
+        }];
+      } else if (/(?:semminar|seminar|meeting|class|exam|quiz|presentation)\s+(?:on\s+)?([a-z0-9\s]+)/i.test(lower)) {
+        const match = lower.match(/(?:semminar|seminar|meeting|class|exam|quiz|presentation)\s+(?:on\s+)?([a-z0-9\s]+)/i);
+        const eventType = rawInput.split(/\s+/)[0];
+        const dayStr = match ? match[1].trim() : "Upcoming";
+        const capDay = dayStr.charAt(0).toUpperCase() + dayStr.slice(1);
+        items = [{
+          title: `${eventType.charAt(0).toUpperCase() + eventType.slice(1)} (${capDay})`,
+          type: "event",
+          time: "10:00",
+          deadline: capDay,
+          priority: "High",
+          course: "General Study",
+        }];
       }
 
-      const rawText = response.content || "[]";
-      
-      // Parse JSON — handle markdown-wrapped responses
-      let cleaned = rawText.trim();
-      if (cleaned.startsWith("```")) {
-        cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
-      }
-      
-      let items: { title: string; type: string; priority: string; deadline?: string; time?: string; course?: string }[];
-      try {
-        items = JSON.parse(cleaned);
-        if (!Array.isArray(items)) items = [];
-      } catch {
-        items = [];
+      // ─── 2. AI Parsing with Gemini 3.6 Flash -> Gemini 3.5 Flash Lite Failover ───
+      if (items.length === 0) {
+        const assignedTasksContext = tasks.slice(0, 8).map((t) => `- "${t.title}" (${t.course}, priority: ${t.priority})`).join("\n");
+        const existingSubjects = subjects.map((s) => s.name).join(", ");
+        const extractionPrompt = `You are an intelligent OS assistant for an all-in-one student workspace and productivity system.
+Analyze the user's raw input and extract ALL actionable items into a JSON array of objects.
+
+Supported item types:
+1. "subject": New subject / course / project workspace.
+   - "type": "subject"
+   - "title": (string, subject name e.g. "Machine Learning", "Physics")
+   - "color": (optional hex color string or null)
+   - "description": (optional course summary)
+
+2. "flashcard": Study flashcard for memory and active recall.
+   - "type": "flashcard"
+   - "title": (short question or term)
+   - "front": (question or key term)
+   - "back": (answer or definition)
+   - "course": (associated subject/course name)
+   - "difficulty": "easy" | "medium" | "hard"
+
+3. "grade": Academic score or grade entry/update.
+   - "type": "grade"
+   - "assignmentName": (e.g. "Midterm Exam", "Quiz 1", "Final Project")
+   - "score": (number e.g. 95, 88.5)
+   - "total": (number e.g. 100, 50, default is 100)
+   - "weight": (optional number e.g. 20 for 20%, default 100)
+   - "course": (associated subject/course name)
+
+4. "note": Study note, summary, or lecture notes.
+   - "type": "note"
+   - "title": (descriptive title of the note)
+   - "content": (markdown text content of the note)
+   - "course": (associated subject/course name)
+
+5. "schedule": Scheduled study block or calendar item.
+   - "type": "schedule"
+   - "title": (string)
+   - "time": (time string e.g. "10:00", "14:30")
+   - "course": (associated subject/course name)
+   - "priority": "High" | "Medium" | "Low"
+
+6. "event": Event, seminar, exam, quiz, presentation.
+   - "type": "event"
+   - "title": (string)
+   - "time": (e.g. "10:00")
+   - "deadline": (e.g. "Friday", "Tomorrow")
+   - "course": (subject name)
+   - "priority": "High" | "Medium" | "Low"
+
+7. "finance_income": Money received / income.
+   - "type": "finance_income"
+   - "amount": (number)
+   - "title": (string)
+
+8. "finance_expense": Money spent / expense.
+   - "type": "finance_expense"
+   - "amount": (number)
+   - "title": (string)
+
+9. "task": To-do task or assignment.
+   - "type": "task"
+   - "title": (string)
+   - "course": (subject name)
+   - "priority": "High" | "Medium" | "Low"
+   - "deadline": (optional)
+   - "time": (optional e.g. "Today")
+
+Existing workspace subjects:
+${existingSubjects || "(No subjects created yet)"}
+
+Existing workspace tasks:
+${assignedTasksContext || "(No tasks assigned yet)"}
+
+Raw text to analyze:
+"${rawInput}"
+
+Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possible.`;
+
+        const response = await fetchAI({
+          model: "gemini-3.6-flash",
+          messages: [{ role: "user", content: extractionPrompt }],
+          max_tokens: 1536,
+          temperature: 0.1,
+        });
+
+        if (response.error) {
+          throw new Error(response.error);
+        }
+
+        let cleaned = (response.content || "[]").trim();
+        if (cleaned.startsWith("```")) {
+          cleaned = cleaned.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "");
+        }
+        try {
+          items = JSON.parse(cleaned);
+          if (!Array.isArray(items)) items = [];
+        } catch {
+          items = [];
+        }
       }
 
       // Update run with extracted items
       setAutopilotRuns((prev) =>
-        prev.map((r) => r.id === runId ? { ...r, status: "planning" as const, extractedItems: items } : r)
+        prev.map((r) => (r.id === runId ? { ...r, status: "planning" as const, extractedItems: items } : r))
       );
 
       if (items.length === 0) {
         setAutopilotRuns((prev) =>
-          prev.map((r) => r.id === runId ? { ...r, status: "done" as const, errorMsg: "No actionable items found in the text." } : r)
+          prev.map((r) => (r.id === runId ? { ...r, status: "done" as const, errorMsg: "No actionable items found in the text." } : r))
         );
         setAutopilotText("");
         setIsSubmittingAutopilot(false);
@@ -1297,28 +1634,206 @@ Here is the raw text to analyze:
         return;
       }
 
-      // Stage B: Execute — create tasks and schedule items
+      // Stage B: Execute — create subjects, flashcards, grades, notes, tasks, schedule, finance
       setAutopilotRuns((prev) =>
-        prev.map((r) => r.id === runId ? { ...r, status: "executing" as const } : r)
+        prev.map((r) => (r.id === runId ? { ...r, status: "executing" as const } : r))
       );
 
+      const toneColors = ["#b9d6c0", "#f2cf91", "#e2d6ee", "#c8d9e9", "#f5b7b1", "#aed6f1", "#d7bde2", "#a3e4d7"];
       const toneOptions = ["bg-[#b9d6c0]", "bg-[#f2cf91]", "bg-[#e2d6ee]", "bg-[#c8d9e9]"];
+
       const createdTaskNames: string[] = [];
       const createdScheduleNames: string[] = [];
+      const createdSubjectNames: string[] = [];
+      const createdFlashcardNames: string[] = [];
+      const createdGradeNames: string[] = [];
+      const createdNoteNames: string[] = [];
+      const createdFinanceNames: string[] = [];
+
       const newTasks: Task[] = [];
       const newScheduleItems: ScheduleItem[] = [];
+      const newSubjectsToAdd: Subject[] = [];
+      const newFlashcardsToAdd: Flashcard[] = [];
+      let currentGrades = [...grades];
+      const newNotesToAdd: NoteEntry[] = [];
+      let currentSubjects = [...subjects];
+      let updatedFinance = finance;
+
+      // Helper to auto-create and resolve subject IDs seamlessly
+      const resolveSubjectId = (courseName?: string, createIfMissing: boolean = true): number => {
+        const cleanName = (courseName || "").trim();
+        if (!cleanName) {
+          if (currentSubjects.length > 0) return currentSubjects[0].id;
+          if (!createIfMissing) return 0;
+        }
+        const targetName = cleanName || "General Study";
+        const found = currentSubjects.find((s) => s.name.toLowerCase() === targetName.toLowerCase());
+        if (found) return found.id;
+
+        if (!createIfMissing) return currentSubjects[0]?.id || 0;
+
+        // Auto-create subject with curated palette
+        const newSub: Subject = {
+          id: Date.now() + Math.floor(Math.random() * 1000) + currentSubjects.length,
+          name: targetName,
+          color: toneColors[currentSubjects.length % toneColors.length],
+          accent: "#244c3b",
+          description: `Auto-created workspace for ${targetName}`,
+        };
+        currentSubjects.push(newSub);
+        newSubjectsToAdd.push(newSub);
+        createdSubjectNames.push(newSub.name);
+        return newSub.id;
+      };
 
       for (const item of items) {
-        const courseName = item.course || "General Study";
-        const matchedSubject = subjects.find((s) => s.name.toLowerCase() === courseName.toLowerCase());
-        const color = matchedSubject ? matchedSubject.color : "#c8d9e9";
+        if (item.type === "subject") {
+          const subName = (item.title || "").trim();
+          if (subName) {
+            const exists = currentSubjects.some((s) => s.name.toLowerCase() === subName.toLowerCase());
+            if (!exists) {
+              const newSub: Subject = {
+                id: Date.now() + Math.floor(Math.random() * 1000) + currentSubjects.length,
+                name: subName,
+                color: item.color || toneColors[currentSubjects.length % toneColors.length],
+                accent: "#244c3b",
+                description: item.description || `Course workspace for ${subName}`,
+              };
+              currentSubjects.push(newSub);
+              newSubjectsToAdd.push(newSub);
+              createdSubjectNames.push(newSub.name);
+            }
+          }
+        } else if (item.type === "flashcard") {
+          const targetSubId = resolveSubjectId(item.course);
+          const frontText = (item.front || item.title || "Term").trim();
+          const backText = (item.back || item.details || item.content || "Definition").trim();
+          const card: Flashcard = {
+            id: crypto.randomUUID(),
+            subjectId: targetSubId,
+            front: frontText,
+            back: backText,
+            difficulty: (item.difficulty as "easy" | "medium" | "hard") || "medium",
+            reviewCount: 0,
+            createdAt: new Date().toISOString(),
+          };
+          newFlashcardsToAdd.push(card);
+          createdFlashcardNames.push(`${frontText} → ${backText}`);
+        } else if (item.type === "grade") {
+          const targetSubId = resolveSubjectId(item.course);
+          const asgName = (item.assignmentName || item.title || "Assessment").trim();
+          const scoreVal = Number(item.score || 0);
+          const totalVal = Number(item.total || 100);
+          const weightVal = Number(item.weight || 100);
 
-        if (item.type === "schedule") {
+          // Check if grade already exists for this subject & assignment name -> update it!
+          const existingIdx = currentGrades.findIndex(
+            (g) => g.subjectId === targetSubId && g.assignmentName.toLowerCase() === asgName.toLowerCase()
+          );
+          if (existingIdx !== -1) {
+            currentGrades[existingIdx] = {
+              ...currentGrades[existingIdx],
+              score: scoreVal,
+              total: totalVal,
+              weight: weightVal,
+            };
+            const courseObj = currentSubjects.find((s) => s.id === targetSubId);
+            createdGradeNames.push(`Updated ${courseObj?.name || "Grade"}: ${asgName} (${scoreVal}/${totalVal})`);
+          } else {
+            const newGrade: GradeEntry = {
+              id: crypto.randomUUID(),
+              subjectId: targetSubId,
+              assignmentName: asgName,
+              score: scoreVal,
+              total: totalVal,
+              weight: weightVal,
+              createdAt: new Date().toISOString(),
+            };
+            currentGrades.push(newGrade);
+            const courseObj = currentSubjects.find((s) => s.id === targetSubId);
+            createdGradeNames.push(`${courseObj?.name || "Grade"}: ${asgName} (${scoreVal}/${totalVal})`);
+          }
+        } else if (item.type === "note") {
+          const targetSubId = resolveSubjectId(item.course);
+          const noteTitle = (item.title || "Study Note").trim();
+          const noteContent = (item.content || item.details || "").trim();
+          const newNote: NoteEntry = {
+            id: crypto.randomUUID(),
+            subjectId: targetSubId,
+            title: noteTitle,
+            content: noteContent,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          newNotesToAdd.push(newNote);
+          createdNoteNames.push(noteTitle);
+        } else if (item.type === "finance_income" || item.type === "finance_expense") {
+          const amtNum = Math.round(Number(item.amount || 0));
+          const amtPaisa = amtNum * 100;
+          const isIncome = item.type === "finance_income";
+
+          const baseFinance: FinanceData = updatedFinance || {
+            profile: { mode: "student", currency: "INR", monthlyIncome: 0, setupComplete: true },
+            accounts: [
+              {
+                id: "acc_main",
+                name: "Main Account",
+                type: "savings",
+                balance: 0,
+                currency: "INR",
+                isDefault: true,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              },
+            ],
+            transactions: [],
+            categories: [],
+            budgets: [],
+            goals: [],
+          };
+
+          const newTx: FinanceTransaction = {
+            id: `tx_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            accountId: baseFinance.accounts?.[0]?.id || "acc_main",
+            type: isIncome ? "income" : "expense",
+            amount: amtPaisa,
+            categoryId: isIncome ? "salary" : "general",
+            description: item.title || (isIncome ? "Income Recorded" : "Expense Recorded"),
+            date: new Date().toISOString(),
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+
+          const newAccounts = (baseFinance.accounts || []).map((acc, i) =>
+            i === 0 ? { ...acc, balance: isIncome ? acc.balance + amtPaisa : acc.balance - amtPaisa } : acc
+          );
+
+          const newProfile: FinanceProfile = {
+            ...(baseFinance.profile || { mode: "student", currency: "INR", setupComplete: true }),
+            monthlyIncome: isIncome
+              ? (baseFinance.profile?.monthlyIncome || 0) + amtPaisa
+              : (baseFinance.profile?.monthlyIncome || 0),
+          };
+
+          updatedFinance = {
+            ...baseFinance,
+            accounts: newAccounts,
+            profile: newProfile,
+            transactions: [newTx, ...(baseFinance.transactions || [])],
+          };
+
+          createdFinanceNames.push(
+            isIncome
+              ? `Income: ₹${amtNum.toLocaleString("en-IN")}`
+              : `Expense: ₹${amtNum.toLocaleString("en-IN")}`
+          );
+        } else if (item.type === "schedule" || item.type === "event") {
+          const courseName = item.course || "General Study";
           const schedItem: ScheduleItem = {
             id: Date.now() + Math.random() * 1000,
-            time: item.time || "10:00",
+            time: item.time || (item.deadline ? item.deadline : "10:00"),
             title: item.title,
-            note: `Auto-created by Autopilot • ${item.priority} priority`,
+            note: `Auto-created by Autopilot • ${item.priority || "Medium"} priority`,
             tone: toneOptions[newScheduleItems.length % toneOptions.length],
             course: courseName,
             done: false,
@@ -1328,6 +1843,12 @@ Here is the raw text to analyze:
           newScheduleItems.push(schedItem);
           createdScheduleNames.push(item.title);
         } else {
+          // Default: task
+          const courseName = item.course || "General Study";
+          const matchedSubject = currentSubjects.find((s) => s.name.toLowerCase() === courseName.toLowerCase());
+          const color = matchedSubject ? matchedSubject.color : "#c8d9e9";
+          const rawPriority = (item.priority || "medium").toLowerCase();
+          const priorityVal = (rawPriority === "high" || rawPriority === "low" ? rawPriority : "medium") as "low" | "medium" | "high";
           const task: Task = {
             id: Date.now() + Math.random() * 1000,
             title: item.title,
@@ -1335,7 +1856,7 @@ Here is the raw text to analyze:
             time: item.time || "Today",
             done: false,
             color,
-            priority: (item.priority as "low" | "medium" | "high") || "medium",
+            priority: priorityVal,
             createdAt: new Date().toISOString(),
             deadline: item.deadline || undefined,
             createdBy: "agent",
@@ -1346,27 +1867,66 @@ Here is the raw text to analyze:
         }
       }
 
-      // Batch-add to state
+      // Batch-update all state stores
+      if (newSubjectsToAdd.length > 0) {
+        setSubjects((curr) => [...curr, ...newSubjectsToAdd]);
+      }
+      if (newFlashcardsToAdd.length > 0) {
+        setFlashcards((curr) => [...curr, ...newFlashcardsToAdd]);
+      }
+      if (createdGradeNames.length > 0) {
+        setGrades(currentGrades);
+      }
+      if (newNotesToAdd.length > 0) {
+        setNotes((curr) => [...newNotesToAdd, ...curr]);
+      }
       if (newTasks.length > 0) {
         setTasks((curr) => [...newTasks, ...curr]);
       }
       if (newScheduleItems.length > 0) {
-        setScheduleItems((curr) => [...curr, ...newScheduleItems].sort((a, b) => a.time.localeCompare(b.time)));
+        setScheduleItems((curr) => [...curr, ...newScheduleItems].sort((a, b) => (a.time || "").localeCompare(b.time || "")));
+      }
+      if (updatedFinance) {
+        setFinance(updatedFinance);
       }
 
       // Mark run as complete
       setAutopilotRuns((prev) =>
-        prev.map((r) => r.id === runId ? { ...r, status: "done" as const, createdTasks: createdTaskNames, createdSchedule: createdScheduleNames } : r)
+        prev.map((r) =>
+          r.id === runId
+            ? {
+                ...r,
+                status: "done" as const,
+                createdTasks: createdTaskNames,
+                createdSchedule: createdScheduleNames,
+                createdSubjects: createdSubjectNames,
+                createdFlashcards: createdFlashcardNames,
+                createdGrades: createdGradeNames,
+                createdNotes: createdNoteNames,
+                createdFinance: createdFinanceNames,
+              }
+            : r
+        )
       );
 
       setAutopilotText("");
       addXP(items.length * 5);
       confetti({ particleCount: 60, spread: 70, origin: { y: 0.6 } });
-      showToast(`Autopilot created ${newTasks.length} task(s) and ${newScheduleItems.length} schedule block(s)! ✨`);
 
+      const summaryParts = [
+        createdSubjectNames.length > 0 ? `${createdSubjectNames.length} subject(s)` : null,
+        createdFlashcardNames.length > 0 ? `${createdFlashcardNames.length} flashcard(s)` : null,
+        createdGradeNames.length > 0 ? `${createdGradeNames.length} grade(s)` : null,
+        createdNoteNames.length > 0 ? `${createdNoteNames.length} note(s)` : null,
+        createdTaskNames.length > 0 ? `${createdTaskNames.length} task(s)` : null,
+        createdScheduleNames.length > 0 ? `${createdScheduleNames.length} schedule item(s)` : null,
+        createdFinanceNames.length > 0 ? "Finance updated" : null,
+      ].filter(Boolean);
+
+      showToast(`Autopilot completed! ${summaryParts.join(", ") || "Actions processed"} ✨`);
     } catch (err: any) {
       setAutopilotRuns((prev) =>
-        prev.map((r) => r.id === runId ? { ...r, status: "error" as const, errorMsg: err?.message || "Unknown error" } : r)
+        prev.map((r) => (r.id === runId ? { ...r, status: "error" as const, errorMsg: err?.message || "Unknown error" } : r))
       );
       showToast("Autopilot failed. Check the activity log.", "error");
     } finally {
@@ -2074,22 +2634,65 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
 
                 {/* Autopilot Widget */}
                 <section className="mt-5 rounded-xl p-5 minimal-surface feature-zoom" style={{ border: "1px solid var(--m-primary-transparent)" }}>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Sparkles size={16} style={{ color: "var(--m-primary)" }} />
-                    <h3 className="font-[Roboto_Slab] text-base font-semibold" style={{ color: "var(--m-text-heading)" }}>Autopilot Taskmaster</h3>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <div className="grid size-7 place-items-center rounded-lg shadow-2xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                        <Sparkles size={16} />
+                      </div>
+                      <div>
+                        <h3 className="font-[Roboto_Slab] text-base font-semibold" style={{ color: "var(--m-text-heading)" }}>Autopilot Taskmaster</h3>
+                        <p className="text-[11px]" style={{ color: "var(--m-text-sub)" }}>AI OS for workspace actions, scheduling, grades & flashcards</p>
+                      </div>
+                    </div>
+                    <span className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
+                      <Zap size={11} /> 0ms Instant Match + Gemini 3.6
+                    </span>
                   </div>
-                  <p className="text-xs mb-3" style={{ color: "var(--m-text-muted)" }}>Paste a syllabus, email, or meeting notes to automatically generate your tasks and schedule.</p>
+
+                  {/* Quick Action Prompt Chips */}
+                  <div className="my-3">
+                    <p className="text-[10px] font-bold mb-1.5 flex items-center gap-1" style={{ color: "var(--m-text-sub)" }}>
+                      <span>Quick Superpower Actions:</span>
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { label: "📂 New Subject", text: "Create a new subject called Machine Learning" },
+                        { label: "🃏 Bio Flashcards", text: "Create flashcards for Biology: Mitochondria -> Powerhouse of the cell, Ribosome -> Protein synthesis" },
+                        { label: "📊 Math Grade", text: "Add grade for Math: Midterm 95/100 weight 20%" },
+                        { label: "📓 CS Note", text: "Take note for CS: React hooks allow functional components to manage state and side effects" },
+                        { label: "🗓️ Task Schedule", text: "Make a schedule based on my tasks assigned" },
+                        { label: "💰 Add Income", text: "Add income 1,00,000" },
+                      ].map((chip, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setAutopilotText(chip.text)}
+                          className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-medium transition hover:scale-105 active:scale-95"
+                          style={{
+                            backgroundColor: "var(--m-surface-alt)",
+                            border: "1px solid var(--m-border-light)",
+                            color: "var(--m-text-heading)",
+                          }}
+                        >
+                          {chip.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   
                   <form onSubmit={handleAutopilotSubmit} className="mb-6">
                     <textarea 
                       value={autopilotText}
                       onChange={(e) => setAutopilotText(e.target.value)}
-                      placeholder="Paste syllabus, email, assignment brief, or meeting notes here..."
-                      className="w-full rounded-xl border p-3 text-xs outline-none resize-y min-h-[80px]"
+                      placeholder="Type any command: 'create subject AI', 'create flashcards for Chemistry: ...', 'add grade Math 95/100', 'take note for History: ...', 'schedule my tasks', 'add income 1,00,000'..."
+                      className="w-full rounded-xl border p-3 text-xs outline-none resize-y min-h-[85px] transition focus:ring-1"
                       style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
                     />
-                    <div className="flex justify-end mt-2">
-                      <button type="submit" disabled={isSubmittingAutopilot || !autopilotText.trim()} className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition hover:opacity-90 disabled:opacity-50" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-[10px] hidden sm:block" style={{ color: "var(--m-text-sub)" }}>
+                        Supports subjects, flashcards, grades, notes, schedule, tasks & finance.
+                      </p>
+                      <button type="submit" disabled={isSubmittingAutopilot || !autopilotText.trim()} className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition hover:opacity-90 disabled:opacity-50 ml-auto" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                         {isSubmittingAutopilot ? (
                           <><span className="flex gap-1 mr-1"><span className="size-1.5 animate-bounce rounded-full bg-white" /><span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:150ms]" /><span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:300ms]" /></span> Processing...</>
                         ) : (
@@ -2105,78 +2708,177 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                     <div className="rounded-xl border p-6 text-center" style={{ borderColor: "var(--m-border-light)" }}>
                       <Bot size={24} className="mx-auto mb-2 opacity-50" style={{ color: "var(--m-text-sub)" }} />
                       <p className="text-sm font-medium" style={{ color: "var(--m-text-muted)" }}>No agent activity yet.</p>
-                      <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>Paste text above to trigger Autopilot.</p>
+                      <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>Try any of the quick prompts above or type your own request.</p>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      {autopilotRuns.map((run) => (
-                        <div key={run.id} className="overflow-hidden rounded-xl border shadow-sm" style={{ borderColor: "var(--m-border-light)" }}>
-                          {/* Run Header */}
-                          <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-surface-alt)" }}>
-                            <div className="flex items-center gap-2">
-                              <div className="grid size-6 place-items-center rounded-md" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                                <Bot size={13} />
-                              </div>
-                              <div>
-                                <p className="text-[11px] font-bold" style={{ color: "var(--m-text-heading)" }}>Autopilot Run</p>
-                                <p className="text-[9px]" style={{ color: "var(--m-text-sub)" }}>{new Date(run.timestamp).toLocaleTimeString()}</p>
-                              </div>
-                            </div>
-                            <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold" style={{
-                              backgroundColor: run.status === "done" ? "var(--m-surface)" : run.status === "error" ? "var(--m-surface)" : "var(--m-surface)",
-                              color: run.status === "done" ? "var(--m-success)" : run.status === "error" ? "var(--m-danger)" : "var(--m-primary)",
-                              border: "1px solid var(--m-border)",
-                            }}>
-                              {run.status === "done" ? <><CheckCircle2 size={9} /> Complete</> :
-                               run.status === "error" ? <><AlertCircle size={9} /> Error</> :
-                               <><span className="size-1.5 animate-pulse rounded-full" style={{ backgroundColor: "var(--m-primary)" }} /> {run.status === "extracting" ? "Extracting..." : run.status === "planning" ? "Planning..." : "Executing..."}</>
-                              }
-                            </span>
-                          </div>
+                      {autopilotRuns.map((run) => {
+                        const totalActions =
+                          (run.createdTasks?.length || 0) +
+                          (run.createdSchedule?.length || 0) +
+                          (run.createdSubjects?.length || 0) +
+                          (run.createdFlashcards?.length || 0) +
+                          (run.createdGrades?.length || 0) +
+                          (run.createdNotes?.length || 0) +
+                          (run.createdFinance?.length || 0);
 
-                          <div className="p-3 space-y-3">
-                            {/* Extracted Items */}
-                            {run.extractedItems.length > 0 && (
-                              <div>
-                                <p className="text-[10px] font-bold mb-1.5 flex items-center gap-1" style={{ color: "var(--m-text)" }}>
-                                  <FileText size={10} style={{ color: "var(--m-primary)" }} /> Extracted {run.extractedItems.length} item(s)
-                                </p>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                                  {run.extractedItems.map((item, idx) => (
-                                    <div key={idx} className="rounded-lg border p-2 text-[9px]" style={{ borderColor: "var(--m-border-light)" }}>
-                                      <p className="font-bold truncate" style={{ color: "var(--m-text-heading)" }}>{item.title}</p>
-                                      <div className="flex justify-between mt-0.5" style={{ color: "var(--m-text-sub)" }}>
-                                        <span>{item.type} • {item.priority}</span>
-                                        {item.course && <span>{item.course}</span>}
-                                      </div>
-                                    </div>
-                                  ))}
+                        return (
+                          <div key={run.id} className="overflow-hidden rounded-xl border shadow-sm transition" style={{ borderColor: "var(--m-border-light)" }}>
+                            {/* Run Header */}
+                            <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-surface-alt)" }}>
+                              <div className="flex items-center gap-2">
+                                <div className="grid size-6 place-items-center rounded-md" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                                  <Bot size={13} />
+                                </div>
+                                <div>
+                                  <p className="text-[11px] font-bold" style={{ color: "var(--m-text-heading)" }}>Autopilot Run</p>
+                                  <p className="text-[9px]" style={{ color: "var(--m-text-sub)" }}>{new Date(run.timestamp).toLocaleTimeString()}</p>
                                 </div>
                               </div>
-                            )}
+                              <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold" style={{
+                                backgroundColor: "var(--m-surface)",
+                                color: run.status === "done" ? "var(--m-success)" : run.status === "error" ? "var(--m-danger)" : "var(--m-primary)",
+                                border: "1px solid var(--m-border)",
+                              }}>
+                                {run.status === "done" ? <><CheckCircle2 size={9} /> Complete ({totalActions} actions)</> :
+                                 run.status === "error" ? <><AlertCircle size={9} /> Error</> :
+                                 <><span className="size-1.5 animate-pulse rounded-full" style={{ backgroundColor: "var(--m-primary)" }} /> {run.status === "extracting" ? "Extracting..." : run.status === "planning" ? "Planning..." : "Executing..."}</>
+                                }
+                              </span>
+                            </div>
 
-                            {/* Results */}
-                            {run.status === "done" && (run.createdTasks.length > 0 || run.createdSchedule.length > 0) && (
-                              <div className="pt-2 border-t" style={{ borderColor: "var(--m-border-light)" }}>
-                                <p className="text-[10px] font-bold mb-1 flex items-center gap-1" style={{ color: "var(--m-success)" }}>
-                                  <CheckCircle2 size={10} /> Actions Taken
+                            <div className="p-3 space-y-3">
+                              {/* Extracted Items */}
+                              {run.extractedItems.length > 0 && (
+                                <div>
+                                  <p className="text-[10px] font-bold mb-1.5 flex items-center gap-1" style={{ color: "var(--m-text)" }}>
+                                    <FileText size={10} style={{ color: "var(--m-primary)" }} /> Extracted {run.extractedItems.length} item(s)
+                                  </p>
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                    {run.extractedItems.map((item, idx) => (
+                                      <div key={idx} className="rounded-lg border p-2 text-[9px]" style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-surface-alt)" }}>
+                                        <div className="flex items-center justify-between gap-1">
+                                          <p className="font-bold truncate" style={{ color: "var(--m-text-heading)" }}>{item.title}</p>
+                                          <span className="shrink-0 rounded px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-wide" style={{
+                                            backgroundColor: item.type === "subject" ? "#f3e8ff" : item.type === "flashcard" ? "#ecfdf5" : item.type === "grade" ? "#fffbeb" : item.type === "note" ? "#eff6ff" : item.type.startsWith("finance") ? "#f0fdf4" : "var(--m-surface)",
+                                            color: item.type === "subject" ? "#6b21a8" : item.type === "flashcard" ? "#065f46" : item.type === "grade" ? "#92400e" : item.type === "note" ? "#1e40af" : item.type.startsWith("finance") ? "#166534" : "var(--m-primary)",
+                                            border: "1px solid var(--m-border-light)",
+                                          }}>
+                                            {item.type}
+                                          </span>
+                                        </div>
+                                        <div className="flex justify-between mt-1 text-[8.5px]" style={{ color: "var(--m-text-sub)" }}>
+                                          {item.course && <span>Course: <b>{item.course}</b></span>}
+                                          {item.amount !== undefined && <span>₹{item.amount.toLocaleString("en-IN")}</span>}
+                                          {item.score !== undefined && <span>Score: <b>{item.score}/{item.total || 100}</b></span>}
+                                          {item.time && <span>Time: {item.time}</span>}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Categorized Results */}
+                              {run.status === "done" && totalActions > 0 && (
+                                <div className="pt-2 border-t space-y-2" style={{ borderColor: "var(--m-border-light)" }}>
+                                  <p className="text-[10px] font-bold flex items-center gap-1" style={{ color: "var(--m-success)" }}>
+                                    <CheckCircle2 size={11} /> Actions Executed ({totalActions})
+                                  </p>
+                                  
+                                  <div className="grid gap-1.5 text-[9px]">
+                                    {/* Subjects */}
+                                    {run.createdSubjects && run.createdSubjects.length > 0 && (
+                                      <div className="rounded-lg p-2 flex items-start gap-2" style={{ backgroundColor: "#f3e8ff15", border: "1px solid #d8b4fe40" }}>
+                                        <FolderPlus size={13} className="shrink-0 mt-0.5 text-purple-600" />
+                                        <div>
+                                          <p className="font-bold text-purple-700 dark:text-purple-300">Created Subjects ({run.createdSubjects.length})</p>
+                                          <p className="text-[9px]" style={{ color: "var(--m-text)" }}>{run.createdSubjects.join(", ")}</p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Flashcards */}
+                                    {run.createdFlashcards && run.createdFlashcards.length > 0 && (
+                                      <div className="rounded-lg p-2 flex items-start gap-2" style={{ backgroundColor: "#ecfdf515", border: "1px solid #6ee7b740" }}>
+                                        <Layers size={13} className="shrink-0 mt-0.5 text-emerald-600" />
+                                        <div>
+                                          <p className="font-bold text-emerald-700 dark:text-emerald-300">Created Flashcards ({run.createdFlashcards.length})</p>
+                                          <ul className="list-disc list-inside space-y-0.5 mt-0.5" style={{ color: "var(--m-text)" }}>
+                                            {run.createdFlashcards.map((c, i) => <li key={`fc-${i}`}>{c}</li>)}
+                                          </ul>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Grades */}
+                                    {run.createdGrades && run.createdGrades.length > 0 && (
+                                      <div className="rounded-lg p-2 flex items-start gap-2" style={{ backgroundColor: "#fffbeb15", border: "1px solid #fcd34d40" }}>
+                                        <Award size={13} className="shrink-0 mt-0.5 text-amber-600" />
+                                        <div>
+                                          <p className="font-bold text-amber-700 dark:text-amber-300">Grades Recorded / Updated ({run.createdGrades.length})</p>
+                                          <p className="text-[9px]" style={{ color: "var(--m-text)" }}>{run.createdGrades.join(", ")}</p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Notes */}
+                                    {run.createdNotes && run.createdNotes.length > 0 && (
+                                      <div className="rounded-lg p-2 flex items-start gap-2" style={{ backgroundColor: "#eff6ff15", border: "1px solid #93c5fd40" }}>
+                                        <BookOpen size={13} className="shrink-0 mt-0.5 text-blue-600" />
+                                        <div>
+                                          <p className="font-bold text-blue-700 dark:text-blue-300">Study Notes Added ({run.createdNotes.length})</p>
+                                          <p className="text-[9px]" style={{ color: "var(--m-text)" }}>{run.createdNotes.join(", ")}</p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Finance */}
+                                    {run.createdFinance && run.createdFinance.length > 0 && (
+                                      <div className="rounded-lg p-2 flex items-start gap-2" style={{ backgroundColor: "#f0fdf415", border: "1px solid #86efac40" }}>
+                                        <Wallet size={13} className="shrink-0 mt-0.5 text-green-600" />
+                                        <div>
+                                          <p className="font-bold text-green-700 dark:text-green-300">Finance Logged ({run.createdFinance.length})</p>
+                                          <p className="text-[9px]" style={{ color: "var(--m-text)" }}>{run.createdFinance.join(", ")}</p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Schedule */}
+                                    {run.createdSchedule && run.createdSchedule.length > 0 && (
+                                      <div className="rounded-lg p-2 flex items-start gap-2" style={{ backgroundColor: "#eef2ff15", border: "1px solid #a5b4fc40" }}>
+                                        <CalendarDays size={13} className="shrink-0 mt-0.5 text-indigo-600" />
+                                        <div>
+                                          <p className="font-bold text-indigo-700 dark:text-indigo-300">Scheduled Sessions ({run.createdSchedule.length})</p>
+                                          <p className="text-[9px]" style={{ color: "var(--m-text)" }}>{run.createdSchedule.join(", ")}</p>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    {/* Tasks */}
+                                    {run.createdTasks && run.createdTasks.length > 0 && (
+                                      <div className="rounded-lg p-2 flex items-start gap-2" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border-light)" }}>
+                                        <CheckCircle2 size={13} className="shrink-0 mt-0.5 text-[var(--m-primary)]" />
+                                        <div>
+                                          <p className="font-bold" style={{ color: "var(--m-text-heading)" }}>Tasks Created ({run.createdTasks.length})</p>
+                                          <p className="text-[9px]" style={{ color: "var(--m-text)" }}>{run.createdTasks.join(", ")}</p>
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Error */}
+                              {run.errorMsg && (
+                                <p className="text-[10px] italic" style={{ color: run.status === "error" ? "var(--m-danger)" : "var(--m-text-sub)" }}>
+                                  {run.errorMsg}
                                 </p>
-                                <ul className="list-disc list-inside text-[9px] space-y-0.5" style={{ color: "var(--m-text-sub)" }}>
-                                  {run.createdTasks.map((t, i) => <li key={`t-${i}`}>Created task: <b>{t}</b></li>)}
-                                  {run.createdSchedule.map((s, i) => <li key={`s-${i}`}>Scheduled: <b>{s}</b></li>)}
-                                </ul>
-                              </div>
-                            )}
-
-                            {/* Error */}
-                            {run.errorMsg && (
-                              <p className="text-[10px] italic" style={{ color: run.status === "error" ? "var(--m-danger)" : "var(--m-text-sub)" }}>
-                                {run.errorMsg}
-                              </p>
-                            )}
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </section>
@@ -3280,7 +3982,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                     colorText: 'var(--m-text)',
                     colorTextSecondary: 'var(--m-text-sub)',
                     colorInputBackground: 'var(--m-surface)',
-                    colorInputBorder: 'var(--m-border)',
+                    colorBorder: 'var(--m-border)',
                   },
                   elements: {
                     card: 'shadow-none bg-transparent',
