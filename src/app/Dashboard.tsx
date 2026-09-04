@@ -154,6 +154,17 @@ function renderSimpleMarkdown(text: string) {
           hr: ({node, ...props}) => <hr className="my-4" style={{ borderColor: "var(--m-border-light)" }} {...props} />,
           p: ({node, ...props}) => <p style={{ color: "var(--m-text)" }} {...props} />,
           a: ({node, ...props}) => <a className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
+          img: ({node, ...props}) => (
+            <img
+              className="rounded-xl max-h-72 object-contain my-2.5 border border-black/10 dark:border-white/10 shadow-sm cursor-pointer hover:opacity-95 transition"
+              onClick={() => {
+                const src = (props as any).src;
+                if (src) window.open(src, "_blank");
+              }}
+              loading="lazy"
+              {...props}
+            />
+          ),
           pre: ({node, ...props}) => <pre className="bg-[#1e1e1e] text-white p-3 rounded-lg overflow-x-auto text-[11px] mt-2 mb-2 custom-scrollbar shadow-sm" {...props} />,
           code: ({node, className, ...props}: any) => <code className={`${className || ''} bg-black/5 dark:bg-white/10 rounded-md px-1.5 py-0.5 text-[10.5px] font-mono`} {...props} />,
         }}
@@ -349,7 +360,13 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
 
   // ─── AI File Attachment ───
   const [chatFile, setChatFile] = useState<{
-    name: string; size: number; type: string; content: string; isImage?: boolean;
+    name: string;
+    size: number;
+    type: string;
+    content: string;
+    isImage?: boolean;
+    base64?: string;
+    dataUrl?: string;
   } | null>(null);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1964,15 +1981,35 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
       }
       try {
         let contentText = "";
-        const isImage = Boolean(file.type.startsWith("image/") || file.name.match(/\.(png|jpg|jpeg|gif|webp)$/i));
+        let base64 = "";
+        let dataUrl = "";
+        const isImage = Boolean(file.type.startsWith("image/") || file.name.match(/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i));
+
         if (isImage) {
+          dataUrl = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
           contentText = `[IMAGE: ${file.name} (${formatFileSize(file.size)})]`;
         } else if (file.type.startsWith("text/") || file.name.match(/\.(txt|md|py|js|ts|tsx|jsx|json|csv|html|css|cpp|c|java|sql)$/i)) {
           contentText = await file.text();
         } else {
           contentText = await file.text().catch(() => `[Attachment: ${file.name}]`);
         }
-        setChatFile({ name: file.name, size: file.size, type: file.type || "application/octet-stream", content: contentText, isImage });
+
+        setChatFile({
+          name: file.name,
+          size: file.size,
+          type: file.type || (isImage ? "image/jpeg" : "application/octet-stream"),
+          content: contentText,
+          isImage,
+          base64,
+          dataUrl,
+        });
+        showToast(`Attached ${file.name}`);
       } catch (err: any) {
         showToast(`Failed reading file: ${err.message}`, "error");
       }
@@ -1985,15 +2022,19 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     const rawQuestion = customQuery || chatDraft.trim();
     if (!rawQuestion && !chatFile && !isAsking) return;
 
-    const questionText = rawQuestion || (chatFile ? `Please analyze attached file: ${chatFile.name}` : "");
+    const questionText = rawQuestion || (chatFile ? (chatFile.isImage ? "Please analyze this image in detail." : `Please analyze attached file: ${chatFile.name}`) : "");
     const attachedFileBackup = chatFile;
 
     const displayMessage = attachedFileBackup
-      ? `📎 **${attachedFileBackup.name}** (${formatFileSize(attachedFileBackup.size)})\n\n${questionText}`
+      ? (attachedFileBackup.isImage && attachedFileBackup.dataUrl
+          ? `![${attachedFileBackup.name}](${attachedFileBackup.dataUrl})\n\n📎 **${attachedFileBackup.name}** (${formatFileSize(attachedFileBackup.size)})\n\n${questionText}`
+          : `📎 **${attachedFileBackup.name}** (${formatFileSize(attachedFileBackup.size)})\n\n${questionText}`)
       : questionText;
 
     const promptForAI = attachedFileBackup
-      ? `[ATTACHED FILE: ${attachedFileBackup.name} (${formatFileSize(attachedFileBackup.size)})]\n--- FILE CONTENT START ---\n${attachedFileBackup.content.slice(0, 15000)}\n--- FILE CONTENT END ---\n\nUser Question: ${questionText}`
+      ? (attachedFileBackup.isImage
+          ? questionText
+          : `[ATTACHED FILE: ${attachedFileBackup.name} (${formatFileSize(attachedFileBackup.size)})]\n--- FILE CONTENT START ---\n${attachedFileBackup.content.slice(0, 15000)}\n--- FILE CONTENT END ---\n\nUser Question: ${questionText}`)
       : questionText;
 
     setMessages((curr) => [...curr, { role: "user", content: displayMessage }]);
@@ -2001,9 +2042,13 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     setChatFile(null);
     setIsAsking(true);
 
-    const chatHistory = messages.slice(-8).map((m) => ({ role: m.role, content: m.content }));
+    // Strip heavy base64 data URLs from history to keep memory & network payload ultra lean
+    const chatHistory = messages.slice(-8).map((m) => ({
+      role: m.role,
+      content: m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]"),
+    }));
 
-    let systemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting.`;
+    let systemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting. If the user attaches an image or architecture diagram, provide a thorough, structured visual breakdown: identify all components, arrows/flows, technologies, and step-by-step explanations.`;
 
     if (chatSubjectId !== null) {
       const subject = subjects.find(s => s.id === chatSubjectId);
@@ -2024,14 +2069,20 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
       setMessages((curr) => [...curr, { role: "assistant", content: "" }]);
 
       const response = await fetchAI({
-        model: "gemini-3.6-flash",
+        model: attachedFileBackup?.isImage ? "gemini-3.1-flash-lite" : "gemini-3.1-flash-lite",
         messages: [
           { role: "system", content: systemPrompt },
           ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
           { role: "user", content: promptForAI },
         ],
+        image: attachedFileBackup?.isImage && attachedFileBackup.base64 ? {
+          name: attachedFileBackup.name,
+          mimeType: attachedFileBackup.type,
+          base64Data: attachedFileBackup.base64,
+          dataUrl: attachedFileBackup.dataUrl,
+        } : undefined,
         max_tokens: 4096,
-        temperature: chatSubjectId ? 0.1 : 0.7,
+        temperature: chatSubjectId ? 0.1 : 0.4,
         onChunk: (chunk) => {
           setMessages((curr) => {
             const updated = [...curr];
@@ -2047,7 +2098,10 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
       if (response.error) {
         setMessages((curr) => {
           const updated = [...curr];
-          updated[updated.length - 1].content = `⚠️ **Dream It AI**: ${response.error}`;
+          const last = updated[updated.length - 1];
+          if (last && last.role === "assistant") {
+            last.content = `⚠️ **Dream It AI**: ${response.error}`;
+          }
           return updated;
         });
       } else {
@@ -2057,13 +2111,14 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
       return;
     } catch (e) {
       console.warn("AI fallback notice:", e);
-      setMessages((curr) => [
-        ...curr,
-        {
-          role: "assistant",
-          content: "⚠️ **Dream It AI**: An unexpected error occurred. Please try again.",
-        },
-      ]);
+      setMessages((curr) => {
+        const updated = [...curr];
+        const last = updated[updated.length - 1];
+        if (last && last.role === "assistant" && !last.content) {
+          last.content = "⚠️ **Dream It AI**: An unexpected error occurred. Please try again.";
+        }
+        return updated;
+      });
     }
 
     setIsAsking(false);
@@ -2923,10 +2978,21 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                 <div ref={chatContainerRef} className="flex-1 space-y-3 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
                   {messages.map((m, idx) => (
                     <div key={idx} className="max-w-[92%] rounded-2xl px-4 py-3 shadow-xs" style={m.role === "assistant" ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" } : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px", marginLeft: "auto" }}>
-                      {renderSimpleMarkdown(m.content)}
+                      {m.content ? (
+                        renderSimpleMarkdown(m.content)
+                      ) : (
+                        <div className="flex items-center gap-2 py-0.5">
+                          <span className="text-[11px] font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI analyzing</span>
+                          <span className="flex gap-1">
+                            <span className="size-1.5 animate-bounce rounded-full" style={{ backgroundColor: "var(--m-primary)" }} />
+                            <span className="size-1.5 animate-bounce rounded-full [animation-delay:150ms]" style={{ backgroundColor: "var(--m-primary)" }} />
+                            <span className="size-1.5 animate-bounce rounded-full [animation-delay:300ms]" style={{ backgroundColor: "var(--m-primary)" }} />
+                          </span>
+                        </div>
+                      )}
                     </div>
                   ))}
-                  {isAsking && (
+                  {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
                     <div className="flex w-fit items-center gap-2 rounded-2xl px-4 py-3 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px" }}>
                       <span className="text-[11px] font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI thinking</span>
                       <span className="flex gap-1">
@@ -2943,10 +3009,15 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   <div className="flex flex-wrap gap-1.5">
                     {[
                       { emoji: "📐", text: "Solve 2x - 1 = 0", prompt: "Solve 2x - 1 = 0 step by step" },
-                      { emoji: "💡", text: "Study plan", prompt: `Create a study plan for my subjects: ${subjects.map((s) => s.name).join(", ") || "my courses"}` },
-                      { emoji: "🃏", text: "Make flashcards", prompt: `Generate 5 flashcards for studying ${subjects.length > 0 ? subjects[0].name : "my course"}` },
+                      { emoji: "💡", text: "Study plan", prompt: "Help me create an effective daily study plan" },
+                      { emoji: "🎴", text: "Make flashcards", prompt: "Generate 5 active recall flashcards for my hardest subject" },
                     ].map(({ emoji, text, prompt }) => (
-                      <button key={text} onClick={() => askCoach(undefined, prompt)} className="rounded-lg px-2 py-1 text-[10px] font-semibold transition hover:scale-105" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-primary)" }}>
+                      <button
+                        key={text}
+                        onClick={() => askCoach(undefined, prompt)}
+                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-medium transition hover:scale-102 minimal-surface"
+                        style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
+                      >
                         {emoji} {text}
                       </button>
                     ))}
@@ -2958,7 +3029,15 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   <input ref={chatFileInputRef} type="file" onChange={handleChatFileSelect} className="hidden" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.docx,.doc,.txt,.py,.js,.ts,.tsx,.jsx,.json,.csv,.html,.css,.cpp,.c,.java,.sql,.md" />
                   {chatFile && (
                     <div className="flex items-center justify-between rounded-xl px-3 py-1.5 text-xs font-bold mb-2" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                      <span className="flex items-center gap-1.5 truncate"><Paperclip size={13} />{chatFile.name} <span className="text-[10px] opacity-75 font-mono">({formatFileSize(chatFile.size)})</span></span>
+                      <span className="flex items-center gap-2 truncate">
+                        {chatFile.isImage && chatFile.dataUrl ? (
+                          <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                        ) : (
+                          <Paperclip size={13} />
+                        )}
+                        <span className="truncate">{chatFile.name}</span>
+                        <span className="text-[10px] opacity-75 font-mono">({formatFileSize(chatFile.size)})</span>
+                      </span>
                       <button type="button" onClick={() => setChatFile(null)} className="p-0.5 rounded-md transition hover:opacity-75"><X size={14} /></button>
                     </div>
                   )}
@@ -3022,10 +3101,17 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                             : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
                         }
                       >
-                        {renderSimpleMarkdown(m.content)}
+                        {m.content ? (
+                          renderSimpleMarkdown(m.content)
+                        ) : (
+                          <div className="flex items-center gap-2.5 py-1">
+                            <Sparkles size={16} className="animate-spin" style={{ color: "var(--m-primary)" }} />
+                            <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI analyzing...</span>
+                          </div>
+                        )}
                       </div>
                     ))}
-                    {isAsking && (
+                    {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
                       <div className="flex w-fit items-center gap-3 rounded-2xl p-3.5 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }}>
                         <Sparkles size={18} className="animate-spin" style={{ color: "var(--m-primary)" }} />
                         <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI is analyzing your prompt...</span>
@@ -3039,7 +3125,15 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   <form onSubmit={askCoach} className="w-full max-w-6xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
                     {chatFile && (
                       <div className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                        <span className="flex items-center gap-2 truncate"><Paperclip size={14} />{chatFile.name} <span className="text-[10px] opacity-75 font-mono">({formatFileSize(chatFile.size)})</span></span>
+                        <span className="flex items-center gap-2 truncate">
+                          {chatFile.isImage && chatFile.dataUrl ? (
+                            <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                          ) : (
+                            <Paperclip size={14} />
+                          )}
+                          <span className="truncate">{chatFile.name}</span>
+                          <span className="text-[10px] opacity-75 font-mono">({formatFileSize(chatFile.size)})</span>
+                        </span>
                         <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75"><X size={14} /></button>
                       </div>
                     )}
