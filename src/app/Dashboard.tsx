@@ -3088,8 +3088,8 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                 </section>
               </div>
 
-              {/* ─── Right: AI Chat Panel ─── */}
-              <aside className="flex flex-col overflow-hidden rounded-2xl w-full minimal-surface h-[calc(100vh-120px)] min-h-[520px] sticky top-4 shadow-sm feature-zoom" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)" }}>
+              {/* ─── Right: AI Chat Panel (Visible on Desktop / Wide screens) ─── */}
+              <aside className="hidden xl:flex flex-col overflow-hidden rounded-2xl w-full minimal-surface h-[calc(100vh-120px)] min-h-[520px] sticky top-4 shadow-sm feature-zoom" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)" }}>
                 {/* Side Panel Header */}
                 <div className="flex items-center justify-between p-3.5 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                   <div className="flex items-center gap-2">
@@ -3231,8 +3231,8 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                         </p>
                       </div>
                     </div>
-                    <button onClick={() => setIsChatMaximized(false)} className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }} title="Exit full screen">
-                      <Minimize2 size={16} /><span>Exit Full Screen</span>
+                    <button onClick={() => setIsChatMaximized(false)} className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }} title="Close AI Chat">
+                      <X size={16} /><span>Close</span>
                     </button>
                   </div>
 
@@ -4236,6 +4236,26 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
             </div>
           </div>
         </div>
+      )}
+
+      {/* ─── Floating AI Bot Button for Mobile & Narrow Screens (Below Left Corner) ─── */}
+      {!isChatMaximized && (
+        <button
+          onClick={() => setIsChatMaximized(true)}
+          className="xl:hidden fixed bottom-20 left-4 sm:bottom-6 sm:left-6 z-40 flex items-center gap-2.5 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 animate-in fade-in slide-in-from-bottom-3"
+          style={{
+            backgroundColor: "var(--m-primary)",
+            color: "var(--m-primary-text)",
+            boxShadow: "0 8px 32px color-mix(in srgb, var(--m-primary) 45%, transparent), 0 2px 8px rgba(0,0,0,0.3)",
+          }}
+          aria-label="Open Dream It AI"
+        >
+          <div className="size-6 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+            <Brain size={16} />
+          </div>
+          <span>Dream It AI</span>
+          <span className="size-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+        </button>
       )}
 
       {/* ─── PWA Install Banner ─── */}
