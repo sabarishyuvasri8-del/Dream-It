@@ -145,7 +145,8 @@ export async function generateCBSEExamPaper(config: ExamConfig): Promise<{ paper
       model: "gemini-3.1-flash-lite",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 4096,
+      max_tokens: 5000,
+      timeoutMs: 45000,
     });
 
     if (aiRes.error) {
@@ -157,8 +158,19 @@ export async function generateCBSEExamPaper(config: ExamConfig): Promise<{ paper
       raw = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
     }
 
+    // Extract exact JSON object boundaries in case of conversational prefixes
+    const firstBrace = raw.indexOf("{");
+    const lastBrace = raw.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      raw = raw.substring(firstBrace, lastBrace + 1);
+    }
+
     // Parse JSON
     const parsed = JSON.parse(raw);
+
+    if (!parsed.sections || !Array.isArray(parsed.sections) || parsed.sections.length === 0) {
+      return { error: "AI generated an incomplete paper blueprint. Please click generate again." };
+    }
     
     // Validate and enrich with unique IDs
     const paper: ExamPaper = {

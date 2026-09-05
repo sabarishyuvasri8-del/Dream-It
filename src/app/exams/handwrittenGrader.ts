@@ -101,6 +101,7 @@ Output ONLY valid JSON matching this exact structure:
       image: primaryImage,
       temperature: 0.1,
       max_tokens: 4096,
+      timeoutMs: 45000,
     });
 
     if (res.error) {
@@ -110,6 +111,12 @@ Output ONLY valid JSON matching this exact structure:
     let raw = (res.content || "").trim();
     if (raw.startsWith("```")) {
       raw = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+    }
+
+    const firstBrace = raw.indexOf("{");
+    const lastBrace = raw.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1) {
+      raw = raw.substring(firstBrace, lastBrace + 1);
     }
 
     const parsed = JSON.parse(raw);

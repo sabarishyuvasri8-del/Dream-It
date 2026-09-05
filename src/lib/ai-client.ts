@@ -23,6 +23,7 @@ export interface AIChatRequest {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
+  timeoutMs?: number;
   onChunk?: (text: string) => void;
 }
 
@@ -123,14 +124,21 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     return m;
   });
 
-  // Adaptive timeout: 25s for vision processing, 8s for text
-  const timeoutDuration = params.image ? 25000 : 8000;
+  // Adaptive timeout: respects custom timeoutMs, otherwise adapts based on image or token requirements
+  const defaultTimeout = params.image ? 30000 : (params.max_tokens && params.max_tokens > 1500 ? 35000 : 15000);
+  const timeoutDuration = params.timeoutMs ?? defaultTimeout;
+  let timeoutAbortCount = 0;
 
   for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
     const currentModel = modelsToTry[mIdx];
 
     // Try keys sequentially in case of quota exhaustion
     for (let kIdx = 0; kIdx < candidateKeys.length; kIdx++) {
+      // If we already hit 2 high-duration timeouts, avoid keeping the user waiting indefinitely
+      if (timeoutDuration >= 20000 && timeoutAbortCount >= 2) {
+        break;
+      }
+
       const apiKey = candidateKeys[kIdx];
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
@@ -242,9 +250,12 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
       } catch (error: any) {
         clearTimeout(timeoutId);
         console.warn(`AI client fetch error with ${currentModel} (key ${kIdx}):`, error);
-        lastError = error?.name === "AbortError" 
-          ? `Request to ${currentModel} timed out.`
-          : (error?.message || `Connection to ${currentModel} failed.`);
+        if (error?.name === "AbortError") {
+          timeoutAbortCount++;
+          lastError = `Generation timed out. Please retry or reduce paper length.`;
+        } else {
+          lastError = error?.message || `Connection to ${currentModel} failed.`;
+        }
       }
     }
   }

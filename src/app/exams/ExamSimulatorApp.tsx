@@ -177,23 +177,29 @@ export default function ExamSimulatorApp({
     setIsGenerating(true);
     showToast("Chief CBSE Question Paper Setter & Pedagogy Master are drafting paper...", "info");
 
-    const res = await generateCBSEExamPaper(config);
-    setIsGenerating(false);
+    try {
+      const res = await generateCBSEExamPaper(config);
 
-    if (res.error || !res.paper) {
-      showToast(res.error || "Could not generate exam paper.", "error");
-      return;
+      if (res.error || !res.paper) {
+        showToast(res.error || "Could not generate exam paper.", "error");
+        return;
+      }
+
+      setActivePaper(res.paper);
+      setDigitalAnswers({});
+      setUploadedPhotos([]);
+      setEvaluationReport(null);
+      setRemainingSeconds(res.paper.durationMinutes * 60);
+      setIsTimerRunning(true);
+      setCurrentView("exam_hall");
+      showToast("CBSE Question Paper generated successfully! 📝");
+      saveExamRecord({ paper: res.paper });
+    } catch (err: any) {
+      console.error("Exam generation error:", err);
+      showToast(err?.message || "Failed to generate exam paper. Please check connection and try again.", "error");
+    } finally {
+      setIsGenerating(false);
     }
-
-    setActivePaper(res.paper);
-    setDigitalAnswers({});
-    setUploadedPhotos([]);
-    setEvaluationReport(null);
-    setRemainingSeconds(res.paper.durationMinutes * 60);
-    setIsTimerRunning(true);
-    setCurrentView("exam_hall");
-    showToast("CBSE Question Paper generated successfully! 📝");
-    saveExamRecord({ paper: res.paper });
   };
 
   // ─── File Upload for Handwritten Sheets ───
