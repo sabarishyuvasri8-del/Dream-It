@@ -191,7 +191,7 @@ export default function ParticleField() {
     
     // Initialize particles
     if (particlesRef.current.length === 0) {
-      const count = getParticleCount(window.innerWidth);
+      const count = getParticleCount(window.innerWidth, isLowSpec);
       particlesRef.current = Array.from({ length: count }, () =>
         createParticle(window.innerWidth, window.innerHeight)
       );

@@ -92,10 +92,12 @@ function AnimatedSection({
   children,
   className,
   id,
+  style,
 }: {
   children: React.ReactNode;
   className?: string;
   id?: string;
+  style?: React.CSSProperties;
 }) {
   const prefersReducedMotion = usePrefersReducedMotion();
   const variants = getSectionVariants(prefersReducedMotion);
@@ -107,7 +109,7 @@ function AnimatedSection({
       whileInView="visible"
       viewport={{ once: true, amount: 0.2 }}
       variants={variants as any}
-      style={{ scrollMarginTop: "80px" }}
+      style={{ scrollMarginTop: "80px", ...style }}
     >
       {children}
     </motion.section>
@@ -120,7 +122,7 @@ function AnimatedItem({
   delay = 0,
   style,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   className?: string;
   delay?: number;
   style?: React.CSSProperties;

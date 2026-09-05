@@ -108,6 +108,7 @@ import {
 const FinanceApp = lazy(() => import("./finance/FinanceApp"));
 const ExamSimulatorApp = lazy(() => import("./exams/ExamSimulatorApp"));
 import type { FinanceData, FinanceTransaction, FinanceProfile } from "../lib/finance-types";
+import { fetchAI } from "../lib/ai-client";
 import { FileUpload, formatFileSize } from "../components/FileUpload";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
@@ -2193,7 +2194,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
         } : undefined,
         max_tokens: 4096,
         temperature: chatSubjectId ? 0.1 : 0.4,
-        onChunk: (chunk) => {
+        onChunk: (chunk: string) => {
           setMessages((curr) => {
             const updated = [...curr];
             const last = updated[updated.length - 1];
