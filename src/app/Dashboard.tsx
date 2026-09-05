@@ -125,6 +125,7 @@ import { useAppStore } from "../lib/store";
 import ChatModal from "./components/ChatModal";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { OfflineSyncIndicator } from "./components/OfflineSyncIndicator";
+import { subscribePWAInstall, promptPWAInstall, isPWAInstalled } from "../lib/pwa";
 const PDFFlashcardModal = lazy(() =>
   import("./flashcards/PDFFlashcardModal").then((m) => ({ default: m.PDFFlashcardModal }))
 );
