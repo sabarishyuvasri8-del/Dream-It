@@ -4238,11 +4238,11 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
         </div>
       )}
 
-      {/* ─── Floating AI Bot Button for Mobile & Narrow Screens (Below Left Corner) ─── */}
+      {/* ─── Floating AI Bot Button for Mobile & Narrow Screens (Bottom Right Corner) ─── */}
       {!isChatMaximized && (
         <button
           onClick={() => setIsChatMaximized(true)}
-          className="xl:hidden fixed bottom-20 left-4 sm:bottom-6 sm:left-6 z-40 flex items-center gap-2.5 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 animate-in fade-in slide-in-from-bottom-3"
+          className="xl:hidden fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 flex items-center gap-2.5 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 animate-in fade-in slide-in-from-bottom-3"
           style={{
             backgroundColor: "var(--m-primary)",
             color: "var(--m-primary-text)",
