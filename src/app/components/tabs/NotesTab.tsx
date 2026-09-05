@@ -40,7 +40,7 @@
                       const noteSub = subjects.find((s) => Number(s.id) === Number(note.subjectId));
                       const isSelected = activeNote?.id === note.id;
                       return (
-                        <button key={note.id} onClick={() => selectNote(note)} className="w-full text-left rounded-2xl p-3.5 transition duration-200 feature-chip" style={isSelected ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 4px 15px rgba(36,76,59,0.25)" } : { backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border-light)", color: "var(--m-text)" }}>
+                        <button key={note.id} onClick={() => selectNote(note)} className="w-full text-left rounded-2xl p-3.5 transition duration-200 feature-chip contain-note" style={isSelected ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 4px 15px rgba(36,76,59,0.25)" } : { backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border-light)", color: "var(--m-text)" }}>
                           <div className="flex items-center justify-between gap-2">
                             <p className="text-xs font-bold truncate flex-1">{note.title || "Untitled Note"}</p>
                             {noteSub && (

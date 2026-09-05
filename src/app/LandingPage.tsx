@@ -320,7 +320,7 @@ export default function LandingPage({
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="size-10 rounded-xl overflow-hidden shadow-sm shrink-0 flex items-center justify-center bg-white/10 dark:bg-black/10">
-              <img src="/logo.png" alt="Dream It Logo" className="w-full h-full object-contain object-center scale-[1.15]" />
+              <img src="/logo.png" alt="Dream It Logo" width="40" height="40" loading="eager" className="w-full h-full object-contain object-center scale-[1.15]" />
             </div>
             <span
               className="font-[Roboto_Slab] text-xl font-bold tracking-tight"

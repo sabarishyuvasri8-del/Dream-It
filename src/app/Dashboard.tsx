@@ -1,12 +1,5 @@
 import { FormEvent, useEffect, useMemo, useRef, useState, useCallback, Suspense, lazy } from "react";
 import confetti from "canvas-confetti";
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import 'katex/dist/katex.min.css';
-import { UserProfile } from '@clerk/clerk-react';
-import { dark } from '@clerk/themes';
 import {
   Activity,
   AlarmClock,
@@ -129,6 +122,8 @@ import { subscribePWAInstall, promptPWAInstall, isPWAInstalled } from "../lib/pw
 const PDFFlashcardModal = lazy(() =>
   import("./flashcards/PDFFlashcardModal").then((m) => ({ default: m.PDFFlashcardModal }))
 );
+const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
+const UserProfileModal = lazy(() => import("./components/UserProfileModal"));
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -139,49 +134,15 @@ function toDateKey(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
-/** Build the last N days as date keys */
+/** Render markdown content lazily with KaTeX and GFM support */
 function renderSimpleMarkdown(text: string) {
-  if (!text.trim()) {
+  if (!text || !text.trim()) {
     return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet. Switch to Edit mode to write your note!</p>;
   }
-  const hasMath = text.includes("$");
-  const remarkPlugins = hasMath ? [remarkGfm, remarkMath] : [remarkGfm];
-  const rehypePlugins = hasMath ? [rehypeKatex] : [];
-
   return (
-    <div className="space-y-2 text-xs leading-relaxed font-[DM_Sans]">
-      <ReactMarkdown
-        remarkPlugins={remarkPlugins}
-        rehypePlugins={rehypePlugins}
-        components={{
-          h1: ({node, ...props}) => <h1 className="font-[Roboto_Slab] text-xl font-bold mt-4 mb-2 pb-1 border-b" style={{ borderColor: "var(--m-border-light)", color: "var(--m-text-heading)" }} {...props} />,
-          h2: ({node, ...props}) => <h2 className="font-[Roboto_Slab] text-lg font-semibold mt-3 mb-1" style={{ color: "var(--m-text-heading)" }} {...props} />,
-          h3: ({node, ...props}) => <h3 className="font-[Roboto_Slab] text-sm font-bold mt-2" style={{ color: "var(--m-text-heading)" }} {...props} />,
-          ul: ({node, ...props}) => <ul className="ml-4 list-disc" style={{ color: "var(--m-text)" }} {...props} />,
-          ol: ({node, ...props}) => <ol className="ml-4 list-decimal" style={{ color: "var(--m-text)" }} {...props} />,
-          li: ({node, ...props}) => <li className="" {...props} />,
-          blockquote: ({node, ...props}) => <blockquote className="border-l-3 pl-3 italic my-2 py-1 rounded-r-lg" style={{ borderColor: "var(--m-primary)", backgroundColor: "var(--m-surface-alt)", color: "var(--m-text-sub)" }} {...props} />,
-          hr: ({node, ...props}) => <hr className="my-4" style={{ borderColor: "var(--m-border-light)" }} {...props} />,
-          p: ({node, ...props}) => <p style={{ color: "var(--m-text)" }} {...props} />,
-          a: ({node, ...props}) => <a className="text-blue-500 hover:underline" target="_blank" rel="noopener noreferrer" {...props} />,
-          img: ({node, ...props}) => (
-            <img
-              className="rounded-xl max-h-72 object-contain my-2.5 border border-black/10 dark:border-white/10 shadow-sm cursor-pointer hover:opacity-95 transition"
-              onClick={() => {
-                const src = (props as any).src;
-                if (src) window.open(src, "_blank");
-              }}
-              loading="lazy"
-              {...props}
-            />
-          ),
-          pre: ({node, ...props}) => <pre className="bg-[#1e1e1e] text-white p-3 rounded-lg overflow-x-auto text-[11px] mt-2 mb-2 custom-scrollbar shadow-sm" {...props} />,
-          code: ({node, className, ...props}: any) => <code className={`${className || ''} bg-black/5 dark:bg-white/10 rounded-md px-1.5 py-0.5 text-[10.5px] font-mono`} {...props} />,
-        }}
-      >
-        {text}
-      </ReactMarkdown>
-    </div>
+    <Suspense fallback={<div className="animate-pulse bg-black/5 dark:bg-white/5 h-12 rounded-xl" />}>
+      <MarkdownRenderer content={text} />
+    </Suspense>
   );
 }
 function getLast7Days(): string[] {
@@ -635,15 +596,19 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     };
   }, [checkInbox, loadFriends, userId]);
 
-  // ─── Auto-save workspace (debounced with 0ms input latency) ───
+  // ─── Auto-save workspace (debounced with 0ms input latency & de-duplication) ───
+  const lastSavedJsonRef = useRef<string>("");
   useEffect(() => {
     if (!workspaceReady) return;
     const saveTimer = window.setTimeout(async () => {
-      setIsSaving(true);
       const payload: UserWorkspace = {
         tasks, scheduleItems, subjects, studyMinutes, focusLog,
         notes, grades, flashcards, streak, finance
       };
+      const serialized = JSON.stringify(payload);
+      if (serialized === lastSavedJsonRef.current) return;
+      lastSavedJsonRef.current = serialized;
+      setIsSaving(true);
       await saveUserWorkspace(accessToken, userId, payload);
       setIsSaving(false);
       setLastSavedTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
@@ -4315,38 +4280,9 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
       )}
 
       {/* ─── Profile Modal ─── */}
-      {isProfileOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-8 animate-in fade-in" style={{ backgroundColor: "rgba(0,0,0,0.5)", backdropFilter: "blur(10px)" }}>
-          <div className="relative w-full max-w-4xl max-h-full overflow-y-auto custom-scrollbar rounded-3xl" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border)" }}>
-            <button 
-              onClick={() => setIsProfileOpen(false)} 
-              className="absolute top-4 right-4 z-50 p-2 rounded-full hover:bg-black/10 transition"
-              style={{ color: "var(--m-text)" }}
-            >
-              <X size={20} />
-            </button>
-            <div className="p-6">
-              <UserProfile 
-                appearance={{
-                  baseTheme: dark,
-                  variables: {
-                    colorPrimary: 'var(--m-primary)',
-                    colorBackground: 'var(--m-bg)',
-                    colorText: 'var(--m-text)',
-                    colorTextSecondary: 'var(--m-text-sub)',
-                    colorInputBackground: 'var(--m-surface)',
-                    colorBorder: 'var(--m-border)',
-                  },
-                  elements: {
-                    card: 'shadow-none bg-transparent',
-                    navbar: 'hidden md:block', // Keep navbar for desktop, but clerk handles mobile well
-                  }
-                }}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+      <Suspense fallback={null}>
+        <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+      </Suspense>
 
       {/* ─── Floating AI Bot Button for Mobile & Narrow Screens (Bottom Right Corner) ─── */}
       {!isChatMaximized && (

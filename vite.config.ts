@@ -36,18 +36,20 @@ export default defineConfig({
   build: {
     target: 'esnext',
     minify: 'esbuild',
+    cssCodeSplit: true,
     rollupOptions: {
       output: {
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router'],
           'ui-vendor': ['lucide-react'],
           'radix-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-select', '@radix-ui/react-popover', '@radix-ui/react-dropdown-menu'],
-          'animation-vendor': ['motion', 'framer-motion'],
+          'animation-vendor': ['motion'],
           'chart-vendor': ['recharts'],
           'supabase-vendor': ['@supabase/supabase-js'],
           'clerk-vendor': ['@clerk/clerk-react'],
           'markdown-vendor': ['react-markdown', 'remark-gfm'],
           'katex-vendor': ['katex', 'rehype-katex', 'remark-math'],
+          'pdf-vendor': ['pdfjs-dist'],
         }
       }
     }

@@ -15,8 +15,8 @@ import {
 const Dashboard = lazy(() => import("./Dashboard"));
 const ParentDashboard = lazy(() => import("./ParentDashboard"));
 const LandingPage = lazy(() => import("./LandingPage"));
-import RoleSelectionScreen from "./components/RoleSelectionScreen";
-import ParentLoginForm from "./components/ParentLoginForm";
+const RoleSelectionScreen = lazy(() => import("./components/RoleSelectionScreen"));
+const ParentLoginForm = lazy(() => import("./components/ParentLoginForm"));
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
 import { fetchParentLinks, upsertUserProfile } from "../lib/supabase";
@@ -242,7 +242,7 @@ function ClerkAuthCard({ onBack }: { onBack?: () => void }) {
         >
           <div className="relative flex items-center gap-3">
             <div className="size-9 rounded-xl overflow-hidden shadow-sm shrink-0 flex items-center justify-center bg-white/10 dark:bg-black/10">
-              <img src="/logo.png" alt="Dream It Logo" className="w-full h-full object-contain object-center scale-[1.15]" />
+              <img src="/logo.png" alt="Dream It Logo" width="36" height="36" loading="eager" className="w-full h-full object-contain object-center scale-[1.15]" />
             </div>
             <span className="font-[Roboto_Slab] text-xl font-semibold tracking-tight">
               Dream It
@@ -498,32 +498,36 @@ function Root() {
   switch (screen) {
     case "role-select":
       return (
-        <RoleSelectionScreen
-          onSelectRole={(role) => {
-            if (role === "parent") {
-              setScreen("parent-auth");
-            } else {
-              setScreen("auth");
-            }
-          }}
-          onBack={() => setScreen("landing")}
-        />
+        <Suspense fallback={<PageLoader />}>
+          <RoleSelectionScreen
+            onSelectRole={(role) => {
+              if (role === "parent") {
+                setScreen("parent-auth");
+              } else {
+                setScreen("auth");
+              }
+            }}
+            onBack={() => setScreen("landing")}
+          />
+        </Suspense>
       );
     case "auth":
       return <ClerkAuthCard onBack={() => setScreen("role-select")} />;
     case "parent-auth":
       return (
-        <ParentLoginForm
-          onBack={() => setScreen("role-select")}
-          onParentReady={(cUserId, cUsername) => {
-            setIsParentMode(true);
-            setChildUserId(cUserId);
-            setChildUsername(cUsername);
-            sessionStorage.setItem("parentMode", "true");
-            sessionStorage.setItem("childUserId", cUserId);
-            sessionStorage.setItem("childUsername", cUsername);
-          }}
-        />
+        <Suspense fallback={<PageLoader />}>
+          <ParentLoginForm
+            onBack={() => setScreen("role-select")}
+            onParentReady={(cUserId, cUsername) => {
+              setIsParentMode(true);
+              setChildUserId(cUserId);
+              setChildUsername(cUsername);
+              sessionStorage.setItem("parentMode", "true");
+              sessionStorage.setItem("childUserId", cUserId);
+              sessionStorage.setItem("childUsername", cUsername);
+            }}
+          />
+        </Suspense>
       );
     default:
       return (
