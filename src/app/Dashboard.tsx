@@ -113,6 +113,7 @@ import {
   upsertUserProfile,
 } from "../lib/supabase";
 const FinanceApp = lazy(() => import("./finance/FinanceApp"));
+const ExamSimulatorApp = lazy(() => import("./exams/ExamSimulatorApp"));
 import type { FinanceData, FinanceTransaction, FinanceProfile } from "../lib/finance-types";
 import { FileUpload, formatFileSize } from "../components/FileUpload";
 import { useTheme } from "../lib/ThemeContext";
@@ -269,7 +270,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   }, []);
 
   // ─── Navigation ───
-  type NavItem = "Today" | "Planner" | "Projects" | "Focus" | "Notes" | "Grades" | "Cards" | "Money";
+  type NavItem = "Today" | "Planner" | "Projects" | "Focus" | "Notes" | "Grades" | "Cards" | "Money" | "Exams";
   const [activeNav, setActiveNav] = useState<NavItem>("Today");
   const [selectedSubject, setSelectedSubject] = useState("All subjects");
   const [taskFilterStatus, setTaskFilterStatus] = useState<"all" | "active" | "completed">("all");
@@ -2183,6 +2184,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
     { label: "Grades", icon: GraduationCap },
     { label: "Cards", icon: Layers },
     { label: "Money", icon: Wallet },
+    { label: "Exams", icon: Award, displayLabel: "Mock Tests" },
   ];
 
   const isExpanded = mobileOpen || isSidebarHovered;
@@ -2474,6 +2476,48 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
               <FinanceApp 
                 financeData={finance} 
                 onUpdateFinance={(newData) => setFinance(newData)} 
+              />
+            </Suspense>
+          )}
+
+          {/* ═══════════ CBSE EXAMS & MOCK TESTS VIEW ═══════════ */}
+          {activeNav === "Exams" && (
+            <Suspense fallback={<div className="flex h-full items-center justify-center p-8"><Loader2 className="animate-spin text-white/50" size={32} /></div>}>
+              <ExamSimulatorApp
+                userSubjects={subjects}
+                userNotes={notes}
+                onAddGrade={(assignmentName, score, total, subjectName) => {
+                  const matchedSub = subjects.find(s => s.name.toLowerCase() === subjectName.toLowerCase()) || subjects[0];
+                  if (matchedSub) {
+                    const newG = {
+                      id: crypto.randomUUID(),
+                      subjectId: matchedSub.id,
+                      assignmentName,
+                      score,
+                      total,
+                      weight: 100,
+                      createdAt: new Date().toISOString(),
+                    };
+                    setGrades([...grades, newG as any]);
+                  }
+                }}
+                onAddFlashcard={(front, back, course) => {
+                  const matchedSub = subjects.find(s => s.name.toLowerCase() === course.toLowerCase()) || subjects[0];
+                  if (matchedSub) {
+                    const newFc = {
+                      id: crypto.randomUUID(),
+                      subjectId: matchedSub.id,
+                      front,
+                      back,
+                      difficulty: "medium" as const,
+                      reviewCount: 0,
+                      createdAt: new Date().toISOString(),
+                    };
+                    setFlashcards([...flashcards, newFc as any]);
+                  }
+                }}
+                onAddXP={(amt) => addXP(amt)}
+                showToast={showToast}
               />
             </Suspense>
           )}
