@@ -54,6 +54,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Never intercept local development server requests (prevents stale dev bundle crashes)
+  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname.endsWith('.local')) {
+    return;
+  }
+
   // 1. External APIs (Supabase, Clerk, Google AI) -> Network First / Only
   if (
     url.hostname.includes('supabase.co') ||

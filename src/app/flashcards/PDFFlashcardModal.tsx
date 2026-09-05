@@ -21,7 +21,6 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Subject, NoteEntry, AttachedFile } from '../../lib/supabase';
-import { extractTextFromFile } from './pdfExtractor';
 import { generateFlashcardsAndSummary, GeneratedCard, ChapterSummary, FlashcardGenerationResult } from './flashcardAIGenerator';
 
 interface PDFFlashcardModalProps {
@@ -123,6 +122,7 @@ export function PDFFlashcardModal({
           return;
         }
         setStatusMessage(`Extracting text from ${uploadedFile.name}...`);
+        const { extractTextFromFile } = await import('./pdfExtractor');
         const extracted = await extractTextFromFile(uploadedFile);
         contentText = extracted.text;
         if (!docTitle) docTitle = extracted.title;
@@ -143,6 +143,7 @@ export function PDFFlashcardModal({
             if (res.ok) {
               const blob = await res.blob();
               const fileInstance = new window.File([blob], fileObj.fileName, { type: fileObj.mimeType });
+              const { extractTextFromFile } = await import('./pdfExtractor');
               const extracted = await extractTextFromFile(fileInstance);
               contentText = extracted.text;
             }

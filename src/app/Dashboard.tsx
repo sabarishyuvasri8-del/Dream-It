@@ -125,8 +125,9 @@ import { useAppStore } from "../lib/store";
 import ChatModal from "./components/ChatModal";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { OfflineSyncIndicator } from "./components/OfflineSyncIndicator";
-import { subscribePWAInstall, promptPWAInstall, isPWAInstalled } from "../lib/pwa";
-import { PDFFlashcardModal } from "./flashcards/PDFFlashcardModal";
+const PDFFlashcardModal = lazy(() =>
+  import("./flashcards/PDFFlashcardModal").then((m) => ({ default: m.PDFFlashcardModal }))
+);
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -4367,20 +4368,24 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
       )}
 
       {/* ─── 1-Click PDF to Flashcards & Summary Generator Modal ─── */}
-      <PDFFlashcardModal
-        isOpen={pdfFlashcardModalOpen}
-        onClose={() => setPdfFlashcardModalOpen(false)}
-        subjects={subjects}
-        userNotes={notes}
-        attachedFiles={attachedFiles}
-        initialFile={pdfModalFile}
-        initialNote={pdfModalNote}
-        initialSubjectId={pdfModalSubjectId}
-        onAddFlashcards={handleAddAIFlashcards}
-        onSaveNote={handleSaveSummaryNote}
-        onAddXP={(amt) => addXP(amt)}
-        showToast={showToast}
-      />
+      {pdfFlashcardModalOpen && (
+        <Suspense fallback={null}>
+          <PDFFlashcardModal
+            isOpen={pdfFlashcardModalOpen}
+            onClose={() => setPdfFlashcardModalOpen(false)}
+            subjects={subjects}
+            userNotes={notes}
+            attachedFiles={attachedFiles}
+            initialFile={pdfModalFile}
+            initialNote={pdfModalNote}
+            initialSubjectId={pdfModalSubjectId}
+            onAddFlashcards={handleAddAIFlashcards}
+            onSaveNote={handleSaveSummaryNote}
+            onAddXP={(amt) => addXP(amt)}
+            showToast={showToast}
+          />
+        </Suspense>
+      )}
 
       {/* ─── PWA Install Banner ─── */}
       <PWAInstallBanner />
