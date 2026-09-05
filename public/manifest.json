@@ -1,0 +1,65 @@
+{
+  "id": "/?source=pwa",
+  "name": "Dream It — CBSE AI Study Workspace",
+  "short_name": "Dream-It",
+  "description": "Personal AI study workspace with offline notes, Pomodoro focus timer, CBSE exam simulator, and spaced repetition flashcards.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0B0F17",
+  "theme_color": "#6366f1",
+  "lang": "en-US",
+  "dir": "ltr",
+  "icons": [
+    {
+      "src": "/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Notes Journal",
+      "short_name": "Notes",
+      "description": "Write and edit your study notes offline",
+      "url": "/?tab=Notes",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pomodoro Focus",
+      "short_name": "Timer",
+      "description": "Start a distraction-free focus study session",
+      "url": "/?tab=Pomodoro",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Mock Tests",
+      "short_name": "Exams",
+      "description": "CBSE Exam Simulator & Question Paper Setter",
+      "url": "/?tab=Exams",
+      "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ],
+  "categories": ["education", "productivity", "utilities"],
+  "prefer_related_applications": false
+}

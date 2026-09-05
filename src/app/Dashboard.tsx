@@ -122,8 +122,10 @@ import VoiceInputButton from "./components/VoiceInputButton";
 import InboxModal from "./components/InboxModal";
 import FriendsModal from "./components/FriendsModal";
 import { useAppStore } from "../lib/store";
-import { fetchAI } from "../lib/ai-client";
 import ChatModal from "./components/ChatModal";
+import { PWAInstallBanner } from "./components/PWAInstallBanner";
+import { OfflineSyncIndicator } from "./components/OfflineSyncIndicator";
+import { subscribePWAInstall, promptPWAInstall, isPWAInstalled } from "../lib/pwa";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -430,6 +432,16 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   // ─── Profile Modal ───
   const [isProfileOpen, setIsProfileOpen] = useState(false);
 
+  // ─── PWA Installation State ───
+  const [canInstallPWA, setCanInstallPWA] = useState(false);
+  useEffect(() => {
+    if (isPWAInstalled()) return;
+    const unsub = subscribePWAInstall((installable) => {
+      setCanInstallPWA(installable);
+    });
+    return () => unsub();
+  }, []);
+
   // ─── Derived User Display ───
   const userNameDisplay = useMemo(() => {
     if (userName) return userName;
@@ -629,6 +641,31 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     }, 1000);
     return () => window.clearTimeout(saveTimer);
   }, [accessToken, userId, workspaceReady, tasks, scheduleItems, subjects, studyMinutes, focusLog, notes, grades, flashcards, streak, finance]);
+
+  // ─── Force Cloud Sync (invoked upon network reconnect or manually) ───
+  const handleForceSync = useCallback(async () => {
+    if (!userId || !workspaceReady) return;
+    setIsSaving(true);
+    const payload: UserWorkspace = {
+      tasks, scheduleItems, subjects, studyMinutes, focusLog,
+      notes, grades, flashcards, streak, finance
+    };
+    const success = await saveUserWorkspace(accessToken, userId, payload);
+    setIsSaving(false);
+    if (success) {
+      setLastSavedTime(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    }
+  }, [accessToken, userId, workspaceReady, tasks, scheduleItems, subjects, studyMinutes, focusLog, notes, grades, flashcards, streak, finance]);
+
+  // ─── Automatic PWA Offline Sync upon Network Reconnect ───
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log("[PWA] Network reconnected — syncing local workspace to Supabase...");
+      handleForceSync();
+    };
+    window.addEventListener("online", handleOnline);
+    return () => window.removeEventListener("online", handleOnline);
+  }, [handleForceSync]);
 
   // ─── Pomodoro Focus Tracking & Timer ───
   useEffect(() => {
@@ -2378,6 +2415,22 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
 
         {/* Bottom Actions */}
         <div className={`border-t transition-all duration-300 ${isExpanded ? "py-4 px-5 space-y-2" : "py-4 px-3 flex flex-col items-center space-y-3"}`} style={{ borderColor: "var(--m-border-light)" }}>
+          {canInstallPWA && (
+            <button
+              onClick={() => promptPWAInstall()}
+              className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip ${
+                isExpanded ? "w-full px-3 py-2 text-left" : "w-10 h-10 justify-center"
+              }`}
+              style={{ color: "var(--m-primary)", borderColor: "var(--m-primary)" }}
+              title={!isExpanded ? "Install App (PWA)" : undefined}
+            >
+              <Download size={14} className="shrink-0 animate-pulse" />
+              <span className={`text-xs font-bold whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[100px] opacity-100 ml-2" : "max-w-0 opacity-0 ml-0"}`}>
+                Install App
+              </span>
+            </button>
+          )}
+
           <button onClick={() => setThemeSelectorOpen(true)} className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip ${isExpanded ? "w-full px-3 py-2.5 justify-between" : "w-10 h-10 justify-center"}`} title={!isExpanded ? "Change Theme" : undefined}>
             <span className="flex items-center">
               <Palette size={15} className="shrink-0" />
@@ -2414,9 +2467,12 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
               <p className="text-xs sm:text-sm font-medium truncate max-w-[170px] sm:max-w-none" style={{ color: "var(--m-text-heading)" }}>
                 {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
               </p>
-              <p className="text-[10px] sm:text-xs truncate max-w-[170px] sm:max-w-none" style={{ color: "var(--m-text-muted)" }}>
-                {dayGreeting}, {userNameDisplay}
-              </p>
+              <div className="flex items-center gap-2">
+                <p className="text-[10px] sm:text-xs truncate max-w-[170px] sm:max-w-none" style={{ color: "var(--m-text-muted)" }}>
+                  {dayGreeting}, {userNameDisplay}
+                </p>
+                <OfflineSyncIndicator onSync={handleForceSync} isSaving={isSaving} />
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -4181,6 +4237,9 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
           </div>
         </div>
       )}
+
+      {/* ─── PWA Install Banner ─── */}
+      <PWAInstallBanner />
 
     </main>
   );
