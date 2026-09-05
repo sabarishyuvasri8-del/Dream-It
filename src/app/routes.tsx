@@ -20,6 +20,7 @@ import ParentLoginForm from "./components/ParentLoginForm";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
 import { fetchParentLinks, upsertUserProfile } from "../lib/supabase";
+import { setUserContext, clearUserContext } from "../lib/monitoring";
 const CadenceApp = lazy(() => import("./cadence/CadenceApp"));
 const PrivacyPolicy = lazy(() => import("./PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./TermsOfService"));
@@ -403,6 +404,13 @@ function Root() {
         // Upsert profile for the user
         await upsertUserProfile(user.id, user.username || user.firstName || "User", user.imageUrl);
 
+        // Bind telemetry user context
+        setUserContext({
+          id: user.id,
+          username: user.username || user.firstName || "User",
+          email: user.primaryEmailAddress?.emailAddress,
+        });
+
         // If already in parent mode (from sessionStorage), skip check
         if (isParentMode) {
           setParentCheckDone(true);
@@ -424,6 +432,7 @@ function Root() {
       };
       checkParent();
     } else if (!isSignedIn) {
+      clearUserContext();
       setParentCheckDone(false);
     }
   }, [isSignedIn, user, parentCheckDone, isParentMode]);

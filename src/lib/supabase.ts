@@ -260,7 +260,143 @@ export async function saveUserWorkspace(accessToken: string, userId: string, wor
     console.warn("Supabase database workspace save failed:", e);
   }
 
+  // Trigger non-blocking incremental relational sync to normalized tables
+  syncWorkspaceRelational(userId, workspaceData).catch(() => {});
+
   return savedRemote;
+}
+
+/* ─────────────── Relational Database Incremental Sync ─────────────── */
+
+/** Granularly syncs entities to normalized PostgreSQL tables with Row-Level Security */
+export async function syncWorkspaceRelational(userId: string, data: UserWorkspace): Promise<void> {
+  if (!userId) return;
+
+  try {
+    // 1. Sync Subjects
+    if (Array.isArray(data.subjects) && data.subjects.length > 0) {
+      const subjectRows = data.subjects.map((s) => ({
+        id: s.id,
+        user_id: userId,
+        name: s.name,
+        color: s.color || "#c8d9e9",
+        accent: s.accent || "#315f48",
+        description: s.description || null,
+      }));
+      await supabase.from("subjects").upsert(subjectRows, { onConflict: "id" });
+    }
+
+    // 2. Sync Notes
+    if (Array.isArray(data.notes) && data.notes.length > 0) {
+      const noteRows = data.notes.map((n) => ({
+        id: n.id,
+        user_id: userId,
+        subject_id: n.subjectId || null,
+        title: n.title,
+        content: n.content || "",
+        created_at: n.createdAt,
+        updated_at: n.updatedAt,
+      }));
+      await supabase.from("notes").upsert(noteRows, { onConflict: "id" });
+    }
+
+    // 3. Sync Tasks
+    if (Array.isArray(data.tasks) && data.tasks.length > 0) {
+      const taskRows = data.tasks.map((t) => ({
+        id: t.id,
+        user_id: userId,
+        title: t.title,
+        course: t.course || null,
+        time: t.time || null,
+        done: !!t.done,
+        color: t.color || "#315f48",
+        priority: t.priority || "medium",
+        deadline: t.deadline ? new Date(t.deadline).toISOString() : null,
+      }));
+      await supabase.from("tasks").upsert(taskRows, { onConflict: "id" });
+    }
+
+    // 4. Sync Flashcards
+    if (Array.isArray(data.flashcards) && data.flashcards.length > 0) {
+      const cardRows = data.flashcards.map((c) => ({
+        id: c.id,
+        user_id: userId,
+        subject_id: c.subjectId || null,
+        front: c.front,
+        back: c.back,
+        difficulty: c.difficulty || "medium",
+        review_count: c.reviewCount || 0,
+        last_reviewed: c.lastReviewed || null,
+        next_review: c.nextReview || null,
+      }));
+      await supabase.from("flashcards").upsert(cardRows, { onConflict: "id" });
+    }
+
+    // 5. Sync Grades
+    if (Array.isArray(data.grades) && data.grades.length > 0) {
+      const gradeRows = data.grades.map((g) => ({
+        id: g.id,
+        user_id: userId,
+        subject_id: g.subjectId || null,
+        assignment_name: g.assignmentName,
+        score: g.score,
+        total: g.total,
+        weight: g.weight || 100,
+      }));
+      await supabase.from("grades").upsert(gradeRows, { onConflict: "id" });
+    }
+  } catch (err) {
+    // Relational sync is resilient; table may not yet be migrated in dev
+    console.debug("[Relational Sync]: Schema pending or offline in Supabase.", err);
+  }
+}
+
+/** Delete a note directly from relational database */
+export async function deleteRelationalNote(noteId: string): Promise<void> {
+  try {
+    await supabase.from("notes").delete().eq("id", noteId);
+  } catch (e) {
+    console.debug("Relational delete note:", e);
+  }
+}
+
+/** Delete a task directly from relational database */
+export async function deleteRelationalTask(taskId: number): Promise<void> {
+  try {
+    await supabase.from("tasks").delete().eq("id", taskId);
+  } catch (e) {
+    console.debug("Relational delete task:", e);
+  }
+}
+
+/** Delete a flashcard directly from relational database */
+export async function deleteRelationalFlashcard(cardId: string): Promise<void> {
+  try {
+    await supabase.from("flashcards").delete().eq("id", cardId);
+  } catch (e) {
+    console.debug("Relational delete flashcard:", e);
+  }
+}
+
+/** Save an exam simulator result to relational database */
+export async function saveRelationalExamResult(userId: string, reportData: any): Promise<void> {
+  if (!userId) return;
+  try {
+    await supabase.from("exam_results").insert({
+      id: reportData.id || crypto.randomUUID(),
+      user_id: userId,
+      class_level: reportData.classLevel || "10",
+      subject: reportData.subject || "General",
+      chapter: reportData.chapter || "Mock Exam",
+      total_marks: reportData.totalMarks || 20,
+      obtained_marks: reportData.obtainedMarks || 0,
+      percentage: reportData.percentage || 0,
+      grade_band: reportData.gradeBand || "Pass",
+      report: reportData,
+    });
+  } catch (e) {
+    console.debug("Relational save exam result:", e);
+  }
 }
 
 /** Subscribe to realtime workspace changes for live parent-child sync */

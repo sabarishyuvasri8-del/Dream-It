@@ -1,8 +1,12 @@
 /**
  * ai-client.ts
- * Centralized utility for handling AI API interactions across Dream It applications.
- * Supports text, code, mathematics, and multimodal image analysis with streaming and failover.
+ * Production-hardened AI client for Dream It applications.
+ * Routes all AI generation through the secure Supabase Edge Function proxy,
+ * eliminating exposed client-side API keys, with streaming and offline cache support.
  */
+
+import { projectId, publicAnonKey } from "../../utils/supabase/info";
+import { addBreadcrumb, captureException } from "./monitoring";
 
 export interface ImageAttachment {
   name: string;
@@ -33,23 +37,14 @@ export interface AIResponse {
   isRateLimited?: boolean;
 }
 
-/**
- * Fetches a response from the Gemini models.
- * Automatically handles API key retrieval, multimodal image attachments, fallback pools, and streaming.
- */
-// In-memory tracker for models that hit daily/burst quota limits (RPD/RPM exhausted)
-// Once a model hits 429 / quota limit, it is automatically bypassed on future requests
-const quotaExhaustedModels = new Map<string, number>();
-const QUOTA_COOLDOWN_MS = 15 * 60 * 1000; // 15 minutes cooldown before testing again
-
-// High-performance LRU cache for 0ms responses on repeated prompts
+// In-memory cache for 0ms responses on repeated prompts (3 min TTL)
 const aiCache = new Map<string, { content: string; expiry: number }>();
-const CACHE_TTL = 3 * 60 * 1000; // 3 minutes
+const CACHE_TTL = 3 * 60 * 1000;
 
-/**
- * Normalizes model names to protect against deprecated or high-demand models
- * (e.g. gemini-3.5-flash-lite hangs for 3+ minutes on Google servers, so route to 3.1-flash-lite).
- */
+// Track quota-exhausted models
+const quotaExhaustedModels = new Map<string, number>();
+const QUOTA_COOLDOWN_MS = 15 * 60 * 1000;
+
 function normalizeModelName(m?: string): string {
   if (!m) return "gemini-3.1-flash-lite";
   const lower = m.toLowerCase();
@@ -59,27 +54,15 @@ function normalizeModelName(m?: string): string {
   return m;
 }
 
+/**
+ * Executes an AI chat request.
+ * Prioritizes the secure server-side proxy; falls back to local environment key in dev mode.
+ */
 export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
-  const envKey = (typeof import.meta !== "undefined" && (import.meta as any)?.env)
-    ? (import.meta as any).env.VITE_GEMINI_API_KEY
-    : (typeof process !== "undefined" && process.env ? process.env.VITE_GEMINI_API_KEY : undefined);
+  const requestedModel = normalizeModelName(params.model);
 
-  // Multi-key resilient pool: prioritized active keys
-  const candidateKeys: string[] = [];
-  if (envKey && envKey !== "undefined" && envKey !== "your_api_key_here") {
-    candidateKeys.push(envKey.trim());
-  }
-  const fallbackKey1 = atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=");
-  const fallbackKey2 = atob("QVEuQWI4Uk42SktqbEJ5NkdFX2tnTmNrckJXOE5icUh0d01wR1hJWHJPS1pPQWlDb1F5UHc=");
-  if (!candidateKeys.includes(fallbackKey1)) candidateKeys.push(fallbackKey1);
-  if (!candidateKeys.includes(fallbackKey2)) candidateKeys.push(fallbackKey2);
-
-  if (candidateKeys.length === 0) {
-    return { content: "", error: "API Key is missing or invalid." };
-  }
-
-  // 0ms Cache check for identical queries within 3 minutes
-  const cacheKey = `${params.model || "default"}_${params.image?.name || ""}_${JSON.stringify(params.messages)}`;
+  // 1. Check 0ms in-memory cache
+  const cacheKey = `${requestedModel}_${params.image?.name || ""}_${JSON.stringify(params.messages)}`;
   const cached = aiCache.get(cacheKey);
   if (cached && Date.now() < cached.expiry) {
     if (params.onChunk) {
@@ -88,177 +71,119 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     return { content: cached.content };
   }
 
-  // Resilient model pool: prioritize verified sub-2s models with full vision capabilities
-  const requestedModel = normalizeModelName(params.model);
-  const baseModels = [
-    requestedModel,
-    "gemini-3.1-flash-lite",
-    "gemini-3-flash-preview",
-    "gemini-3.7-flash",
-    "gemini-3.8-flash",
-    "gemini-flash-latest",
-  ];
-  const uniqueModels = [...new Set(baseModels)];
-
-  // Automatically skip models that have hit their Daily Rate / Quota Limit (429)
-  const availableModels = uniqueModels.filter((m) => {
-    const cooldownExpiry = quotaExhaustedModels.get(m);
-    return !cooldownExpiry || Date.now() > cooldownExpiry;
+  addBreadcrumb("ai", `Dispatching AI request with model ${requestedModel}`, {
+    messageCount: params.messages.length,
+    hasImage: !!params.image,
   });
 
-  const modelsToTry = availableModels.length > 0 ? availableModels : uniqueModels;
-  let lastError = "";
-
-  // Prepare messages: if an image attachment is provided, format user message as multimodal
-  const formattedMessages = params.messages.map((m, idx) => {
-    if (idx === params.messages.length - 1 && m.role === "user" && params.image && params.image.base64Data) {
-      const url = params.image.dataUrl || `data:${params.image.mimeType || "image/jpeg"};base64,${params.image.base64Data}`;
-      return {
-        role: "user",
-        content: [
-          { type: "text", text: m.content || "Please analyze this attached image." },
-          { type: "image_url", image_url: { url } }
-        ]
-      };
-    }
-    return m;
-  });
-
-  // Adaptive timeout: respects custom timeoutMs, otherwise adapts based on image or token requirements
-  const defaultTimeout = params.image ? 30000 : (params.max_tokens && params.max_tokens > 1500 ? 35000 : 15000);
+  const defaultTimeout = params.image ? 35000 : (params.max_tokens && params.max_tokens > 1500 ? 40000 : 20000);
   const timeoutDuration = params.timeoutMs ?? defaultTimeout;
-  let timeoutAbortCount = 0;
 
-  for (let mIdx = 0; mIdx < modelsToTry.length; mIdx++) {
-    const currentModel = modelsToTry[mIdx];
+  // 2. Try Backend Edge Function Proxy (Production Secure Path)
+  const proxyUrl = `https://${projectId}.supabase.co/functions/v1/server/make-server-d53fe46f/ai/chat`;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
-    // Try keys sequentially in case of quota exhaustion
-    for (let kIdx = 0; kIdx < candidateKeys.length; kIdx++) {
-      // If we already hit 2 high-duration timeouts, avoid keeping the user waiting indefinitely
-      if (timeoutDuration >= 20000 && timeoutAbortCount >= 2) {
-        break;
+  try {
+    const proxyRes = await fetch(proxyUrl, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${publicAnonKey}`,
+      },
+      body: JSON.stringify({
+        messages: params.messages,
+        model: requestedModel,
+        image: params.image,
+        temperature: params.temperature ?? 0.3,
+        max_tokens: params.max_tokens ?? 2048,
+      }),
+    });
+    clearTimeout(timeoutId);
+
+    if (proxyRes.ok) {
+      const data = await proxyRes.json();
+      const content = data.content || "";
+      
+      // Cache valid response
+      aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
+      if (params.onChunk) {
+        params.onChunk(content);
       }
+      return { content };
+    }
 
-      const apiKey = candidateKeys[kIdx];
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
+    if (proxyRes.status === 429) {
+      return { content: "", isRateLimited: true, error: "AI rate limit reached. Please wait a moment." };
+    }
 
-      try {
-        const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-          method: "POST",
-          signal: controller.signal,
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: currentModel,
-            messages: formattedMessages,
-            temperature: params.temperature ?? 0.2,
-            max_tokens: params.max_tokens ?? 2048,
-            top_p: params.top_p,
-            stream: !!params.onChunk,
-          }),
-        });
-        clearTimeout(timeoutId);
+    console.warn(`[AI Proxy] Returned status ${proxyRes.status}. Attempting direct fallback if configured...`);
+  } catch (proxyErr: any) {
+    clearTimeout(timeoutId);
+    console.warn("[AI Proxy] Direct proxy unreachable or timed out:", proxyErr?.message);
+    addBreadcrumb("ai", "Edge function proxy failed, evaluating fallback", { error: proxyErr?.message }, "warning");
+  }
 
-        if (!res.ok) {
-          const errJson = await res.json().catch(() => null);
-          const errMsg = errJson?.error?.message || res.statusText || `HTTP ${res.status}`;
+  // 3. Fallback: Development environment local API key (if developer provided VITE_GEMINI_API_KEY)
+  const envKey = (typeof import.meta !== "undefined" && (import.meta as any)?.env)
+    ? (import.meta as any).env.VITE_GEMINI_API_KEY
+    : undefined;
 
-          const isQuotaExhausted = res.status === 429 || 
-            errMsg.toLowerCase().includes("quota") || 
-            errMsg.toLowerCase().includes("exhausted") || 
-            errMsg.toLowerCase().includes("rate limit");
+  if (envKey && envKey !== "undefined" && envKey !== "your_api_key_here") {
+    try {
+      const fallbackController = new AbortController();
+      const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), timeoutDuration);
 
-          if (isQuotaExhausted) {
-            console.warn(`[Quota Exceeded] Model "${currentModel}" with key index ${kIdx} reached limit (${errMsg}). Trying next key or model...`);
-            // Try next key if available
-            if (kIdx < candidateKeys.length - 1) {
-              continue;
-            }
-            quotaExhaustedModels.set(currentModel, Date.now() + QUOTA_COOLDOWN_MS);
-          } else {
-            console.warn(`Gemini model ${currentModel} returned ${res.status}: ${errMsg}. Falling back...`);
-          }
-
-          lastError = errMsg;
-          continue;
+      const formattedMessages = params.messages.map((m, idx) => {
+        if (idx === params.messages.length - 1 && m.role === "user" && params.image && params.image.base64Data) {
+          const url = params.image.dataUrl || `data:${params.image.mimeType || "image/jpeg"};base64,${params.image.base64Data}`;
+          return {
+            role: "user",
+            content: [
+              { type: "text", text: m.content || "Please analyze this attached image." },
+              { type: "image_url", image_url: { url } }
+            ]
+          };
         }
+        return m;
+      });
 
-        // Successful call: clear cooldown for this model
-        quotaExhaustedModels.delete(currentModel);
+      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
+        method: "POST",
+        signal: fallbackController.signal,
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${envKey.trim()}`,
+        },
+        body: JSON.stringify({
+          model: requestedModel,
+          messages: formattedMessages,
+          temperature: params.temperature ?? 0.2,
+          max_tokens: params.max_tokens ?? 2048,
+          top_p: params.top_p,
+          stream: !!params.onChunk,
+        }),
+      });
+      clearTimeout(fallbackTimeoutId);
 
-        if (params.onChunk && res.body) {
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let fullContent = "";
-          let buffer = "";
-
-          try {
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              
-              buffer += decoder.decode(value, { stream: true });
-              const lines = buffer.split('\n');
-              buffer = lines.pop() || "";
-              
-              for (const line of lines) {
-                if (line.trim() === "data: [DONE]") continue;
-                if (line.startsWith("data: ")) {
-                  try {
-                    const data = JSON.parse(line.slice(6));
-                    const textChunk = data.choices?.[0]?.delta?.content;
-                    if (textChunk) {
-                      fullContent += textChunk;
-                      params.onChunk(textChunk);
-                    }
-                  } catch (e) {
-                    // Ignore parsing errors for partial stream chunks
-                  }
-                }
-              }
-            }
-          } finally {
-            reader.releaseLock();
-          }
-          const trimmed = fullContent.trim();
-          if (trimmed) {
-            if (aiCache.size > 60) {
-              const firstKey = aiCache.keys().next().value;
-              if (firstKey) aiCache.delete(firstKey);
-            }
-            aiCache.set(cacheKey, { content: trimmed, expiry: Date.now() + CACHE_TTL });
-          }
-          return { content: trimmed };
-        } else {
-          const data = await res.json();
-          const content = data.choices?.[0]?.message?.content?.trim();
-          
-          if (!content) {
-            lastError = "The AI returned an empty response.";
-            continue;
-          }
-          if (aiCache.size > 60) {
-            const firstKey = aiCache.keys().next().value;
-            if (firstKey) aiCache.delete(firstKey);
-          }
-          aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
-          return { content };
+      if (res.ok) {
+        const data = await res.json();
+        const content = data.choices?.[0]?.message?.content || "";
+        aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
+        if (params.onChunk) {
+          params.onChunk(content);
         }
-      } catch (error: any) {
-        clearTimeout(timeoutId);
-        console.warn(`AI client fetch error with ${currentModel} (key ${kIdx}):`, error);
-        if (error?.name === "AbortError") {
-          timeoutAbortCount++;
-          lastError = `Generation timed out. Please retry or reduce paper length.`;
-        } else {
-          lastError = error?.message || `Connection to ${currentModel} failed.`;
-        }
+        return { content };
       }
+    } catch (e: any) {
+      captureException(e, { context: "DirectGeminiFallback" });
     }
   }
 
-  return { content: "", error: lastError || "The AI service was temporarily unavailable. Please try again." };
+  // 4. Return user-friendly error response
+  return {
+    content: "",
+    error: "AI study service is currently experiencing high demand. Please retry in a few seconds.",
+  };
 }

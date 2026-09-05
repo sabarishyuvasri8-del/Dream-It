@@ -3,8 +3,12 @@ import { createRoot } from "react-dom/client";
 import App from "./app/App.tsx";
 import "./styles/index.css";
 import { registerServiceWorker } from "./lib/pwa";
+import { initMonitoring, captureException } from "./lib/monitoring";
 
-// 1. Polyfill Promise.withResolvers for older Chrome, Edge, and Safari versions
+// 1. Initialize production error tracking & telemetry
+initMonitoring();
+
+// 2. Polyfill Promise.withResolvers for older Chrome, Edge, and Safari versions
 if (typeof Promise.withResolvers === "undefined") {
   (Promise as any).withResolvers = function <T>() {
     let resolve!: (value: T | PromiseLike<T>) => void;
@@ -17,10 +21,10 @@ if (typeof Promise.withResolvers === "undefined") {
   };
 }
 
-// 2. Register / manage PWA Service Worker
+// 3. Register / manage PWA Service Worker
 registerServiceWorker();
 
-// 3. Bulletproof Root Error Boundary preventing white screens
+// 4. Bulletproof Root Error Boundary preventing white screens
 interface RootErrorBoundaryProps {
   children: React.ReactNode;
 }
@@ -41,6 +45,7 @@ class RootErrorBoundary extends React.Component<RootErrorBoundaryProps, RootErro
 
   componentDidCatch(error: any, errorInfo: any) {
     console.error("[RootErrorBoundary] Caught uncaught application error:", error, errorInfo);
+    captureException(error, { errorInfo, source: "RootErrorBoundary" });
   }
 
   handleClearCacheAndReload = () => {

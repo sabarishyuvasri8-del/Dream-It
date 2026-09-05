@@ -384,13 +384,74 @@ app.post(`${serverPrefix}/autopilot/paste`, async (c) => {
   return c.json({ success: true, message: "Autopilot triggered successfully." });
 });
 
-// GET /autopilot/runs
-app.get(`${serverPrefix}/autopilot/runs`, async (c) => {
-  const user = await getAuthenticatedUser(c);
-  if (!user) return c.json({ error: "Sign in is required." }, 401);
+// =========================================
+// PRODUCTION AI PROXY (Hides Gemini API Keys)
+// =========================================
+app.post(`${serverPrefix}/ai/chat`, async (c) => {
+  const apiKey =
+    Deno.env.get("GEMINI_API_KEY") ||
+    Deno.env.get("GOOGLE_GENERATIVE_AI_API_KEY") ||
+    Deno.env.get("VITE_GEMINI_API_KEY");
 
-  const runs = (await kv.get(`agent_runs:${user.id}`)) || [];
-  return c.json({ runs });
+  if (!apiKey) {
+    return c.json({ error: "Server Gemini API key not configured." }, 500);
+  }
+
+  try {
+    const body = await c.req.json();
+    const { messages, model = "gemini-3.1-flash-lite", image, temperature, max_tokens } = body;
+
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return c.json({ error: "Messages array is required." }, 400);
+    }
+
+    const contents = messages.map((m: any) => ({
+      role: m.role === "assistant" ? "model" : "user",
+      parts: [{ text: m.content || "" }],
+    }));
+
+    if (image?.base64Data) {
+      const lastContent = contents[contents.length - 1];
+      lastContent.parts.push({
+        inlineData: {
+          mimeType: image.mimeType || "image/jpeg",
+          data: image.base64Data,
+        },
+      });
+    }
+
+    const targetModel = model.includes("flash") ? model : "gemini-3.1-flash-lite";
+    const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${targetModel}:generateContent?key=${apiKey}`;
+
+    const payload: any = {
+      contents,
+      generationConfig: {
+        temperature: typeof temperature === "number" ? temperature : 0.4,
+        maxOutputTokens: typeof max_tokens === "number" ? max_tokens : 4096,
+      },
+    };
+
+    const response = await fetch(googleUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      if (response.status === 429) {
+        return c.json({ isRateLimited: true, error: "AI rate limit reached. Please wait a moment." }, 429);
+      }
+      return c.json({ error: `AI Provider returned ${response.status}: ${errText}` }, response.status);
+    }
+
+    const data = await response.json();
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    return c.json({ content });
+  } catch (err: any) {
+    console.error("[AI Proxy Error]:", err);
+    return c.json({ error: err.message || "Failed to generate AI response." }, 500);
+  }
 });
 
 Deno.serve(app.fetch);
