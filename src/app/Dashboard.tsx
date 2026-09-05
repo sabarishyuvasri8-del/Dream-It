@@ -126,6 +126,7 @@ import ChatModal from "./components/ChatModal";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { OfflineSyncIndicator } from "./components/OfflineSyncIndicator";
 import { subscribePWAInstall, promptPWAInstall, isPWAInstalled } from "../lib/pwa";
+import { PDFFlashcardModal } from "./flashcards/PDFFlashcardModal";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -425,6 +426,12 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const [cardFlipped, setCardFlipped] = useState(false);
   const [cardSubjectFilter, setCardSubjectFilter] = useState<number | null>(null);
+
+  // ─── AI PDF Flashcard Generator State ───
+  const [pdfFlashcardModalOpen, setPdfFlashcardModalOpen] = useState(false);
+  const [pdfModalFile, setPdfModalFile] = useState<AttachedFile | null>(null);
+  const [pdfModalNote, setPdfModalNote] = useState<NoteEntry | null>(null);
+  const [pdfModalSubjectId, setPdfModalSubjectId] = useState<number | null>(null);
 
   // ─── Theme (via ThemeContext) ───
   const { theme: currentThemeId, themeConfig, isDark: darkMode } = useTheme();
@@ -1342,6 +1349,55 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       setCurrentCardIndex(0);
       showToast(`🎉 All ${studyCards.length} cards reviewed!`);
     }
+  };
+
+  // ─── AI PDF Flashcard Generator Handlers ───
+  const handleOpenAIFlashcards = (options?: {
+    file?: AttachedFile | null;
+    note?: NoteEntry | null;
+    subjectId?: number | null;
+  }) => {
+    setPdfModalFile(options?.file || null);
+    setPdfModalNote(options?.note || null);
+    setPdfModalSubjectId(options?.subjectId ?? (options?.note?.subjectId || null));
+    setPdfFlashcardModalOpen(true);
+  };
+
+  const handleAddAIFlashcards = (
+    newCards: Array<{
+      subjectId: number;
+      front: string;
+      back: string;
+      difficulty: "easy" | "medium" | "hard";
+    }>
+  ) => {
+    const formattedCards: Flashcard[] = newCards.map((c) => ({
+      id: crypto.randomUUID(),
+      subjectId: c.subjectId,
+      front: c.front,
+      back: c.back,
+      difficulty: c.difficulty,
+      reviewCount: 0,
+      createdAt: new Date().toISOString(),
+    }));
+    setFlashcards((curr) => [...curr, ...formattedCards]);
+  };
+
+  const handleSaveSummaryNote = (title: string, content: string, subjectId: number) => {
+    const newNote: NoteEntry = {
+      id: crypto.randomUUID(),
+      subjectId,
+      title,
+      content,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setNotes((curr) => [newNote, ...curr]);
+    setActiveNote(newNote);
+    setNoteDraft(content);
+    setNoteTitleDraft(title);
+    setNoteSubjectId(subjectId);
+    showToast("Summary saved to your Notes Journal! 📖", "success");
   };
 
   // ─── Actions: Export ───
@@ -3651,6 +3707,32 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
 
                   {/* Mode & Action Controls */}
                   <div className="flex flex-wrap items-center gap-2">
+                    {/* AI Flashcards Button */}
+                    <button
+                      onClick={() => handleOpenAIFlashcards({
+                        note: activeNote || (noteDraft.trim() ? {
+                          id: "draft",
+                          subjectId: noteSubjectId,
+                          title: noteTitleDraft.trim() || "Untitled Note",
+                          content: noteDraft,
+                          createdAt: new Date().toISOString(),
+                          updatedAt: new Date().toISOString(),
+                        } : null),
+                        subjectId: noteSubjectId
+                      })}
+                      disabled={!noteDraft.trim()}
+                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-80 disabled:opacity-40 border"
+                      style={{
+                        color: "var(--m-primary)",
+                        borderColor: "var(--m-border)",
+                        backgroundColor: "var(--m-surface-alt)"
+                      }}
+                      title="Generate 15–20 flashcards and chapter summary from this note"
+                    >
+                      <Sparkles size={14} className="text-amber-500" />
+                      <span>AI Flashcards</span>
+                    </button>
+
                     {/* AI Summarize Button */}
                     <button onClick={summarizeNoteWithAI} disabled={isSummarizingNote || !noteDraft.trim()} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 disabled:opacity-40 minimal-surface" style={{ color: "var(--m-primary)" }}>
                       {isSummarizingNote ? <Sparkles size={14} className="animate-spin" /> : <Brain size={14} />}
@@ -3802,7 +3884,20 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Spaced Repetition</p>
                   <h2 className="mt-1 font-[Roboto_Slab] text-3xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Flashcards</h2>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => handleOpenAIFlashcards({ subjectId: cardSubjectFilter })}
+                    className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold shadow-xs transition hover:scale-105 border"
+                    style={{
+                      backgroundColor: "var(--m-surface)",
+                      borderColor: "var(--m-primary)",
+                      color: "var(--m-primary)"
+                    }}
+                    title="Generate 15–20 active recall flashcards from any PDF, textbook note, or syllabus chapter"
+                  >
+                    <Sparkles size={14} className="text-amber-500 animate-pulse" />
+                    <span>⚡ 1-Click PDF to Flashcards</span>
+                  </button>
                   <select value={cardSubjectFilter ?? ""} onChange={(e) => setCardSubjectFilter(e.target.value ? Number(e.target.value) : null)} className="rounded-xl border px-3 py-2 text-xs outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}>
                     <option value="">All Subjects</option>
                     {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
@@ -4081,6 +4176,19 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0 ml-3">
+                          <button
+                            onClick={() => handleOpenAIFlashcards({ file, subjectId: filesModalSubject.id })}
+                            className="flex items-center gap-1 rounded-xl px-2.5 py-1.5 text-xs font-bold transition hover:scale-105 border shadow-2xs"
+                            style={{
+                              borderColor: "var(--m-primary)",
+                              color: "var(--m-primary)",
+                              backgroundColor: "var(--m-surface)"
+                            }}
+                            title="Generate active-recall flashcards & chapter summary from this file"
+                          >
+                            <Sparkles size={13} className="text-amber-500" />
+                            <span>AI Cards</span>
+                          </button>
                           <button onClick={() => handleDownloadFile(file)} className="flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:scale-105" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}><Download size={14} />Download</button>
                           <button onClick={() => handleDeleteFile(file)} className="p-1.5 rounded-xl transition" style={{ color: "var(--m-danger)" }}><Trash2 size={16} /></button>
                         </div>
@@ -4257,6 +4365,22 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
           <span className="size-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
         </button>
       )}
+
+      {/* ─── 1-Click PDF to Flashcards & Summary Generator Modal ─── */}
+      <PDFFlashcardModal
+        isOpen={pdfFlashcardModalOpen}
+        onClose={() => setPdfFlashcardModalOpen(false)}
+        subjects={subjects}
+        userNotes={notes}
+        attachedFiles={attachedFiles}
+        initialFile={pdfModalFile}
+        initialNote={pdfModalNote}
+        initialSubjectId={pdfModalSubjectId}
+        onAddFlashcards={handleAddAIFlashcards}
+        onSaveNote={handleSaveSummaryNote}
+        onAddXP={(amt) => addXP(amt)}
+        showToast={showToast}
+      />
 
       {/* ─── PWA Install Banner ─── */}
       <PWAInstallBanner />
