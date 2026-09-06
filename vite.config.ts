@@ -42,7 +42,6 @@ export default defineConfig({
         manualChunks: {
           'react-vendor': ['react', 'react-dom', 'react-router'],
           'ui-vendor': ['lucide-react'],
-          'radix-vendor': ['@radix-ui/react-dialog', '@radix-ui/react-select', '@radix-ui/react-popover', '@radix-ui/react-dropdown-menu'],
           'animation-vendor': ['motion'],
           'chart-vendor': ['recharts'],
           'supabase-vendor': ['@supabase/supabase-js'],

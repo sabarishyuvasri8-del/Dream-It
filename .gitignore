@@ -4,3 +4,7 @@ dist/
 .env.local
 .env.*.local
 .DS_Store
+.adk_env/
+.venv/
+__pycache__/
+*.pyc
