@@ -125,6 +125,7 @@ const PDFFlashcardModal = lazy(() =>
 );
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const UserProfileModal = lazy(() => import("./components/UserProfileModal"));
+const NotesTab = lazy(() => import("./components/tabs/NotesTab"));
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -241,6 +242,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [activeNav, setActiveNav] = useState<NavItem>("Today");
   const [selectedSubject, setSelectedSubject] = useState("All subjects");
   const [taskFilterStatus, setTaskFilterStatus] = useState<"all" | "active" | "completed">("all");
+  const [plannerViewMode, setPlannerViewMode] = useState<"timeline" | "kanban" | "calendar">("timeline");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isSidebarHovered, setIsSidebarHovered] = useState(false);
 
@@ -959,6 +961,49 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   };
 
   const deleteTask = (id: number) => setTasks((curr) => curr.filter((t) => t.id !== id));
+
+  // ─── Zero-Setup Relational Hub: Task to Note Linking ───
+  const openNoteForTask = (courseName: string, taskTitle: string) => {
+    const matchingNote = notes.find((n) => {
+      const courseMatch =
+        courseName &&
+        subjects.some(
+          (s) => s.id === n.subjectId && s.name.toLowerCase() === courseName.toLowerCase()
+        );
+      const titleMatch =
+        taskTitle &&
+        (n.title.toLowerCase().includes(taskTitle.toLowerCase()) ||
+          taskTitle.toLowerCase().includes(n.title.toLowerCase()));
+      return titleMatch || courseMatch;
+    });
+
+    if (matchingNote) {
+      selectNote(matchingNote);
+      setActiveNav("Notes");
+      showToast(`Opened linked note for ${courseName || "General Study"}`);
+    } else {
+      const matchingSub = subjects.find(
+        (s) => s.name.toLowerCase() === courseName.toLowerCase()
+      );
+      const subId = matchingSub ? matchingSub.id : 0;
+      createNewNote();
+      setNoteTitleDraft(`Notes: ${taskTitle}`);
+      setNoteSubjectId(subId);
+      setNoteDraft(
+        `# Notes: ${taskTitle}\n\n**Subject**: ${courseName || "General Study"}\n**Date**: ${new Date().toLocaleDateString()}\n\n- Key concepts to review:\n  - \n`
+      );
+      setActiveNav("Notes");
+      showToast(`Created new note draft for "${taskTitle}"`);
+    }
+  };
+
+  const startPomodoroForSubject = (subjectName: string, durationMinutes: number = 25) => {
+    setSelectedSubject(subjectName);
+    setTimerPreset(durationMinutes);
+    setSeconds(durationMinutes * 60);
+    setIsRunning(true);
+    showToast(`Started ${durationMinutes}m focus session for ${subjectName}`);
+  };
 
   // ─── Actions: Schedule ───
   const addScheduleItem = (e: FormEvent) => {
@@ -2795,6 +2840,19 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                                 )}
                               </div>
                             </div>
+                            <button
+                              onClick={() => openNoteForTask(task.course, task.title)}
+                              className="opacity-80 hover:opacity-100 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold transition hover:scale-105 shrink-0 cursor-pointer"
+                              style={{
+                                backgroundColor: "var(--m-surface-alt)",
+                                color: "var(--m-primary)",
+                                border: "1px solid var(--m-border-light)",
+                              }}
+                              title="Open or create linked study note"
+                            >
+                              <FileText size={11} />
+                              <span className="hidden sm:inline">Note</span>
+                            </button>
                             <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-lg transition" style={{ color: "var(--m-danger)" }} title="Delete"><Trash2 size={16} /></button>
                           </div>
                         ))
@@ -3331,101 +3389,474 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
             </div>
           )}
 
-          {/* ═══════════ PLANNER VIEW ═══════════ */}
+          {/* ═══════════ PLANNER VIEW (ZERO-SETUP MULTI-VIEWS) ═══════════ */}
           {activeNav === "Planner" && (
-            <section className="grid gap-5 sm:gap-7 xl:grid-cols-[0.95fr_1.05fr]">
-              <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
-                <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Build a Doable Day</p>
-                <h2 className="mt-1 font-[Roboto_Slab] text-3xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Plan your study blocks.</h2>
+            <div className="space-y-6">
+              {/* Multi-View Header & Switcher */}
+              <div className="flex flex-wrap items-center justify-between gap-4 pb-4" style={{ borderBottom: "1px solid var(--m-border)" }}>
+                <div>
+                  <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>
+                    Zero-Setup Academic Planner
+                  </p>
+                  <h2 className="mt-1 font-[Roboto_Slab] text-3xl font-semibold" style={{ color: "var(--m-text-heading)" }}>
+                    Study Blocks & Multi-Views
+                  </h2>
+                </div>
 
-                <form onSubmit={addScheduleItem} className="mt-6 space-y-4 rounded-2xl p-4.5" style={{ backgroundColor: "var(--m-surface-alt)" }}>
-                  <label className="block text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>
-                    What needs a place?
-                    <input value={planTitle} onChange={(e) => setPlanTitle(e.target.value)} className="mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm font-normal outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} placeholder="e.g. Solve Linear Algebra Set #3" required />
-                  </label>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Start time
-                      <input type="text" value={planTime} onChange={(e) => setPlanTime(e.target.value)} className="mt-1.5 w-full rounded-xl border px-3 py-2.5 text-sm font-normal outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} placeholder="09:00 AM" />
-                    </label>
-                    <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Subject / Course
-                      <div className="flex items-center gap-1 mt-1.5">
-                        <select
-                          value={planCourse}
-                          onChange={(e) => {
-                            if (e.target.value === "__ADD_NEW__") {
-                              setSubjectsOpen(true);
-                            } else {
-                              setPlanCourse(e.target.value);
-                            }
-                          }}
-                          className="w-full rounded-xl border px-3 py-2.5 text-sm font-normal outline-none cursor-pointer"
-                          style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
-                        >
-                          <option value="">General Study</option>
-                          {subjects.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
-                          <option value="__ADD_NEW__" className="font-bold">➕ Add New Subject...</option>
-                        </select>
-                        <button
-                          type="button"
-                          onClick={() => setSubjectsOpen(true)}
-                          className="rounded-xl p-2.5 text-xs font-bold transition hover:opacity-80 shrink-0"
-                          style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)", border: "1px solid var(--m-border-light)" }}
-                          title="Add New Subject"
-                        >
-                          <Plus size={16} />
-                        </button>
-                      </div>
-                    </label>
-                  </div>
-                  <label className="block text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Notes
-                    <input value={planNote} onChange={(e) => setPlanNote(e.target.value)} className="mt-1.5 w-full rounded-xl border px-3.5 py-2 text-sm font-normal outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} placeholder="Quiet room, 45 minutes" />
-                  </label>
-                  <button type="submit" className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-bold shadow-xs transition hover:scale-105" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                    <Plus size={16} /><span>Add to Schedule</span>
+                {/* Instant View Mode Switcher */}
+                <div
+                  className="flex items-center gap-1 p-1 rounded-2xl border shrink-0"
+                  style={{
+                    backgroundColor: "var(--m-surface-alt)",
+                    borderColor: "var(--m-border-light)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setPlannerViewMode("timeline")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer"
+                    style={
+                      plannerViewMode === "timeline"
+                        ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
+                        : { color: "var(--m-text-sub)" }
+                    }
+                  >
+                    <Clock3 size={13} />
+                    <span>Timeline</span>
                   </button>
-                </form>
+                  <button
+                    type="button"
+                    onClick={() => setPlannerViewMode("kanban")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer"
+                    style={
+                      plannerViewMode === "kanban"
+                        ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
+                        : { color: "var(--m-text-sub)" }
+                    }
+                  >
+                    <Layers size={13} />
+                    <span>Kanban</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPlannerViewMode("calendar")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer"
+                    style={
+                      plannerViewMode === "calendar"
+                        ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 1px 4px rgba(0,0,0,0.1)" }
+                        : { color: "var(--m-text-sub)" }
+                    }
+                  >
+                    <CalendarDays size={13} />
+                    <span>7-Day Matrix</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Timeline */}
-              <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
-                <div className="flex items-end justify-between pb-4" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
-                  <div>
-                    <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Timeline</p>
-                    <h2 className="mt-1 font-[Roboto_Slab] text-2xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Your Schedule</h2>
-                  </div>
-                  <span className="rounded-full px-3 py-1 font-[DM_Mono] text-xs font-bold" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)" }}>{scheduleItems.length} blocks</span>
-                </div>
-                <div className="mt-6 space-y-3">
-                  {scheduleItems.length ? scheduleItems.map((item, idx) => (
-                    <div key={item.id || idx} className={`group flex items-center gap-4 rounded-2xl p-4 transition feature-chip contain-schedule ${item.done ? "opacity-60" : ""}`} style={{ border: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
-                      <button onClick={() => toggleScheduleDone(item.id, item.title)} className="grid size-6 shrink-0 place-items-center rounded-full border transition" style={item.done ? { borderColor: "var(--m-primary)", backgroundColor: "var(--m-primary)", color: "white" } : { borderColor: "var(--m-border)", backgroundColor: "var(--m-surface)" }}>
-                        {item.done && <Check size={14} strokeWidth={3} />}
-                      </button>
-                      <span className="w-16 font-[DM_Mono] text-xs font-bold" style={{ color: "var(--m-primary)" }}>{item.time}</span>
-                      <span className={`h-10 w-1 shrink-0 rounded-full ${item.tone}`} />
-                      <div className="min-w-0 flex-1">
-                        <b className={`block text-sm ${item.done ? "line-through" : ""}`} style={{ color: "var(--m-text-heading)" }}>
-                          {item.title}
-                          {item.createdBy === "agent" && (
-                            <span className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase align-middle" style={{ backgroundColor: "var(--m-primary-transparent)", color: "var(--m-primary)", border: "1px solid var(--m-primary)" }}>
-                              <Sparkles size={9} /> Autopilot
-                            </span>
-                          )}
-                        </b>
-                        <small className="block text-xs" style={{ color: "var(--m-text-sub)" }}>{item.course ? `${item.course} • ` : ""}{item.note}</small>
+              {/* 1. TIMELINE VIEW */}
+              {plannerViewMode === "timeline" && (
+                <section className="grid gap-5 sm:gap-7 xl:grid-cols-[0.95fr_1.05fr]">
+                  <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                    <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Build a Doable Day</p>
+                    <h3 className="mt-1 font-[Roboto_Slab] text-2xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Plan your study blocks.</h3>
+
+                    <form onSubmit={addScheduleItem} className="mt-6 space-y-4 rounded-2xl p-4.5" style={{ backgroundColor: "var(--m-surface-alt)" }}>
+                      <label className="block text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>
+                        What needs a place?
+                        <input value={planTitle} onChange={(e) => setPlanTitle(e.target.value)} className="mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm font-normal outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} placeholder="e.g. Solve Linear Algebra Set #3" required />
+                      </label>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Start time
+                          <input type="text" value={planTime} onChange={(e) => setPlanTime(e.target.value)} className="mt-1.5 w-full rounded-xl border px-3 py-2.5 text-sm font-normal outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} placeholder="09:00 AM" />
+                        </label>
+                        <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Subject / Course
+                          <div className="flex items-center gap-1 mt-1.5">
+                            <select
+                              value={planCourse}
+                              onChange={(e) => {
+                                if (e.target.value === "__ADD_NEW__") {
+                                  setSubjectsOpen(true);
+                                } else {
+                                  setPlanCourse(e.target.value);
+                                }
+                              }}
+                              className="w-full rounded-xl border px-3 py-2.5 text-sm font-normal outline-none cursor-pointer"
+                              style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
+                            >
+                              <option value="">General Study</option>
+                              {subjects.map((s) => <option key={s.id} value={s.name}>{s.name}</option>)}
+                              <option value="__ADD_NEW__" className="font-bold">➕ Add New Subject...</option>
+                            </select>
+                            <button
+                              type="button"
+                              onClick={() => setSubjectsOpen(true)}
+                              className="rounded-xl p-2.5 text-xs font-bold transition hover:opacity-80 shrink-0 cursor-pointer"
+                              style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)", border: "1px solid var(--m-border-light)" }}
+                              title="Add New Subject"
+                            >
+                              <Plus size={16} />
+                            </button>
+                          </div>
+                        </label>
                       </div>
-                      <button onClick={() => deleteScheduleItem(item.id, item.title)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition" style={{ color: "var(--m-danger)" }}><Trash2 size={16} /></button>
+                      <label className="block text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Notes
+                        <input value={planNote} onChange={(e) => setPlanNote(e.target.value)} className="mt-1.5 w-full rounded-xl border px-3.5 py-2 text-sm font-normal outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} placeholder="Quiet room, 45 minutes" />
+                      </label>
+                      <button type="submit" className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-xs font-bold shadow-xs transition hover:scale-105 cursor-pointer" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                        <Plus size={16} /><span>Add to Schedule</span>
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Timeline Blocks */}
+                  <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                    <div className="flex items-end justify-between pb-4" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
+                      <div>
+                        <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Timeline</p>
+                        <h3 className="mt-1 font-[Roboto_Slab] text-2xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Your Schedule</h3>
+                      </div>
+                      <span className="rounded-full px-3 py-1 font-[DM_Mono] text-xs font-bold" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)" }}>{scheduleItems.length} blocks</span>
                     </div>
-                  )) : (
-                    <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "var(--m-border)" }}>
-                      <CalendarDays className="mx-auto" size={32} style={{ color: "var(--m-primary)" }} />
-                      <p className="mt-3 font-[Roboto_Slab] text-lg font-semibold" style={{ color: "var(--m-text-heading)" }}>No schedule blocks yet.</p>
-                      <p className="mt-1 text-xs" style={{ color: "var(--m-text-sub)" }}>Plan your first study block on the left.</p>
+                    <div className="mt-6 space-y-3">
+                      {scheduleItems.length ? scheduleItems.map((item, idx) => (
+                        <div key={item.id || idx} className={`group flex items-center gap-3.5 rounded-2xl p-4 transition feature-chip contain-schedule ${item.done ? "opacity-60" : ""}`} style={{ border: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
+                          <button onClick={() => toggleScheduleDone(item.id, item.title)} className="grid size-6 shrink-0 place-items-center rounded-full border transition cursor-pointer" style={item.done ? { borderColor: "var(--m-primary)", backgroundColor: "var(--m-primary)", color: "white" } : { borderColor: "var(--m-border)", backgroundColor: "var(--m-surface)" }}>
+                            {item.done && <Check size={14} strokeWidth={3} />}
+                          </button>
+                          <span className="w-16 font-[DM_Mono] text-xs font-bold" style={{ color: "var(--m-primary)" }}>{item.time}</span>
+                          <span className={`h-10 w-1 shrink-0 rounded-full ${item.tone}`} />
+                          <div className="min-w-0 flex-1">
+                            <b className={`block text-sm ${item.done ? "line-through" : ""}`} style={{ color: "var(--m-text-heading)" }}>
+                              {item.title}
+                              {item.createdBy === "agent" && (
+                                <span className="ml-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase align-middle" style={{ backgroundColor: "var(--m-primary-transparent)", color: "var(--m-primary)", border: "1px solid var(--m-primary)" }}>
+                                  <Sparkles size={9} /> Autopilot
+                                </span>
+                              )}
+                            </b>
+                            <small className="block text-xs" style={{ color: "var(--m-text-sub)" }}>{item.course ? `${item.course} • ` : ""}{item.note}</small>
+                          </div>
+                          {/* Note Link */}
+                          <button
+                            type="button"
+                            onClick={() => openNoteForTask(item.course || "", item.title)}
+                            className="opacity-80 hover:opacity-100 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold transition hover:scale-105 shrink-0 cursor-pointer"
+                            style={{
+                              backgroundColor: "var(--m-surface-alt)",
+                              color: "var(--m-primary)",
+                              border: "1px solid var(--m-border-light)",
+                            }}
+                            title="Open linked study note"
+                          >
+                            <FileText size={11} />
+                            <span className="hidden sm:inline">Note</span>
+                          </button>
+                          <button onClick={() => deleteScheduleItem(item.id, item.title)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition cursor-pointer" style={{ color: "var(--m-danger)" }}><Trash2 size={16} /></button>
+                        </div>
+                      )) : (
+                        <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "var(--m-border)" }}>
+                          <CalendarDays className="mx-auto" size={32} style={{ color: "var(--m-primary)" }} />
+                          <p className="mt-3 font-[Roboto_Slab] text-lg font-semibold" style={{ color: "var(--m-text-heading)" }}>No schedule blocks yet.</p>
+                          <p className="mt-1 text-xs" style={{ color: "var(--m-text-sub)" }}>Plan your first study block on the left.</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
-              </div>
-            </section>
+                  </div>
+                </section>
+              )}
+
+              {/* 2. KANBAN BOARD VIEW */}
+              {plannerViewMode === "kanban" && (
+                <section className="grid gap-5 md:grid-cols-3">
+                  {/* Column 1: Backlog (To Do) */}
+                  <div className="rounded-[1.5rem] p-5 shadow-xs flex flex-col" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b" style={{ borderColor: "var(--m-border-light)" }}>
+                      <div className="flex items-center gap-2">
+                        <span className="size-2.5 rounded-full bg-slate-400" />
+                        <h4 className="font-bold text-sm" style={{ color: "var(--m-text-heading)" }}>Backlog (To Do)</h4>
+                      </div>
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text-sub)" }}>
+                        {tasks.filter((t) => !t.done && t.priority !== "high").length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-1 min-h-[350px]">
+                      {tasks
+                        .filter((t) => !t.done && t.priority !== "high")
+                        .map((task) => {
+                          const sub = subjects.find((s) => s.name.toLowerCase() === task.course.toLowerCase());
+                          return (
+                            <div
+                              key={task.id}
+                              className="p-3.5 rounded-2xl border transition duration-200 hover:shadow-xs space-y-2 feature-chip"
+                              style={{
+                                backgroundColor: "var(--m-surface-alt)",
+                                borderColor: "var(--m-border-light)",
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-md truncate max-w-[140px]"
+                                  style={{
+                                    backgroundColor: sub ? `${sub.color}33` : "var(--m-surface)",
+                                    color: "var(--m-text)",
+                                  }}
+                                >
+                                  {task.course || "General"}
+                                </span>
+                                {task.deadline && (
+                                  <span className="text-[9px] font-mono opacity-70">
+                                    📅 {daysUntil(task.deadline)}d
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-xs font-semibold" style={{ color: "var(--m-text)" }}>
+                                {task.title}
+                              </p>
+                              <div className="flex items-center justify-between pt-1 text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => openNoteForTask(task.course, task.title)}
+                                  className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                                >
+                                  <FileText size={11} />
+                                  <span>Open Note</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleTask(task.id)}
+                                  className="px-2 py-0.5 rounded-md border text-[10px] font-bold hover:bg-black/5 dark:hover:bg-white/10 transition cursor-pointer"
+                                  style={{ borderColor: "var(--m-border)" }}
+                                >
+                                  ✓ Done
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      {tasks.filter((t) => !t.done && t.priority !== "high").length === 0 && (
+                        <p className="text-xs opacity-50 italic py-8 text-center">No backlog tasks.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Column 2: In Progress (Active Focus) */}
+                  <div className="rounded-[1.5rem] p-5 shadow-xs flex flex-col" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b" style={{ borderColor: "var(--m-border-light)" }}>
+                      <div className="flex items-center gap-2">
+                        <span className="size-2.5 rounded-full bg-amber-500 animate-pulse" />
+                        <h4 className="font-bold text-sm" style={{ color: "var(--m-text-heading)" }}>In Progress (Focus)</h4>
+                      </div>
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text-sub)" }}>
+                        {tasks.filter((t) => !t.done && t.priority === "high").length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-1 min-h-[350px]">
+                      {tasks
+                        .filter((t) => !t.done && t.priority === "high")
+                        .map((task) => {
+                          const sub = subjects.find((s) => s.name.toLowerCase() === task.course.toLowerCase());
+                          return (
+                            <div
+                              key={task.id}
+                              className="p-3.5 rounded-2xl border transition duration-200 hover:shadow-xs space-y-2 feature-chip"
+                              style={{
+                                backgroundColor: "var(--m-surface-alt)",
+                                borderColor: "var(--m-primary)",
+                                borderWidth: "1.5px",
+                              }}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span
+                                  className="text-[10px] font-bold px-2 py-0.5 rounded-md truncate max-w-[140px]"
+                                  style={{
+                                    backgroundColor: sub ? `${sub.color}33` : "var(--m-surface)",
+                                    color: "var(--m-text)",
+                                  }}
+                                >
+                                  {task.course || "General"}
+                                </span>
+                                <span className="text-[9px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                                  🔥 Urgent
+                                </span>
+                              </div>
+                              <p className="text-xs font-bold" style={{ color: "var(--m-text)" }}>
+                                {task.title}
+                              </p>
+                              <div className="flex items-center justify-between pt-1 text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => openNoteForTask(task.course, task.title)}
+                                  className="flex items-center gap-1 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                                >
+                                  <FileText size={11} />
+                                  <span>Open Note</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleTask(task.id)}
+                                  className="px-2 py-0.5 rounded-md text-[10px] font-bold text-white transition hover:scale-105 cursor-pointer"
+                                  style={{ backgroundColor: "var(--m-primary)" }}
+                                >
+                                  ✓ Complete
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      {tasks.filter((t) => !t.done && t.priority === "high").length === 0 && (
+                        <p className="text-xs opacity-50 italic py-8 text-center">No high priority focus items right now.</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Column 3: Completed */}
+                  <div className="rounded-[1.5rem] p-5 shadow-xs flex flex-col" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                    <div className="flex items-center justify-between pb-3 mb-3 border-b" style={{ borderColor: "var(--m-border-light)" }}>
+                      <div className="flex items-center gap-2">
+                        <span className="size-2.5 rounded-full bg-emerald-500" />
+                        <h4 className="font-bold text-sm" style={{ color: "var(--m-text-heading)" }}>Completed</h4>
+                      </div>
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text-sub)" }}>
+                        {tasks.filter((t) => t.done).length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-1 min-h-[350px]">
+                      {tasks
+                        .filter((t) => t.done)
+                        .slice(0, 15)
+                        .map((task) => (
+                          <div
+                            key={task.id}
+                            className="p-3.5 rounded-2xl border transition duration-200 opacity-60 space-y-1.5"
+                            style={{
+                              backgroundColor: "var(--m-surface-alt)",
+                              borderColor: "var(--m-border-light)",
+                            }}
+                          >
+                            <span className="text-[9px] font-bold uppercase opacity-75">{task.course}</span>
+                            <p className="text-xs line-through" style={{ color: "var(--m-text-muted)" }}>
+                              {task.title}
+                            </p>
+                            <div className="flex items-center justify-between pt-1">
+                              <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-400 font-bold">+15 XP Earned</span>
+                              <button
+                                type="button"
+                                onClick={() => toggleTask(task.id)}
+                                className="text-[10px] text-muted-foreground hover:underline cursor-pointer"
+                              >
+                                Undo
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      {tasks.filter((t) => t.done).length === 0 && (
+                        <p className="text-xs opacity-50 italic py-8 text-center">Complete tasks to see them here.</p>
+                      )}
+                    </div>
+                  </div>
+                </section>
+              )}
+
+              {/* 3. 7-DAY MATRIX CALENDAR VIEW */}
+              {plannerViewMode === "calendar" && (
+                <section className="rounded-[1.5rem] p-6 shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                  <div className="flex items-center justify-between pb-4 mb-4 border-b" style={{ borderColor: "var(--m-border-light)" }}>
+                    <div>
+                      <h3 className="font-[Roboto_Slab] text-2xl font-semibold" style={{ color: "var(--m-text-heading)" }}>
+                        Weekly Study Matrix
+                      </h3>
+                      <p className="text-xs mt-0.5" style={{ color: "var(--m-text-sub)" }}>
+                        Visual 7-day academic distribution across all courses
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold px-3 py-1 rounded-full" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)" }}>
+                      {scheduleItems.length} active sessions
+                    </span>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-7">
+                    {weekDayLabels.map((dayName, dayIdx) => {
+                      // Distribute schedule items across days based on index or custom day assignment
+                      const dayBlocks = scheduleItems.filter((_, i) => i % 7 === dayIdx);
+                      return (
+                        <div
+                          key={dayName}
+                          className="flex flex-col p-3 rounded-2xl border min-h-[220px]"
+                          style={{
+                            backgroundColor: "var(--m-surface-alt)",
+                            borderColor: "var(--m-border-light)",
+                          }}
+                        >
+                          <div className="flex items-center justify-between pb-2 mb-2 border-b border-black/5 dark:border-white/10">
+                            <span className="font-bold text-xs" style={{ color: "var(--m-text-heading)" }}>
+                              {dayName}
+                            </span>
+                            <span className="text-[10px] font-mono opacity-60 font-bold">
+                              {dayBlocks.length}
+                            </span>
+                          </div>
+
+                          <div className="space-y-2 flex-1 overflow-y-auto custom-scrollbar pr-0.5">
+                            {dayBlocks.map((item, i) => (
+                              <div
+                                key={item.id || i}
+                                className="p-2 rounded-xl border text-[11px] space-y-1 feature-chip"
+                                style={{
+                                  backgroundColor: "var(--m-surface)",
+                                  borderColor: "var(--m-border-light)",
+                                }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-mono text-[9px] text-indigo-600 dark:text-indigo-400 font-bold truncate">
+                                    {item.time}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => openNoteForTask(item.course || "", item.title)}
+                                    className="p-0.5 rounded hover:bg-black/5 dark:hover:bg-white/10 text-emerald-600 dark:text-emerald-400"
+                                    title="Open linked study note"
+                                  >
+                                    <FileText size={10} />
+                                  </button>
+                                </div>
+                                <p className="font-semibold leading-tight line-clamp-2" style={{ color: "var(--m-text)" }}>
+                                  {item.title}
+                                </p>
+                                {item.course && (
+                                  <span className="text-[9px] opacity-70 block truncate font-medium">
+                                    {item.course}
+                                  </span>
+                                )}
+                              </div>
+                            ))}
+                            {dayBlocks.length === 0 && (
+                              <div className="py-6 text-center opacity-40">
+                                <span className="text-[10px] italic">No blocks</span>
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPlanTime("10:00 AM");
+                              setPlannerViewMode("timeline");
+                            }}
+                            className="mt-2 w-full py-1 text-[10px] font-bold rounded-lg border border-dashed hover:border-solid transition cursor-pointer text-center"
+                            style={{ borderColor: "var(--m-border)", color: "var(--m-text-sub)" }}
+                          >
+                            + Add Block
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
+              )}
+            </div>
           )}
 
           {/* ═══════════ PROJECTS VIEW ═══════════ */}
@@ -3598,182 +4029,44 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
             </section>
           )}
 
-          {/* ═══════════ NOTES VIEW ═══════════ */}
+          {/* ═══════════ NOTES VIEW (ZERO-SETUP SUBJECT HUB) ═══════════ */}
           {activeNav === "Notes" && (
-            <section className="grid gap-5 sm:gap-7 xl:grid-cols-[280px_1fr]">
-              {/* Notes Sidebar List */}
-              <div className="flex flex-col rounded-xl p-5 minimal-surface feature-zoom" style={{ maxHeight: "calc(100vh - 140px)" }}>
-                <div className="flex items-center justify-between mb-3 shrink-0">
-                  <div>
-                    <h2 className="font-[Roboto_Slab] text-xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Notes & Journal</h2>
-                    <p className="text-[10px]" style={{ color: "var(--m-text-sub)" }}>{notes.length} total notes</p>
-                  </div>
-                  <button onClick={createNewNote} className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }} title="New Note">
-                    <Plus size={15} /><span>New</span>
-                  </button>
-                </div>
-
-                {/* Filters */}
-                <div className="space-y-2 mb-3 shrink-0">
-                  <input value={noteSearchQuery} onChange={(e) => setNoteSearchQuery(e.target.value)} placeholder="🔍 Search notes..." className="w-full rounded-xl px-3 py-2 text-xs outline-none border" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} />
-                  <select value={noteSubjectFilter ?? ""} onChange={(e) => setNoteSubjectFilter(e.target.value ? Number(e.target.value) : null)} className="w-full rounded-xl px-3 py-2 text-xs outline-none border cursor-pointer" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}>
-                    <option value="">All Subjects ({notes.length})</option>
-                    {subjects.map((s) => (
-                      <option key={s.id} value={s.id}>{s.name} ({noteCountBySubject.get(s.id) || 0})</option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Notes List */}
-                <div className="flex-1 space-y-2 overflow-y-auto custom-scrollbar pr-1">
-                  {notes
-                    .filter((n) => !noteSubjectFilter || Number(n.subjectId) === Number(noteSubjectFilter))
-                    .filter((n) => !noteSearchQuery.trim() || n.title.toLowerCase().includes(noteSearchQuery.toLowerCase()) || n.content.toLowerCase().includes(noteSearchQuery.toLowerCase()))
-                    .map((note) => {
-                      const noteSub = subjects.find((s) => Number(s.id) === Number(note.subjectId));
-                      const isSelected = activeNote?.id === note.id;
-                      return (
-                        <button key={note.id} onClick={() => selectNote(note)} className="w-full text-left rounded-2xl p-3.5 transition duration-200 feature-chip contain-note" style={isSelected ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", boxShadow: "0 4px 15px rgba(36,76,59,0.25)" } : { backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border-light)", color: "var(--m-text)" }}>
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-xs font-bold truncate flex-1">{note.title || "Untitled Note"}</p>
-                            {noteSub && (
-                              <span className="size-2 rounded-full shrink-0" style={{ backgroundColor: noteSub.color }} title={noteSub.name} />
-                            )}
-                          </div>
-                          <p className="text-[10px] mt-1.5 line-clamp-2 leading-relaxed opacity-80">{note.content.trim() || "Empty note content..."}</p>
-                          <div className="mt-2.5 flex items-center justify-between text-[9px] font-[DM_Mono] opacity-70">
-                            <span>{new Date(note.updatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
-                            <span>{note.content.split(/\s+/).filter(Boolean).length} words</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  {notes.length === 0 && (
-                    <div className="py-10 text-center">
-                      <Notebook size={32} className="mx-auto opacity-40" style={{ color: "var(--m-primary)" }} />
-                      <p className="mt-2 text-xs font-semibold" style={{ color: "var(--m-text-sub)" }}>No notes yet</p>
-                      <p className="mt-1 text-[10px] opacity-70">Click + New to create your first note!</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Note Editor Area */}
-              <div className="flex flex-col rounded-xl p-5 minimal-surface feature-zoom" style={{ minHeight: "600px" }}>
-                {/* Editor Top Bar */}
-                <div className="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <select value={noteSubjectId} onChange={(e) => handleSubjectChange(Number(e.target.value))} className="rounded-xl border px-3 py-1.5 text-xs font-bold outline-none cursor-pointer" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-primary)" }}>
-                      <option value={0}>General Study</option>
-                      {subjects.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                    <span className="text-xs text-[#78887c]">|</span>
-                    <span className="text-[11px] font-[DM_Mono]" style={{ color: "var(--m-text-sub)" }}>
-                      {activeNote ? `Updated ${new Date(activeNote.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}` : "Draft Note"}
-                    </span>
-                  </div>
-
-                  {/* Mode & Action Controls */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {/* AI Flashcards Button */}
-                    <button
-                      onClick={() => handleOpenAIFlashcards({
-                        note: activeNote || (noteDraft.trim() ? {
-                          id: "draft",
-                          subjectId: noteSubjectId,
-                          title: noteTitleDraft.trim() || "Untitled Note",
-                          content: noteDraft,
-                          createdAt: new Date().toISOString(),
-                          updatedAt: new Date().toISOString(),
-                        } : null),
-                        subjectId: noteSubjectId
-                      })}
-                      disabled={!noteDraft.trim()}
-                      className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-80 disabled:opacity-40 border"
-                      style={{
-                        color: "var(--m-primary)",
-                        borderColor: "var(--m-border)",
-                        backgroundColor: "var(--m-surface-alt)"
-                      }}
-                      title="Generate 15–20 flashcards and chapter summary from this note"
-                    >
-                      <Sparkles size={14} className="text-amber-500" />
-                      <span>AI Flashcards</span>
-                    </button>
-
-                    {/* AI Summarize Button */}
-                    <button onClick={summarizeNoteWithAI} disabled={isSummarizingNote || !noteDraft.trim()} className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 disabled:opacity-40 minimal-surface" style={{ color: "var(--m-primary)" }}>
-                      {isSummarizingNote ? <Sparkles size={14} className="animate-spin" /> : <Brain size={14} />}
-                      <span>{isSummarizingNote ? "Summarizing..." : "AI Summarize"}</span>
-                    </button>
-
-                    {/* Edit / Preview Tabs */}
-                    <div className="flex rounded-xl p-1 text-xs font-bold" style={{ backgroundColor: "var(--m-surface-alt)" }}>
-                      <button onClick={() => setNoteMode("edit")} className="rounded-lg px-3 py-1 transition" style={noteMode === "edit" ? { backgroundColor: "var(--m-surface)", color: "var(--m-primary)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" } : { color: "var(--m-text-sub)" }}>
-                        📝 Edit
-                      </button>
-                      <button onClick={() => setNoteMode("preview")} className="rounded-lg px-3 py-1 transition" style={noteMode === "preview" ? { backgroundColor: "var(--m-surface)", color: "var(--m-primary)", boxShadow: "0 1px 3px rgba(0,0,0,0.08)" } : { color: "var(--m-text-sub)" }}>
-                        👁️ Preview
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Note Title Input */}
-                <div className="relative mb-4">
-                  <input
-                    value={noteTitleDraft}
-                    onChange={(e) => handleTitleChange(e.target.value)}
-                    placeholder="Enter Note Title..."
-                    className="w-full font-[Roboto_Slab] text-2xl font-bold bg-transparent outline-none px-2 py-1.5 rounded-xl border transition focus:ring-2"
-                    style={{
-                      color: "var(--m-text-heading)",
-                      borderColor: noteTitleDraft.trim() ? "transparent" : "var(--m-border)",
-                      backgroundColor: noteTitleDraft.trim() ? "transparent" : "var(--m-surface-hover)",
-                      "--tw-ring-color": "var(--m-primary)",
-                    } as any}
-                  />
-                </div>
-
-                {/* Editor / Preview Content Body */}
-                <div className="flex-1 min-h-[350px] mb-4">
-                  {noteMode === "edit" ? (
-                    <textarea ref={noteTextAreaRef} value={noteDraft} onChange={(e) => handleContentChange(e.target.value)} placeholder="Write your note here... (Markdown supported: # Title, **bold**, - lists, > quotes)" className="w-full h-full min-h-[350px] bg-transparent outline-none text-xs leading-6 resize-none custom-scrollbar p-1" style={{ color: "var(--m-text)" }} />
-                  ) : (
-                    <div className="w-full h-full min-h-[350px] overflow-y-auto custom-scrollbar p-3 rounded-xl" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
-                      {renderSimpleMarkdown(noteDraft)}
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer Controls & Stats */}
-                <div className="flex items-center justify-between pt-4 shrink-0" style={{ borderTop: "1px solid var(--m-border-light)" }}>
-                  <div className="flex items-center gap-4 text-[10px] font-[DM_Mono]" style={{ color: "var(--m-text-muted)" }}>
-                    <span>{noteDraft.length} chars</span>
-                    <span>•</span>
-                    <span>{noteDraft.split(/\s+/).filter(Boolean).length} words</span>
-                    <span>•</span>
-                    <span>~{Math.max(1, Math.ceil(noteDraft.split(/\s+/).filter(Boolean).length / 200))} min read</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {activeNote && (
-                      <>
-                        <button onClick={() => { setNoteToShare(activeNote); setShareNoteModalOpen(true); }} className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface flex items-center gap-1.5" style={{ color: "var(--m-primary)" }}>
-                          <Send className="w-3.5 h-3.5" />
-                          Share
-                        </button>
-                        <button onClick={() => deleteNote(activeNote.id)} className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-danger)" }}>
-                          Delete
-                        </button>
-                      </>
-                    )}
-                    <button onClick={saveNote} className="rounded-xl px-5 py-2 text-xs font-bold transition hover:scale-105 shadow-sm" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                      {activeNote ? "Save Changes" : "Save Note"}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </section>
+            <Suspense fallback={<div className="animate-pulse bg-black/5 dark:bg-white/5 h-96 rounded-2xl" />}>
+              <NotesTab
+                notes={notes}
+                subjects={subjects}
+                activeNote={activeNote}
+                noteSearchQuery={noteSearchQuery}
+                setNoteSearchQuery={setNoteSearchQuery}
+                noteSubjectFilter={noteSubjectFilter}
+                setNoteSubjectFilter={setNoteSubjectFilter}
+                noteCountBySubject={noteCountBySubject}
+                noteSubjectId={noteSubjectId}
+                handleSubjectChange={handleSubjectChange}
+                noteTitleDraft={noteTitleDraft}
+                handleTitleChange={handleTitleChange}
+                noteDraft={noteDraft}
+                handleContentChange={handleContentChange}
+                noteMode={noteMode}
+                setNoteMode={setNoteMode}
+                noteTextAreaRef={noteTextAreaRef}
+                isSummarizingNote={isSummarizingNote}
+                summarizeNoteWithAI={summarizeNoteWithAI}
+                handleOpenAIFlashcards={handleOpenAIFlashcards}
+                selectNote={selectNote}
+                createNewNote={createNewNote}
+                saveNote={saveNote}
+                deleteNote={deleteNote}
+                setNoteToShare={setNoteToShare}
+                setShareNoteModalOpen={setShareNoteModalOpen}
+                tasks={tasks}
+                scheduleItems={scheduleItems}
+                grades={grades}
+                flashcards={flashcards}
+                onStartFocusSession={startPomodoroForSubject}
+                onToggleTaskDone={toggleTask}
+              />
+            </Suspense>
           )}
 
           {/* ═══════════ GRADES VIEW ═══════════ */}
