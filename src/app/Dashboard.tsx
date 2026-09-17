@@ -13,6 +13,7 @@ import {
   Bot,
   Brain,
   CalendarDays,
+  Camera,
   Check,
   CheckCircle2,
   ChevronRight,
@@ -22,6 +23,7 @@ import {
   Coffee,
   Compass,
   Cloud,
+  Command,
   Cpu,
   Download,
   Edit2,
@@ -56,6 +58,7 @@ import {
   Quote,
   RotateCcw,
   Send,
+  Search,
   Settings2,
   Sparkles,
   Star,
@@ -101,6 +104,7 @@ import {
   fetchPendingFriendRequests,
   respondToFriendRequest,
   sendFriendRequest,
+  deleteFriendship,
   fetchUnreadMessageCount,
   subscribeToDirectMessages,
   upsertUserProfile,
@@ -126,6 +130,8 @@ const PDFFlashcardModal = lazy(() =>
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const UserProfileModal = lazy(() => import("./components/UserProfileModal"));
 const NotesTab = lazy(() => import("./components/tabs/NotesTab"));
+const SnapAndSolveModal = lazy(() => import("./components/SnapAndSolveModal"));
+import CommandPalette from "./components/CommandPalette";
 
 type Message = { role: "user" | "assistant"; content: string };
 
@@ -398,6 +404,23 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [pdfModalFile, setPdfModalFile] = useState<AttachedFile | null>(null);
   const [pdfModalNote, setPdfModalNote] = useState<NoteEntry | null>(null);
   const [pdfModalSubjectId, setPdfModalSubjectId] = useState<number | null>(null);
+
+  // ─── Snap & Solve Multimodal Assistant State ───
+  const [snapModalOpen, setSnapModalOpen] = useState(false);
+
+  // ─── Global Command Palette (Cmd + K / Ctrl + K) ───
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setCommandPaletteOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   // ─── Theme (via ThemeContext) ───
   const { theme: currentThemeId, themeConfig, isDark: darkMode } = useTheme();
@@ -1217,15 +1240,20 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
 
   const handleSendFriendRequest = async (e: FormEvent) => {
     e.preventDefault();
-    if (!addFriendDraft.trim()) return;
+    const target = addFriendDraft.trim();
+    if (!target) return;
+    if (target.toLowerCase() === userNameDisplay.toLowerCase()) {
+      showToast("You cannot add yourself as a friend.", "error");
+      return;
+    }
     setIsAddingFriend(true);
-    const success = await sendFriendRequest(userId, userNameDisplay, addFriendDraft);
+    const success = await sendFriendRequest(userId, userNameDisplay, target);
     setIsAddingFriend(false);
     if (success) {
-      showToast(`Friend request sent to ${addFriendDraft}!`);
+      showToast(`Friend request sent to ${target}!`);
       setAddFriendDraft("");
     } else {
-      showToast("Failed to send friend request.", "error");
+      showToast("Failed to send friend request. Check username or database permissions.", "error");
     }
   };
 
@@ -1233,15 +1261,31 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     const success = await respondToFriendRequest(req.id, 'accepted', userId, userNameDisplay);
     if (success) {
       showToast(`You are now friends with ${req.requester_identifier}!`);
-      setPendingFriendRequests(curr => curr.filter(r => r.id !== req.id));
       loadFriends();
+      setTimeout(() => {
+        setPendingFriendRequests(curr => curr.filter(r => r.id !== req.id));
+      }, 1500);
+      return true;
     }
+    return false;
   };
 
   const handleDeclineFriendRequest = async (req: Friendship) => {
     await respondToFriendRequest(req.id, 'rejected', userId, userNameDisplay);
-    setPendingFriendRequests(curr => curr.filter(r => r.id !== req.id));
     showToast("Friend request declined.");
+    setTimeout(() => {
+      setPendingFriendRequests(curr => curr.filter(r => r.id !== req.id));
+    }, 1200);
+  };
+
+  const handleDeleteFriend = async (friendshipId: string, friendName: string) => {
+    const success = await deleteFriendship(friendshipId);
+    if (success) {
+      setFriends(curr => curr.filter(f => f.id !== friendshipId));
+      showToast(`Removed ${friendName} from friends.`);
+    } else {
+      showToast("Failed to remove friend.", "error");
+    }
   };
 
   const deleteNote = (id: string) => {
@@ -2545,6 +2589,27 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
             </div>
           </div>
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* ─── Global Command Palette Trigger ─── */}
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition cursor-pointer border hover:border-black/20 dark:hover:border-white/20 minimal-surface shadow-xs"
+              style={{ color: "var(--m-text-muted)" }}
+              title="Global Command Palette (Cmd + K)"
+            >
+              <Search size={14} className="opacity-70" />
+              <span>Search or command...</span>
+              <kbd className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/5 dark:bg-white/10 border border-black/10 dark:border-white/10 opacity-75">
+                ⌘K
+              </kbd>
+            </button>
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              className="flex md:hidden p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] items-center justify-center cursor-pointer"
+              title="Command Palette (Cmd + K)"
+            >
+              <Command size={17} />
+            </button>
+
             <button onClick={() => setIsChatMaximized(true)} className="flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }} title="Open AI Tutor">
               <Brain size={15} /><span className="hidden xs:inline">AI Tutor</span>
             </button>
@@ -3238,6 +3303,18 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                 {/* Quick Prompts */}
                 <div className="shrink-0 px-3 py-2" style={{ borderTop: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
                   <div className="flex flex-wrap gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setSnapModalOpen(true)}
+                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-bold transition hover:scale-102 shadow-xs"
+                      style={{
+                        backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)",
+                        color: "var(--m-primary)",
+                        border: "1px solid color-mix(in srgb, var(--m-primary) 35%, transparent)",
+                      }}
+                    >
+                      📸 Snap & Solve
+                    </button>
                     {[
                       { emoji: "📐", text: "Solve 2x - 1 = 0", prompt: "Solve 2x - 1 = 0 step by step" },
                       { emoji: "💡", text: "Study plan", prompt: "Help me create an effective daily study plan" },
@@ -3275,6 +3352,9 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   <div className="flex items-center gap-2 rounded-2xl p-1.5 pl-2.5" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
                     <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
                       <Paperclip size={17} />
+                    </button>
+                    <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
+                      <Camera size={17} />
                     </button>
                     <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything..." />
                     <VoiceInputButton
@@ -3371,6 +3451,9 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                     <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
                       <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
                         <Paperclip size={18} />
+                      </button>
+                      <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
+                        <Camera size={18} />
                       </button>
                       <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything... (Press Enter to send)" />
                       <VoiceInputButton
@@ -4548,6 +4631,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
         setAddFriendDraft={setAddFriendDraft}
         isAddingFriend={isAddingFriend}
         onSendFriendRequest={handleSendFriendRequest}
+        onDeleteFriend={handleDeleteFriend}
       />
 
       {/* Toast Notification */}
@@ -4620,6 +4704,117 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
 
       {/* ─── PWA Install Banner ─── */}
       <PWAInstallBanner />
+
+      {/* ─── Multimodal Snap & Solve Modal ─── */}
+      {snapModalOpen && (
+        <Suspense fallback={null}>
+          <SnapAndSolveModal
+            isOpen={snapModalOpen}
+            onClose={() => setSnapModalOpen(false)}
+            subjects={subjects}
+            defaultSubjectId={chatSubjectId || subjects[0]?.id}
+            onSaveToNotes={(title, content, subjectId) => {
+              const targetSubId = subjectId || subjects[0]?.id || 1;
+              const newNote: NoteEntry = {
+                id: `note_${Date.now()}`,
+                subjectId: targetSubId,
+                title,
+                content,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+              };
+              setNotes((curr) => [newNote, ...curr]);
+              showToast("Problem solution saved to Notes! 📝");
+              addXP(15);
+            }}
+            onSaveToFlashcard={(front, back, subjectId) => {
+              const targetSubId = subjectId || subjects[0]?.id || 1;
+              const newCard: Flashcard = {
+                id: `card_${Date.now()}`,
+                subjectId: targetSubId,
+                front,
+                back,
+                difficulty: "medium",
+                reviewCount: 0,
+                createdAt: new Date().toISOString(),
+              };
+              setFlashcards((curr) => [newCard, ...curr]);
+              showToast("Created active recall Flashcard! 🎴");
+              addXP(15);
+            }}
+            onAskFollowUp={(prompt, image) => {
+              setChatDraft(prompt);
+              if (image) {
+                setChatFile({
+                  id: `snap_${Date.now()}`,
+                  name: image.name,
+                  size: Math.round(image.base64Data.length * 0.75),
+                  type: image.mimeType,
+                  content: "[Image of homework problem]",
+                  isImage: true,
+                  dataUrl: image.dataUrl,
+                  base64: image.base64Data,
+                });
+              }
+              showToast("Problem context added to Study Coach! ✨");
+            }}
+          />
+        </Suspense>
+      )}
+
+      {/* ─── Global Command Palette (Cmd + K) ─── */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        activeNav={activeNav}
+        onNavigate={(nav) => {
+          setActiveNav(nav);
+          setMobileOpen(false);
+        }}
+        onStartPomodoro={(minutes, subjectName) => {
+          const sub = subjectName || (selectedSubject !== "All subjects" ? selectedSubject : (subjects[0]?.name || "General"));
+          startPomodoroForSubject(sub, minutes);
+          setActiveNav("Focus");
+        }}
+        onCreateTask={(title) => {
+          const assignedCourse = selectedSubject !== "All subjects" ? selectedSubject : (subjects[0]?.name || "General");
+          const newTask: Task = {
+            id: Date.now(),
+            title: title.trim(),
+            course: assignedCourse,
+            time: "Today",
+            done: false,
+            color: "bg-blue-500",
+            priority: "medium",
+            createdAt: new Date().toISOString(),
+          };
+          setTasks((curr) => [newTask, ...curr]);
+          addXP(5);
+          updateDailyStreak();
+          showToast(`Task added: "${title.trim()}" (+5 XP) 📝`);
+        }}
+        onSearchNoteSelect={(note) => {
+          setActiveNote(note);
+          setActiveNav("Notes");
+          showToast(`Opened "${note.title || "Note"}" 📖`);
+        }}
+        onAskAI={(question) => {
+          setIsChatMaximized(true);
+          askCoach(undefined, question);
+        }}
+        onOpenSnapAndSolve={() => setSnapModalOpen(true)}
+        onOpenFriends={() => setFriendsModalOpen(true)}
+        onOpenMessages={() => {
+          setChatModalOpen(true);
+          checkInbox();
+        }}
+        onOpenInbox={() => setInboxOpen(true)}
+        onOpenThemeSelector={() => setThemeSelectorOpen(true)}
+        onOpenSubjectsModal={() => setSubjectsOpen(true)}
+        notes={notes}
+        tasks={tasks}
+        subjects={subjects}
+      />
 
     </main>
   );

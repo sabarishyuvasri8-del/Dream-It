@@ -1,6 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { createBrowserRouter } from "react-router";
-import { useUser, useClerk, useSignIn, useSignUp, AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
+import { useUser, useClerk, useSession, useSignIn, useSignUp, AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
 import {
   AlertTriangle,
   BookOpenCheck,
@@ -19,7 +19,7 @@ const RoleSelectionScreen = lazy(() => import("./components/RoleSelectionScreen"
 const ParentLoginForm = lazy(() => import("./components/ParentLoginForm"));
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
-import { fetchParentLinks, upsertUserProfile } from "../lib/supabase";
+import { fetchParentLinks, upsertUserProfile, setSupabaseAuthToken } from "../lib/supabase";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
 const CadenceApp = lazy(() => import("./cadence/CadenceApp"));
 const PrivacyPolicy = lazy(() => import("./PrivacyPolicy"));
@@ -378,12 +378,33 @@ type AppScreen = "landing" | "role-select" | "auth" | "parent-auth" | "parent-da
 
 function Root() {
   const { isLoaded, isSignedIn, user } = useUser();
+  const { session } = useSession();
   const { signOut } = useClerk();
   const [screen, setScreen] = useState<AppScreen>("landing");
   const [isParentMode, setIsParentMode] = useState(false);
   const [childUserId, setChildUserId] = useState("");
   const [childUsername, setChildUsername] = useState("");
   const [parentCheckDone, setParentCheckDone] = useState(false);
+
+  const [authorizedChildIds, setAuthorizedChildIds] = useState<Set<string>>(new Set());
+
+  // Sync active Clerk session token to Supabase client if custom template exists
+  useEffect(() => {
+    if (session) {
+      session
+        .getToken({ template: "supabase" })
+        .then((token) => {
+          if (token) setSupabaseAuthToken(token);
+          else setSupabaseAuthToken(null);
+        })
+        .catch(() => {
+          // Fallback to default anon key; do not set standard Clerk token as Supabase rejects it with 401
+          setSupabaseAuthToken(null);
+        });
+    } else {
+      setSupabaseAuthToken(null);
+    }
+  }, [session]);
 
   // Restore parent mode from session on reload
   useEffect(() => {
@@ -411,14 +432,11 @@ function Root() {
           email: user.primaryEmailAddress?.emailAddress,
         });
 
-        // If already in parent mode (from sessionStorage), skip check
-        if (isParentMode) {
-          setParentCheckDone(true);
-          return;
-        }
-
         // Check if user has parent links
         const links = await fetchParentLinks(user.id);
+        const validChildIds = new Set(links.map((l) => l.child_user_id));
+        setAuthorizedChildIds(validChildIds);
+
         if (links.length > 0) {
           // This is a returning parent
           setIsParentMode(true);
@@ -427,6 +445,13 @@ function Root() {
           sessionStorage.setItem("parentMode", "true");
           sessionStorage.setItem("childUserId", links[0].child_user_id);
           sessionStorage.setItem("childUsername", links[0].child_username);
+        } else if (isParentMode && childUserId && childUserId !== user.id && !validChildIds.has(childUserId)) {
+          // Stored session points to an unauthorized child account
+          sessionStorage.removeItem("parentMode");
+          sessionStorage.removeItem("childUserId");
+          sessionStorage.removeItem("childUsername");
+          setIsParentMode(false);
+          setChildUserId("");
         }
         setParentCheckDone(true);
       };
@@ -434,8 +459,9 @@ function Root() {
     } else if (!isSignedIn) {
       clearUserContext();
       setParentCheckDone(false);
+      setAuthorizedChildIds(new Set());
     }
-  }, [isSignedIn, user, parentCheckDone, isParentMode]);
+  }, [isSignedIn, user, parentCheckDone, isParentMode, childUserId]);
 
   if (!isLoaded) {
     return <PageLoader />;
@@ -446,8 +472,13 @@ function Root() {
     const activeChildId = childUserId || sessionStorage.getItem("childUserId") || user.id;
     const activeChildUsername = childUsername || sessionStorage.getItem("childUsername") || user.username || "Child";
 
-    // Parent Mode → Show Parent Dashboard
-    if (activeParentMode && activeChildId) {
+    // Strictly verify that the active user is authorized to view activeChildId
+    const isAuthorizedForChild =
+      activeChildId === user.id ||
+      authorizedChildIds.has(activeChildId);
+
+    // Parent Mode → Show Parent Dashboard only if authorized
+    if (activeParentMode && activeChildId && isAuthorizedForChild) {
       return (
         <Suspense fallback={<PageLoader />}>
           <ParentDashboard

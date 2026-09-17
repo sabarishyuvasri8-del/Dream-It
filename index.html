@@ -1,45 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
+    <title>Dream It — Personal Study Workspace & AI Companion</title>
+    <meta name="description" content="Dream It is an intelligent personal study workspace helping students manage their tasks, study plans, notes, and academic goals with an integrated AI assistant." />
+    <meta name="robots" content="index, follow" />
+    <meta name="google-site-verification" content="google2d55a3d03e5865b4" />
 
-  <!DOCTYPE html>
-  <html lang="en">
-    <head>
-      
-      <meta charset="UTF-8" />
-      <link rel="icon" type="image/png" href="/logo.png" />
-      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
-      <title>Dream It — Personal Study Workspace & AI Companion</title>
-      <meta name="description" content="Dream It is an intelligent personal study workspace helping students manage their tasks, study plans, notes, and academic goals with an integrated AI assistant." />
-      <meta name="robots" content="index, follow" />
-      <meta name="google-site-verification" content="google2d55a3d03e5865b4" />
-      
-      <!-- PWA & Mobile Web App Meta -->
-      <link rel="manifest" href="/manifest.json" />
-      <meta name="theme-color" content="#0B0F17" />
-      <meta name="mobile-web-app-capable" content="yes" />
-      <meta name="apple-mobile-web-app-capable" content="yes" />
-      <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-      <meta name="apple-mobile-web-app-title" content="Dream-It" />
-      <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://dream-it-sigma.vercel.app/" />
 
-      <!-- Critical Asset Preloading for Zero-Delay LCP -->
-      <link rel="preload" as="image" href="/logo.png" fetchpriority="high" />
+    <!-- Open Graph / Facebook / WhatsApp / LinkedIn -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://dream-it-sigma.vercel.app/" />
+    <meta property="og:title" content="Dream It — Personal Study Workspace & AI Companion" />
+    <meta property="og:description" content="Dream It is an intelligent personal study workspace helping students manage their tasks, study plans, notes, and academic goals with an integrated AI assistant." />
+    <meta property="og:image" content="https://dream-it-sigma.vercel.app/og-image.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="Dream It" />
 
-      <!-- Non-blocking Google Fonts with Preconnect -->
-      <link rel="preconnect" href="https://fonts.googleapis.com" />
-      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-      <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Roboto+Slab:wght@500;600;700&display=swap" />
-      <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Roboto+Slab:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
-      <noscript>
-        <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Roboto+Slab:wght@500;600;700&display=swap" rel="stylesheet" />
-      </noscript>
-      <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
-      
-    </head>
+    <!-- Twitter / X Cards -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:url" content="https://dream-it-sigma.vercel.app/" />
+    <meta name="twitter:title" content="Dream It — Personal Study Workspace & AI Companion" />
+    <meta name="twitter:description" content="Dream It is an intelligent personal study workspace helping students manage their tasks, study plans, notes, and academic goals with an integrated AI assistant." />
+    <meta name="twitter:image" content="https://dream-it-sigma.vercel.app/og-image.png" />
 
-    <body>
-      
-      <div id="root"></div>
-      <script type="module" src="/src/main.tsx"></script>
-      
-    </body>
-  </html>
-  
+    <!-- Schema.org JSON-LD Structured Data for Search Engines -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Dream It",
+      "url": "https://dream-it-sigma.vercel.app/",
+      "description": "Dream It is an intelligent personal study workspace helping students manage their tasks, study plans, notes, and academic goals with an integrated AI assistant.",
+      "applicationCategory": "EducationalApplication",
+      "operatingSystem": "All",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "featureList": [
+        "AI Study Coach & Planner",
+        "Interactive Flashcards & Spaced Repetition",
+        "Formula & Markdown Notes Journal with KaTeX",
+        "CBSE & Custom Exam Simulator",
+        "Focus Timer & Habit Streak Tracking"
+      ]
+    }
+    </script>
+    
+    <!-- PWA & Mobile Web App Meta -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#0B0F17" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Dream-It" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+    <!-- Critical Asset Preloading for Zero-Delay LCP -->
+    <link rel="preload" as="image" href="/logo.png" fetchpriority="high" />
+
+    <!-- Non-blocking Google Fonts with Preconnect -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Roboto+Slab:wght@500;600;700&display=swap" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Roboto+Slab:wght@500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Roboto+Slab:wght@500;600;700&display=swap" rel="stylesheet" />
+    </noscript>
+    <style>html, body { height: 100%; margin: 0; } #root { height: 100%; }</style>
+  </head>
+
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

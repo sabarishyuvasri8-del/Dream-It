@@ -17,6 +17,7 @@ import { Bot, Send, Sparkles, Trash2, User } from "lucide-react";
 import { useUser } from "@clerk/clerk-react";
 import VoiceInputButton from "../components/VoiceInputButton";
 import { fetchAI } from "../../lib/ai-client";
+import MarkdownRenderer from "../components/MarkdownRenderer";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -272,33 +273,6 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
     setMessages([]);
   };
 
-  // Rich markdown-ish renderer for coach responses
-  const renderContent = (text: string) => {
-    return text.split("\n").map((line, i) => {
-      // Horizontal dividers
-      if (line.trim() === "---" || line.trim() === "***") {
-        return <hr key={i} className="my-2 border-t opacity-20" style={{ borderColor: "currentColor" }} />;
-      }
-      // Headings
-      if (line.startsWith("### ")) {
-        return <h4 key={i} className="font-bold text-base mt-2 mb-1" style={{ color: "var(--m-text-heading)" }}>{line.slice(4)}</h4>;
-      }
-      if (line.startsWith("## ")) {
-        return <h3 key={i} className="font-bold text-lg mt-2 mb-1" style={{ color: "var(--m-text-heading)" }}>{line.slice(3)}</h3>;
-      }
-      // Bold formatting
-      let processed = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      // Bullet points (*, -, •)
-      if (processed.startsWith("• ") || processed.startsWith("- ") || processed.startsWith("* ")) {
-        return (
-          <p key={i} className="ml-3 mb-0.5 leading-relaxed" dangerouslySetInnerHTML={{ __html: "• " + processed.slice(2) }} />
-        );
-      }
-      if (processed.trim() === "") return <div key={i} className="h-1.5" />;
-      return <p key={i} className="mb-1 leading-relaxed" dangerouslySetInnerHTML={{ __html: processed }} />;
-    });
-  };
-
   return (
     <div className="flex flex-col" style={{ minHeight: "70vh" }}>
       {/* Header */}
@@ -377,7 +351,11 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
                 border: msg.role === "assistant" ? "1px solid var(--m-border)" : "none",
               }}
             >
-              {renderContent(msg.content)}
+              {msg.role === "user" ? (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              ) : (
+                <MarkdownRenderer content={msg.content} />
+              )}
             </div>
             {msg.role === "user" && (
               <div

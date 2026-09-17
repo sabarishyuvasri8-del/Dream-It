@@ -4,6 +4,18 @@ import type { FinanceData } from "./finance-types";
 
 export const supabase = createClient(`https://${projectId}.supabase.co`, publicAnonKey);
 
+/** Configure or update the active Clerk user authorization token for Supabase RLS */
+export function setSupabaseAuthToken(token: string | null) {
+  try {
+    const authHeader = token ? `Bearer ${token}` : `Bearer ${publicAnonKey}`;
+    (supabase as any).rest.headers = {
+      ...((supabase as any).rest.headers || {}),
+      apikey: publicAnonKey,
+      Authorization: authHeader,
+    };
+  } catch {}
+}
+
 /* ─────────────── Data Types ─────────────── */
 
 export interface Task {
@@ -771,6 +783,23 @@ export async function fetchFriends(userId: string): Promise<Friendship[]> {
   }
 }
 
+export async function deleteFriendship(friendshipId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('friendships')
+      .delete()
+      .eq('id', friendshipId);
+
+    if (error) {
+      console.error("Error deleting friendship:", error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.error("Exception deleting friendship:", err);
+    return false;
+  }
+}
 
 /* ─────────────── Direct Messaging System ─────────────── */
 

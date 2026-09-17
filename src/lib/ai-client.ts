@@ -1,11 +1,10 @@
 /**
  * ai-client.ts
- * Production-hardened AI client for Dream It applications.
- * Directly integrates Google Gemini 3.1 Flash with multimodal vision support,
- * streaming, in-memory caching, and verified production fallbacks.
+ * Production-hardened, secure AI client for Dream-It applications.
+ * Routes all AI requests through the secure /api/ai-chat serverless proxy
+ * so that API keys remain protected on the server and are never bundled in client JS.
  */
 
-import { projectId, publicAnonKey } from "../../utils/supabase/info";
 import { addBreadcrumb, captureException } from "./monitoring";
 
 export interface ImageAttachment {
@@ -41,30 +40,14 @@ export interface AIResponse {
 const aiCache = new Map<string, { content: string; expiry: number }>();
 const CACHE_TTL = 3 * 60 * 1000;
 
-// Dynamic resolution for production fallback ensuring 100% uptime on Vercel/Netlify
-function getFallbackKey(): string {
-  try {
-    const encoded = "QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=";
-    if (typeof atob === "function") {
-      return atob(encoded);
-    }
-    if (typeof Buffer !== "undefined") {
-      return Buffer.from(encoded, "base64").toString("utf-8");
-    }
-    return "";
-  } catch {
-    return "";
-  }
-}
-
 function normalizeModelName(m?: string): string {
-  // Always use the verified, ultra-fast gemini-3.1-flash-lite
-  return "gemini-3.1-flash-lite";
+  if (m === "gemma-4-31b-it") return "gemini-3.1-flash-lite";
+  return m || "gemini-3.1-flash-lite";
 }
 
 /**
  * Executes an AI chat request.
- * Guaranteed to succeed both locally and on live production (Vercel) deployments.
+ * Routes through /api/ai-chat backend proxy for zero client secret leakage.
  */
 export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
   const requestedModel = normalizeModelName(params.model);
@@ -87,18 +70,66 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
   const defaultTimeout = params.image ? 45000 : (params.max_tokens && params.max_tokens > 1500 ? 40000 : 25000);
   const timeoutDuration = params.timeoutMs ?? defaultTimeout;
 
-  // Resolve API key: environment variable first, then production verified fallback
-  const envKey =
-    (typeof import.meta !== "undefined" && (import.meta as any)?.env?.VITE_GEMINI_API_KEY) ||
-    getFallbackKey();
+  // 2. Primary Secure Route: /api/ai-chat serverless endpoint / dev proxy
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
 
-  // 2. Primary Path: Direct Native Google Gemini API (High Reliability, Full Multimodal Support)
-  if (envKey && envKey !== "undefined" && envKey !== "your_api_key_here") {
+    const res = await fetch("/api/ai-chat", {
+      method: "POST",
+      signal: controller.signal,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: params.messages,
+        image: params.image,
+        model: requestedModel,
+        temperature: params.temperature,
+        max_tokens: params.max_tokens,
+        top_p: params.top_p,
+      }),
+    });
+
+    clearTimeout(timeoutId);
+
+    if (res.ok) {
+      const data = await res.json();
+      const content = data.content || "";
+      if (content) {
+        aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
+        if (params.onChunk) {
+          params.onChunk(content);
+        }
+        return { content };
+      }
+    }
+
+    if (res.status === 429) {
+      return {
+        content: "",
+        isRateLimited: true,
+        error: "AI study rate limit reached. Please wait a few seconds and try again.",
+      };
+    }
+
+    const errData = await res.json().catch(() => ({}));
+    if (errData?.error) {
+      console.warn("[ai-client proxy error]:", errData.error);
+    }
+  } catch (proxyErr: any) {
+    console.warn("[ai-client proxy network error]:", proxyErr?.message);
+    captureException(proxyErr, { context: "AIChatProxy" });
+  }
+
+  // 3. Fallback: Check if client-side VITE_GEMINI_API_KEY is explicitly configured in local development
+  const localEnvKey =
+    typeof import.meta !== "undefined" &&
+    (import.meta as any)?.env?.VITE_GEMINI_API_KEY;
+
+  if (localEnvKey && localEnvKey !== "undefined" && localEnvKey !== "your_api_key_here") {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutDuration);
+      const fallbackController = new AbortController();
+      const timeoutId = setTimeout(() => fallbackController.abort(), timeoutDuration);
 
-      // Separate system messages for Gemini's native system_instruction
       const systemParts: Array<{ text: string }> = [];
       const contents: Array<{ role: "user" | "model"; parts: Array<any> }> = [];
 
@@ -116,38 +147,26 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         }
       }
 
-      // Ensure at least one user content exists
       if (contents.length === 0) {
         contents.push({ role: "user", parts: [{ text: "Hello" }] });
       }
 
-      // Attach vision image if present
       if (params.image && params.image.base64Data) {
         const lastUser = [...contents].reverse().find((c) => c.role === "user");
+        const imagePart = {
+          inlineData: {
+            mimeType: params.image.mimeType || "image/jpeg",
+            data: params.image.base64Data,
+          },
+        };
         if (lastUser) {
-          lastUser.parts.push({
-            inlineData: {
-              mimeType: params.image.mimeType || "image/jpeg",
-              data: params.image.base64Data,
-            },
-          });
+          lastUser.parts.push(imagePart);
         } else {
-          contents.push({
-            role: "user",
-            parts: [
-              {
-                inlineData: {
-                  mimeType: params.image.mimeType || "image/jpeg",
-                  data: params.image.base64Data,
-                },
-              },
-            ],
-          });
+          contents.push({ role: "user", parts: [imagePart] });
         }
       }
 
-      const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${envKey.trim()}`;
-
+      const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${localEnvKey.trim()}`;
       const requestBody: any = {
         contents,
         generationConfig: {
@@ -163,7 +182,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
 
       const res = await fetch(googleUrl, {
         method: "POST",
-        signal: controller.signal,
+        signal: fallbackController.signal,
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       });
@@ -181,78 +200,14 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
           return { content };
         }
       }
-
-      if (res.status === 429) {
-        return {
-          content: "",
-          isRateLimited: true,
-          error: "AI study rate limit reached. Please wait a few seconds and try again.",
-        };
-      }
-
-      console.warn(`[Native Gemini] Status ${res.status}. Attempting OpenAI compatibility fallback...`);
     } catch (directErr: any) {
-      console.warn("[Native Gemini Error]:", directErr?.message);
-    }
-
-    // 3. Fallback Path: Google OpenAI-compatible endpoint
-    try {
-      const fallbackController = new AbortController();
-      const fallbackTimeoutId = setTimeout(() => fallbackController.abort(), timeoutDuration);
-
-      const formattedMessages = params.messages.map((m, idx) => {
-        if (idx === params.messages.length - 1 && m.role === "user" && params.image && params.image.base64Data) {
-          const url =
-            params.image.dataUrl ||
-            `data:${params.image.mimeType || "image/jpeg"};base64,${params.image.base64Data}`;
-          return {
-            role: "user",
-            content: [
-              { type: "text", text: m.content || "Please analyze this attached image." },
-              { type: "image_url", image_url: { url } },
-            ],
-          };
-        }
-        return m;
-      });
-
-      const res = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
-        method: "POST",
-        signal: fallbackController.signal,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${envKey.trim()}`,
-        },
-        body: JSON.stringify({
-          model: requestedModel,
-          messages: formattedMessages,
-          temperature: params.temperature ?? 0.2,
-          max_tokens: params.max_tokens ?? 2048,
-          top_p: params.top_p,
-          stream: !!params.onChunk,
-        }),
-      });
-      clearTimeout(fallbackTimeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.choices?.[0]?.message?.content || "";
-        if (content) {
-          aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
-          if (params.onChunk) {
-            params.onChunk(content);
-          }
-          return { content };
-        }
-      }
-    } catch (fallbackErr: any) {
-      captureException(fallbackErr, { context: "DirectGeminiOpenAIFallback" });
+      console.warn("[Direct Fallback Error]:", directErr?.message);
     }
   }
 
-  // 4. Return user-friendly error response if all direct paths fail
+  // 4. Return user-friendly error response if all paths fail
   return {
     content: "",
-    error: "AI study service is momentarily unavailable. Please check your internet connection and retry.",
+    error: "AI study service is momentarily unavailable. Please check your network connection and retry.",
   };
 }

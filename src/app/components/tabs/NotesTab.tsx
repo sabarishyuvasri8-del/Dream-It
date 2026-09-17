@@ -1,4 +1,4 @@
-import React, { FC, RefObject, useState, useMemo } from "react";
+import React, { FC, RefObject, useState, useMemo, useEffect } from "react";
 import {
   Plus,
   Notebook,
@@ -12,6 +12,11 @@ import {
   Zap,
   PanelRightClose,
   PanelRightOpen,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Maximize2,
+  Minimize2,
+  Columns,
   Bold,
   Italic,
   Heading1,
@@ -99,6 +104,20 @@ export const NotesTab: FC<NotesTabProps> = ({
   onToggleTaskDone,
 }) => {
   const [showIntelPanel, setShowIntelPanel] = useState(true);
+  const [isWideAngle, setIsWideAngle] = useState(false);
+  const [showNotesSidebar, setShowNotesSidebar] = useState(true);
+  const [wideContentMode, setWideContentMode] = useState<"full" | "focused">("full");
+
+  // Handle ESC key to exit Wide Angle mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isWideAngle) {
+        setIsWideAngle(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isWideAngle]);
 
   // Active Subject for this Note
   const currentSubject = useMemo(() => {
@@ -157,31 +176,56 @@ export const NotesTab: FC<NotesTabProps> = ({
   };
 
   return (
-    <section className="grid gap-5 sm:gap-7 xl:grid-cols-[280px_1fr]">
+    <section
+      className={`transition-all duration-300 ${
+        isWideAngle
+          ? "fixed inset-0 z-[45] flex gap-4 p-3 sm:p-5 md:p-6 overflow-hidden backdrop-blur-3xl animate-in fade-in zoom-in-95 duration-200"
+          : `grid gap-5 sm:gap-7 items-start ${showNotesSidebar ? "xl:grid-cols-[280px_1fr]" : "grid-cols-1"}`
+      }`}
+      style={isWideAngle ? { backgroundColor: "var(--m-bg)", color: "var(--m-text)" } : undefined}
+    >
       {/* Notes Sidebar List */}
-      <div
-        className="flex flex-col rounded-xl p-5 minimal-surface feature-zoom"
-        style={{ maxHeight: "calc(100vh - 140px)" }}
-      >
-        <div className="flex items-center justify-between mb-3 shrink-0">
-          <div>
-            <h2 className="font-[Roboto_Slab] text-xl font-semibold" style={{ color: "var(--m-text-heading)" }}>
-              Notes & Journal
-            </h2>
-            <p className="text-[10px]" style={{ color: "var(--m-text-sub)" }}>
-              {notes.length} total notes
-            </p>
+      {showNotesSidebar && (
+        <div
+          className={`flex flex-col minimal-surface shrink-0 ${
+            isWideAngle
+              ? "rounded-2xl p-4 h-full w-[280px] sm:w-[320px] border shadow-2xl z-10 animate-in slide-in-from-left-4 duration-200"
+              : "rounded-xl p-5 h-[calc(100vh-140px)] min-h-[500px]"
+          }`}
+        >
+          <div className="flex items-center justify-between mb-3 shrink-0">
+            <div>
+              <h2 className="font-[Roboto_Slab] text-xl font-semibold" style={{ color: "var(--m-text-heading)" }}>
+                Notes & Journal
+              </h2>
+              <p className="text-[10px]" style={{ color: "var(--m-text-sub)" }}>
+                {notes.length} total notes
+              </p>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={createNewNote}
+                className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs cursor-pointer"
+                style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                title="New Note"
+              >
+                <Plus size={14} />
+                <span>New</span>
+              </button>
+              <button
+                onClick={() => setShowNotesSidebar(false)}
+                className="p-1.5 rounded-lg border transition hover:opacity-80 cursor-pointer"
+                style={{
+                  backgroundColor: "var(--m-surface-alt)",
+                  borderColor: "var(--m-border)",
+                  color: "var(--m-text-sub)",
+                }}
+                title="Hide Notes Sidebar"
+              >
+                <PanelLeftClose size={14} />
+              </button>
+            </div>
           </div>
-          <button
-            onClick={createNewNote}
-            className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs cursor-pointer"
-            style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
-            title="New Note"
-          >
-            <Plus size={15} />
-            <span>New</span>
-          </button>
-        </div>
 
         {/* Filters */}
         <div className="space-y-2 mb-3 shrink-0">
@@ -281,19 +325,46 @@ export const NotesTab: FC<NotesTabProps> = ({
           )}
         </div>
       </div>
+      )}
 
       {/* Main Note Editor Container */}
       <div
-        className="flex flex-col rounded-xl p-5 minimal-surface feature-zoom relative overflow-hidden"
-        style={{ minHeight: "calc(100vh - 140px)" }}
+        className={`flex flex-col minimal-surface relative overflow-hidden flex-1 ${
+          isWideAngle
+            ? "rounded-2xl p-4 sm:p-6 h-full border shadow-2xl"
+            : "rounded-xl p-5 h-[calc(100vh-140px)] min-h-[500px]"
+        }`}
       >
         {/* Header Bar */}
         <div
           className="flex flex-wrap items-center justify-between gap-3 pb-3 mb-3 shrink-0"
           style={{ borderBottom: "1px solid var(--m-border-light)" }}
         >
-          {/* Subject Selector & Metadata */}
-          <div className="flex items-center gap-2">
+          {/* Subject Selector, Sidebar Toggle & Metadata */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {!showNotesSidebar && (
+              <button
+                onClick={() => setShowNotesSidebar(true)}
+                className="flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-bold transition hover:scale-105 cursor-pointer shadow-xs"
+                style={{
+                  backgroundColor: "var(--m-surface-alt)",
+                  color: "var(--m-primary)",
+                  border: "1px solid var(--m-border)",
+                }}
+                title="Show Notes Sidebar"
+              >
+                <PanelLeftOpen size={13} />
+                <span>Notes ({notes.length})</span>
+              </button>
+            )}
+
+            {isWideAngle && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 shadow-xs">
+                <span className="size-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Wide Angle</span>
+              </div>
+            )}
+
             <select
               value={noteSubjectId}
               onChange={(e) => handleSubjectChange(Number(e.target.value))}
@@ -379,7 +450,7 @@ export const NotesTab: FC<NotesTabProps> = ({
                 title="Generate 15–20 flashcards and chapter summary from this note"
               >
                 <Sparkles size={14} className="text-amber-500" />
-                <span>AI Flashcards</span>
+                <span className="hidden md:inline">AI Flashcards</span>
               </button>
             )}
 
@@ -391,7 +462,7 @@ export const NotesTab: FC<NotesTabProps> = ({
               style={{ color: "var(--m-primary)" }}
             >
               {isSummarizingNote ? <Sparkles size={14} className="animate-spin" /> : <Brain size={14} />}
-              <span>{isSummarizingNote ? "Summarizing..." : "AI Summarize"}</span>
+              <span className="hidden md:inline">{isSummarizingNote ? "Summarizing..." : "AI Summarize"}</span>
             </button>
 
             {/* Edit / Preview Tabs */}
@@ -427,11 +498,64 @@ export const NotesTab: FC<NotesTabProps> = ({
                 👁️ Preview
               </button>
             </div>
+
+            {/* In Wide Angle Mode: Edge-to-Edge vs Focused reading width */}
+            {isWideAngle && (
+              <button
+                onClick={() => setWideContentMode((m) => (m === "full" ? "focused" : "full"))}
+                className="hidden sm:flex items-center gap-1.5 rounded-xl px-2.5 py-1.5 text-xs font-semibold transition hover:scale-105 cursor-pointer"
+                style={{
+                  backgroundColor: "var(--m-surface-alt)",
+                  color: "var(--m-text-sub)",
+                  border: "1px solid var(--m-border)",
+                }}
+                title={wideContentMode === "full" ? "Switch to Focused Reading Width (centered)" : "Switch to Full Edge-to-Edge Width"}
+              >
+                <Columns size={13} />
+                <span>{wideContentMode === "full" ? "Edge-to-Edge" : "Centered"}</span>
+              </button>
+            )}
+
+            {/* Wide Angle Mode Toggle Button */}
+            {isWideAngle ? (
+              <button
+                onClick={() => setIsWideAngle(false)}
+                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-sm cursor-pointer"
+                style={{
+                  backgroundColor: "var(--m-primary)",
+                  color: "var(--m-primary-text)",
+                }}
+                title="Exit Wide Angle Mode (Esc)"
+              >
+                <Minimize2 size={13} />
+                <span>Exit Wide Angle</span>
+                <kbd className="hidden sm:inline-block text-[9px] px-1 py-0.2 rounded border border-white/30 font-mono opacity-80">
+                  ESC
+                </kbd>
+              </button>
+            ) : (
+              <button
+                onClick={() => {
+                  setIsWideAngle(true);
+                  setShowNotesSidebar(false);
+                }}
+                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs cursor-pointer"
+                style={{
+                  backgroundColor: "var(--m-surface-alt)",
+                  color: "var(--m-primary)",
+                  border: "1px solid var(--m-border)",
+                }}
+                title="Enter Wide Angle Mode (Note will cover the entire screen)"
+              >
+                <Maximize2 size={13} className="text-emerald-500" />
+                <span>Wide Angle</span>
+              </button>
+            )}
           </div>
         </div>
 
         {/* Note Title Input */}
-        <div className="relative mb-2">
+        <div className={`relative mb-2 shrink-0 ${isWideAngle && wideContentMode === 'focused' ? 'max-w-4xl mx-auto w-full' : 'w-full'}`}>
           <input
             value={noteTitleDraft}
             onChange={(e) => handleTitleChange(e.target.value)}
@@ -451,7 +575,7 @@ export const NotesTab: FC<NotesTabProps> = ({
         {/* Rich Quick-Formatting Bar (Edit Mode Only) */}
         {noteMode === "edit" && (
           <div
-            className="flex flex-wrap items-center gap-1 mb-3 px-2 py-1.5 rounded-xl border shrink-0"
+            className={`flex flex-wrap items-center gap-1 mb-3 px-2 py-1.5 rounded-xl border shrink-0 ${isWideAngle && wideContentMode === 'focused' ? 'max-w-4xl mx-auto w-full' : 'w-full'}`}
             style={{
               backgroundColor: "var(--m-surface-alt)",
               borderColor: "var(--m-border-light)",
@@ -550,21 +674,21 @@ export const NotesTab: FC<NotesTabProps> = ({
         )}
 
         {/* Editor Layout: Editor + Subject Intelligence Panel */}
-        <div className={`flex-1 min-h-[360px] grid gap-4 mb-4 ${showIntelPanel ? "lg:grid-cols-[1fr_300px]" : "grid-cols-1"}`}>
+        <div className={`flex-1 min-h-0 grid gap-4 mb-3 overflow-hidden ${showIntelPanel ? "lg:grid-cols-[1fr_300px]" : "grid-cols-1"}`}>
           {/* Note Body Area */}
-          <div className="flex flex-col h-full">
+          <div className={`flex flex-col h-full min-h-0 overflow-hidden ${isWideAngle && wideContentMode === 'focused' ? 'max-w-4xl mx-auto w-full' : 'w-full'}`}>
             {noteMode === "edit" ? (
               <textarea
                 ref={noteTextAreaRef}
                 value={noteDraft}
                 onChange={(e) => handleContentChange(e.target.value)}
                 placeholder="Write your study notes here... (Use the quick format bar above or standard Markdown)"
-                className="w-full h-full min-h-[360px] bg-transparent outline-none text-xs leading-6 resize-none custom-scrollbar p-2 rounded-xl border border-transparent focus:border-black/10 dark:focus:border-white/10"
+                className="w-full h-full min-h-0 flex-1 bg-transparent outline-none text-xs leading-6 resize-none custom-scrollbar p-3 rounded-xl border border-transparent focus:border-black/10 dark:focus:border-white/10 overflow-y-auto"
                 style={{ color: "var(--m-text)" }}
               />
             ) : (
               <div
-                className="w-full h-full min-h-[360px] overflow-y-auto custom-scrollbar p-4 rounded-xl"
+                className="w-full h-full min-h-0 flex-1 overflow-y-auto custom-scrollbar p-4 rounded-xl select-text"
                 style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}
               >
                 <MarkdownRenderer content={noteDraft} />
@@ -575,11 +699,10 @@ export const NotesTab: FC<NotesTabProps> = ({
           {/* Zero-Setup Subject Intelligence Panel */}
           {showIntelPanel && (
             <aside
-              className="flex flex-col gap-3 p-3.5 rounded-2xl border overflow-y-auto custom-scrollbar"
+              className="flex flex-col gap-3 p-3.5 rounded-2xl border overflow-y-auto custom-scrollbar h-full min-h-0"
               style={{
                 backgroundColor: "var(--m-surface-alt)",
                 borderColor: "var(--m-border-light)",
-                maxHeight: "calc(100vh - 270px)",
               }}
             >
               {/* Subject Banner & Quick Focus Button */}
@@ -795,7 +918,7 @@ export const NotesTab: FC<NotesTabProps> = ({
 
         {/* Footer Controls & Stats */}
         <div
-          className="flex items-center justify-between pt-4 shrink-0"
+          className={`flex items-center justify-between pt-3 shrink-0 mt-auto ${isWideAngle && wideContentMode === 'focused' ? 'max-w-4xl mx-auto w-full' : 'w-full'}`}
           style={{ borderTop: "1px solid var(--m-border-light)" }}
         >
           <div className="flex items-center gap-4 text-[10px] font-[DM_Mono]" style={{ color: "var(--m-text-muted)" }}>

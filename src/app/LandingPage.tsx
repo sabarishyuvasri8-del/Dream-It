@@ -170,8 +170,8 @@ function TypewriterHero({ reducedMotion }: { reducedMotion: boolean }) {
   }, [reducedMotion]);
 
   return (
-    <div
-      className="relative inline-flex justify-center items-center h-[1.2em] font-[Roboto_Slab] font-bold tracking-tight leading-[1.0]"
+    <h1
+      className="relative inline-flex justify-center items-center h-[1.2em] font-[Roboto_Slab] font-bold tracking-tight leading-[1.0] m-0 p-0"
       style={{
         fontSize: "clamp(3rem, 8vw, 6rem)",
         color: "var(--m-text-heading)",
@@ -202,7 +202,7 @@ function TypewriterHero({ reducedMotion }: { reducedMotion: boolean }) {
           }}
         />
       )}
-    </div>
+    </h1>
   );
 }
 
