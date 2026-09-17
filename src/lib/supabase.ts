@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import { projectId, publicAnonKey } from "../../utils/supabase/info";
 import type { FinanceData } from "./finance-types";
+import { saveWorkspaceOffline, getWorkspaceOffline, recordOfflineMutation } from "./offline-storage";
+export { saveWorkspaceOffline, getWorkspaceOffline } from "./offline-storage";
 
 export const supabase = createClient(`https://${projectId}.supabase.co`, publicAnonKey);
 
@@ -187,10 +189,9 @@ export function createEmptyWorkspace(): UserWorkspace {
 
 /* ─────────────── Workspace CRUD (Strict User Isolation) ─────────────── */
 
-/** Fetch workspace strictly isolated by Clerk userId from Supabase & LocalStorage */
+/** Fetch workspace strictly isolated by Clerk userId from Supabase & IndexedDB */
 export async function fetchUserWorkspace(accessToken: string, userId: string): Promise<UserWorkspace | null> {
   if (!userId) return null;
-  const cacheKey = `dreamit_workspace_${userId}`;
 
   // 1. Try Supabase Database table 'workspaces' by user_id
   try {
@@ -200,7 +201,8 @@ export async function fetchUserWorkspace(accessToken: string, userId: string): P
       .eq("user_id", userId)
       .maybeSingle();
     if (dbData && dbData.data && typeof dbData.data === "object") {
-      localStorage.setItem(cacheKey, JSON.stringify(dbData.data));
+      // Asynchronously update IndexedDB cache
+      saveWorkspaceOffline(userId, dbData.data as UserWorkspace).catch(() => {});
       return dbData.data as UserWorkspace;
     }
   } catch (e) {
@@ -221,41 +223,41 @@ export async function fetchUserWorkspace(accessToken: string, userId: string): P
     if (altId) {
       const { data: altDb } = await supabase.from("workspaces").select("data").eq("user_id", altId).maybeSingle();
       if (altDb && altDb.data && typeof altDb.data === "object") {
+        saveWorkspaceOffline(userId, altDb.data as UserWorkspace).catch(() => {});
         return altDb.data as UserWorkspace;
       }
-      const altCached = localStorage.getItem(`dreamit_workspace_${altId}`);
-      if (altCached) {
-        try { return JSON.parse(altCached); } catch {}
-      }
+      const altCached = await getWorkspaceOffline(altId);
+      if (altCached) return altCached;
     }
   } catch (lookupErr) {
     console.warn("Alt workspace lookup failed:", lookupErr);
   }
 
-  // 2. Fallback: Local Storage cached strictly for this specific user ID
-  const cached = localStorage.getItem(cacheKey);
-  if (cached) {
-    try {
-      return JSON.parse(cached);
-    } catch {
-      // Ignore parse error
-    }
+  // 2. Offline Fallback: Retrieve from high-capacity IndexedDB (with automatic localStorage migration)
+  const offlineCached = await getWorkspaceOffline(userId);
+  if (offlineCached) {
+    return offlineCached;
   }
 
   return null;
 }
 
-/** Save workspace strictly isolated by Clerk userId to Supabase & LocalStorage */
+/** Save workspace strictly isolated by Clerk userId to IndexedDB and sync to Supabase */
 export async function saveUserWorkspace(accessToken: string, userId: string, workspaceData: UserWorkspace): Promise<boolean> {
   if (!userId) return false;
-  const cacheKey = `dreamit_workspace_${userId}`;
-  
-  // Save locally strictly under userId
-  localStorage.setItem(cacheKey, JSON.stringify(workspaceData));
+
+  // 1. Immediately save locally to high-performance IndexedDB off the main thread
+  await saveWorkspaceOffline(userId, workspaceData);
+
+  // If currently offline, queue mutation for background sync upon reconnection
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => {});
+    return true;
+  }
 
   let savedRemote = false;
 
-  // Save to Supabase Database table 'workspaces' per user_id with conflict resolution
+  // 2. Save to Supabase Database table 'workspaces' per user_id with conflict resolution
   try {
     const { error } = await supabase
       .from("workspaces")
@@ -267,9 +269,11 @@ export async function saveUserWorkspace(accessToken: string, userId: string, wor
       savedRemote = true;
     } else {
       console.warn("Supabase database workspace save error:", error);
+      recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => {});
     }
   } catch (e) {
     console.warn("Supabase database workspace save failed:", e);
+    recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => {});
   }
 
   // Trigger non-blocking incremental relational sync to normalized tables

@@ -12,6 +12,7 @@ import {
   BookOpenCheck,
   Bot,
   Brain,
+  Calendar,
   CalendarDays,
   Camera,
   Check,
@@ -82,6 +83,7 @@ import {
   deleteAttachedFile,
   fetchUserFiles,
   fetchUserWorkspace,
+  getWorkspaceOffline,
   Flashcard,
   FocusLogEntry,
   getFileDownloadUrl,
@@ -268,13 +270,40 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [taskPriority, setTaskPriority] = useState<"low" | "medium" | "high">("medium");
   const [taskDeadline, setTaskDeadline] = useState("");
 
-  // ─── Autopilot ───
+  // ─── Autopilot Taskmaster & Syllabus Engine ───
+  const [autopilotMode, setAutopilotMode] = useState<"quick" | "syllabus">("quick");
   const [autopilotText, setAutopilotText] = useState("");
   const [isSubmittingAutopilot, setIsSubmittingAutopilot] = useState(false);
+  const [syllabusExamName, setSyllabusExamName] = useState("CBSE Class 12 Boards");
+  const [syllabusExamDate, setSyllabusExamDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 21);
+    return d.toISOString().split("T")[0];
+  });
+  const [syllabusDailyHours, setSyllabusDailyHours] = useState(4);
+  const [syllabusText, setSyllabusText] = useState("");
+  const [syllabusFileName, setSyllabusFileName] = useState("");
+  const [isExtractingSyllabus, setIsExtractingSyllabus] = useState(false);
+
   const [autopilotRuns, setAutopilotRuns] = useState<{
     id: string;
     timestamp: string;
-    status: "extracting" | "planning" | "executing" | "done" | "error";
+    status: "extracting" | "planning" | "pending_approval" | "executing" | "done" | "error";
+    isSyllabusRun?: boolean;
+    examName?: string;
+    examDate?: string;
+    daysRemaining?: number;
+    roadmapMilestones?: {
+      dayOffset: number;
+      countdownTag: string;
+      focusSubject: string;
+      title: string;
+      hours: number;
+      priority: "High" | "Medium" | "Low";
+      goals: string[];
+    }[];
+    pendingScheduleItems?: ScheduleItem[];
+    pendingTasks?: Task[];
     extractedItems: {
       title: string;
       type: string;
@@ -487,30 +516,22 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   useEffect(() => {
     let alive = true;
 
-    // Instant 0ms hydration from local cache to eliminate loading latency
-    const cacheKey = `dreamit_workspace_${userId}`;
-    if (typeof window !== "undefined" && window.localStorage) {
-      const cachedStr = window.localStorage.getItem(cacheKey);
-      if (cachedStr) {
-        try {
-          const cached = JSON.parse(cachedStr);
-          if (cached && typeof cached === "object") {
-            if (Array.isArray(cached.tasks)) setTasks(cached.tasks);
-            if (Array.isArray(cached.scheduleItems)) setScheduleItems(cached.scheduleItems);
-            if (Array.isArray(cached.subjects)) setSubjects(cached.subjects);
-            if (Array.isArray(cached.studyMinutes) && cached.studyMinutes.length === 7) setStudyMinutes(cached.studyMinutes);
-            if (Array.isArray(cached.focusLog)) setFocusLog(cached.focusLog);
-            if (Array.isArray(cached.notes)) setNotes(cached.notes);
-            if (Array.isArray(cached.grades)) setGrades(cached.grades);
-            if (Array.isArray(cached.flashcards)) setFlashcards(cached.flashcards);
-            if (cached.streak) setStreak(cached.streak);
-            if (cached.finance) setFinance(cached.finance);
-            setWorkspaceReady(true);
-          }
-        } catch (e) {
-          // Fall through to remote fetch
-        }
-      }
+    // Instant 0ms hydration from high-capacity IndexedDB
+    if (userId) {
+      getWorkspaceOffline(userId).then((cached) => {
+        if (!alive || !cached) return;
+        if (Array.isArray(cached.tasks)) setTasks(cached.tasks);
+        if (Array.isArray(cached.scheduleItems)) setScheduleItems(cached.scheduleItems);
+        if (Array.isArray(cached.subjects)) setSubjects(cached.subjects);
+        if (Array.isArray(cached.studyMinutes) && cached.studyMinutes.length === 7) setStudyMinutes(cached.studyMinutes);
+        if (Array.isArray(cached.focusLog)) setFocusLog(cached.focusLog);
+        if (Array.isArray(cached.notes)) setNotes(cached.notes);
+        if (Array.isArray(cached.grades)) setGrades(cached.grades);
+        if (Array.isArray(cached.flashcards)) setFlashcards(cached.flashcards);
+        if (cached.streak) setStreak(cached.streak);
+        if (cached.finance) setFinance(cached.finance);
+        setWorkspaceReady(true);
+      });
     }
 
     fetchUserWorkspace(accessToken, userId)
@@ -1488,11 +1509,250 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   // ─── File handling ───
   const handleUploadSuccess = (newFile: AttachedFile) => {
     setAttachedFiles((curr) => [...curr.filter((f) => f.id !== newFile.id), newFile]);
-    showToast(`Uploaded "${newFile.fileName}" ✅`);
+    if (newFile.kind === "syllabus") {
+      setAutopilotMode("syllabus");
+      setSyllabusExamName(newFile.fileName.replace(/\.[^/.]+$/, ""));
+      if (newFile.content) setSyllabusText(newFile.content);
+      setActiveNav("Today");
+      showToast(`Syllabus loaded into Autopilot Taskmaster! 📅`);
+      setTimeout(() => {
+        const el = document.getElementById("autopilot-section");
+        if (el) el.scrollIntoView({ behavior: "smooth" });
+      }, 100);
+    } else {
+      showToast(`Uploaded "${newFile.fileName}" ✅`);
+    }
+  };
+
+  // Approve and deploy a pending Autopilot syllabus roadmap to workspace
+  const handleApproveSyllabusRun = (runId: string) => {
+    const run = autopilotRuns.find((r) => r.id === runId);
+    if (!run) return;
+
+    const newSchedule: ScheduleItem[] = (run.pendingScheduleItems || []).map((item, idx) => ({
+      id: Date.now() + idx,
+      title: item.title,
+      time: item.time || "10:00",
+      note: item.note || "Exam Countdown Session",
+      course: item.course || (subjects[0]?.name || "General"),
+      tone: ["bg-[#b9d6c0]", "bg-[#f2cf91]", "bg-[#e2d6ee]", "bg-[#c8d9e9]"][idx % 4],
+      done: false,
+      createdBy: "agent",
+      agentRunId: runId,
+    }));
+
+    const newTasksList: Task[] = (run.pendingTasks || []).map((t, idx) => ({
+      id: Date.now() + 1000 + idx,
+      title: t.title,
+      course: t.course || (subjects[0]?.name || "General"),
+      time: "Exam Target",
+      done: false,
+      color: "bg-indigo-500",
+      priority: (t.priority?.toLowerCase() as any) || "high",
+      deadline: t.deadline || run.examDate,
+      createdAt: new Date().toISOString(),
+      createdBy: "agent",
+      agentRunId: runId,
+    }));
+
+    if (newSchedule.length > 0) {
+      setScheduleItems((curr) => [...curr, ...newSchedule].sort((a, b) => a.time.localeCompare(b.time)));
+    }
+    if (newTasksList.length > 0) {
+      setTasks((curr) => [...newTasksList, ...curr]);
+    }
+
+    addXP(30);
+    confetti({ particleCount: 80, spread: 80, origin: { y: 0.5 } });
+
+    setAutopilotRuns((prev) =>
+      prev.map((r) =>
+        r.id === runId
+          ? {
+              ...r,
+              status: "done" as const,
+              createdSchedule: newSchedule.map((s) => s.title),
+              createdTasks: newTasksList.map((t) => t.title),
+            }
+          : r
+      )
+    );
+
+    showToast(`Autopilot deployed ${newSchedule.length} schedule blocks & ${newTasksList.length} tasks! 🚀 (+30 XP)`);
   };
 
   const handleAutopilotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // ─── A. Syllabus & Exam Countdown Mode ───
+    if (autopilotMode === "syllabus") {
+      const examName = syllabusExamName.trim() || "Upcoming Exams";
+      const targetDate = syllabusExamDate || new Date(Date.now() + 21 * 86400000).toISOString().split("T")[0];
+      const daysRemaining = Math.max(1, Math.ceil((new Date(targetDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
+      const rawSyllabus = (syllabusText || autopilotText).trim();
+
+      if (!rawSyllabus) {
+        showToast("Please provide syllabus topics or upload a syllabus document.", "error");
+        return;
+      }
+
+      setIsSubmittingAutopilot(true);
+      const runId = `run-syllabus-${Date.now()}`;
+      const runEntry = {
+        id: runId,
+        timestamp: new Date().toISOString(),
+        status: "planning" as const,
+        isSyllabusRun: true,
+        examName,
+        examDate: targetDate,
+        daysRemaining,
+        roadmapMilestones: [] as any[],
+        pendingScheduleItems: [] as ScheduleItem[],
+        pendingTasks: [] as Task[],
+        extractedItems: [] as any[],
+        createdTasks: [] as string[],
+        createdSchedule: [] as string[],
+      };
+
+      setAutopilotRuns((prev) => [runEntry, ...prev]);
+
+      try {
+        const prompt = `You are the Autopilot Academic Engine for Dream It.
+Construct a high-yield, cognitive spaced-repetition Exam Countdown Study Roadmap.
+Target Exam: "${examName}"
+Exam Date: ${targetDate} (${daysRemaining} days away from today)
+Daily Study Hours: ${syllabusDailyHours} hours/day
+Student's Registered Subjects: ${subjects.map((s) => s.name).join(", ") || "General Studies"}
+
+SYLLABUS & TOPIC MATERIAL:
+${rawSyllabus.slice(0, 15000)}
+
+Distribute study blocks across 4 cognitive phases:
+1. Phase 1 (First 50% of time): Core Concept Acquisition & Difficult Theory
+2. Phase 2 (Next 30% of time): Intensive Practice Problems & Flashcards
+3. Phase 3 (Final 15% of time): Timed Mock Tests & High-Yield Revisions
+4. Phase 4 (Final day before exam): T-1 Calm Rest & Formula Sheet Review
+
+Return ONLY a valid JSON object matching this schema without markdown fences:
+{
+  "milestones": [
+    {
+      "dayOffset": 1,
+      "countdownTag": "T-${Math.min(daysRemaining, 21)} Days",
+      "focusSubject": "Subject Name",
+      "title": "Module or Chapter Title",
+      "hours": ${syllabusDailyHours},
+      "priority": "High",
+      "goals": ["Goal 1", "Goal 2"]
+    }
+  ],
+  "scheduleItems": [
+    {
+      "title": "Study Block Title",
+      "time": "09:00 - 10:30",
+      "note": "Learning objectives",
+      "course": "Subject Name",
+      "priority": "High"
+    }
+  ],
+  "tasks": [
+    {
+      "title": "Milestone Task Title",
+      "course": "Subject Name",
+      "deadline": "${targetDate}",
+      "priority": "high"
+    }
+  ]
+}`;
+
+        const res = await fetchAI({
+          model: "gemini-3.1-flash-lite",
+          messages: [
+            { role: "system", content: "You are Dream It Autopilot. Output only clean, valid JSON matching the requested schema." },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.2,
+          max_tokens: 3000,
+        });
+
+        let parsed: any = null;
+        try {
+          const cleaned = res.content.replace(/```json\s*|\s*```/g, "").trim();
+          parsed = JSON.parse(cleaned);
+        } catch (e) {
+          console.warn("JSON parse fallback on syllabus run:", e);
+        }
+
+        const milestones = Array.isArray(parsed?.milestones) ? parsed.milestones : [
+          {
+            dayOffset: 1,
+            countdownTag: `T-${daysRemaining} Days`,
+            focusSubject: subjects[0]?.name || "Core Topics",
+            title: `Foundation Review for ${examName}`,
+            hours: syllabusDailyHours,
+            priority: "High",
+            goals: ["Read foundational chapters", "Take structured notes"],
+          }
+        ];
+
+        const scheduleBlocks: ScheduleItem[] = Array.isArray(parsed?.scheduleItems) ? parsed.scheduleItems : [
+          {
+            title: `${examName} Intensive Study Block`,
+            time: "09:30 - 11:30",
+            note: "Autopilot Exam Countdown focus block",
+            course: subjects[0]?.name || "General",
+            priority: "High",
+          }
+        ];
+
+        const milestoneTasks: Task[] = Array.isArray(parsed?.tasks) ? parsed.tasks : [
+          {
+            id: Date.now(),
+            title: `Complete ${examName} syllabus milestone`,
+            course: subjects[0]?.name || "General",
+            time: "Today",
+            done: false,
+            color: "bg-blue-500",
+            priority: "high",
+            deadline: targetDate,
+            createdAt: new Date().toISOString(),
+          }
+        ];
+
+        setAutopilotRuns((prev) =>
+          prev.map((r) =>
+            r.id === runId
+              ? {
+                  ...r,
+                  status: "pending_approval" as const,
+                  roadmapMilestones: milestones,
+                  pendingScheduleItems: scheduleBlocks,
+                  pendingTasks: milestoneTasks,
+                  extractedItems: milestones.map((m: any) => ({
+                    title: m.title,
+                    type: "schedule",
+                    course: m.focusSubject,
+                    priority: m.priority,
+                    time: `${m.hours}h`,
+                  })),
+                }
+              : r
+          )
+        );
+
+        showToast(`Autopilot planned ${milestones.length} milestones for ${examName}! Review & approve to deploy. 📅`);
+      } catch (err: any) {
+        setAutopilotRuns((prev) =>
+          prev.map((r) => (r.id === runId ? { ...r, status: "error" as const, errorMsg: err?.message || "Failed to generate roadmap" } : r))
+        );
+        showToast("Autopilot failed to generate schedule. Please try again.", "error");
+      } finally {
+        setIsSubmittingAutopilot(false);
+      }
+      return;
+    }
+
+    // ─── B. Quick Actions Mode ───
     const rawInput = autopilotText.trim();
     if (!rawInput) return;
 
@@ -2984,7 +3244,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                 </section>
 
                 {/* Autopilot Widget */}
-                <section className="mt-5 rounded-xl p-5 minimal-surface feature-zoom" style={{ border: "1px solid var(--m-primary-transparent)" }}>
+                <section id="autopilot-section" className="mt-5 rounded-xl p-5 minimal-surface feature-zoom" style={{ border: "1px solid var(--m-primary-transparent)" }}>
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <div className="grid size-7 place-items-center rounded-lg shadow-2xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
@@ -2992,66 +3252,307 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                       </div>
                       <div>
                         <h3 className="font-[Roboto_Slab] text-base font-semibold" style={{ color: "var(--m-text-heading)" }}>Autopilot Taskmaster</h3>
-                        <p className="text-[11px]" style={{ color: "var(--m-text-sub)" }}>AI OS for workspace actions, scheduling, grades & flashcards</p>
+                        <p className="text-[11px]" style={{ color: "var(--m-text-sub)" }}>Autonomous AI OS for syllabus scheduling, tasks & academic actions</p>
                       </div>
                     </div>
                     <span className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
-                      <Zap size={11} /> 0ms Instant Match + Gemini 3.6
+                      <Zap size={11} /> Spaced-Repetition Engine + Gemini 3.6
                     </span>
                   </div>
 
-                  {/* Quick Action Prompt Chips */}
-                  <div className="my-3">
-                    <p className="text-[10px] font-bold mb-1.5 flex items-center gap-1" style={{ color: "var(--m-text-sub)" }}>
-                      <span>Quick Superpower Actions:</span>
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {[
-                        { label: "📂 New Subject", text: "Create a new subject called Machine Learning" },
-                        { label: "🃏 Bio Flashcards", text: "Create flashcards for Biology: Mitochondria -> Powerhouse of the cell, Ribosome -> Protein synthesis" },
-                        { label: "📊 Math Grade", text: "Add grade for Math: Midterm 95/100 weight 20%" },
-                        { label: "📓 CS Note", text: "Take note for CS: React hooks allow functional components to manage state and side effects" },
-                        { label: "🗓️ Task Schedule", text: "Make a schedule based on my tasks assigned" },
-                        { label: "💰 Add Income", text: "Add income 1,00,000" },
-                      ].map((chip, idx) => (
-                        <button
-                          key={idx}
-                          type="button"
-                          onClick={() => setAutopilotText(chip.text)}
-                          className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-medium transition hover:scale-105 active:scale-95"
-                          style={{
-                            backgroundColor: "var(--m-surface-alt)",
-                            border: "1px solid var(--m-border-light)",
-                            color: "var(--m-text-heading)",
-                          }}
-                        >
-                          {chip.label}
-                        </button>
-                      ))}
-                    </div>
+                  {/* Mode Switcher: Quick Actions vs Syllabus & Exam Mode */}
+                  <div className="flex items-center gap-1.5 p-1 rounded-xl border my-3 w-fit" style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border-light)" }}>
+                    <button
+                      type="button"
+                      onClick={() => setAutopilotMode("quick")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        autopilotMode === "quick" ? "shadow-xs" : "opacity-70 hover:opacity-100"
+                      }`}
+                      style={
+                        autopilotMode === "quick"
+                          ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }
+                          : { color: "var(--m-text)" }
+                      }
+                    >
+                      <Zap size={13} />
+                      <span>Quick Commands</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAutopilotMode("syllabus")}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        autopilotMode === "syllabus" ? "shadow-xs" : "opacity-70 hover:opacity-100"
+                      }`}
+                      style={
+                        autopilotMode === "syllabus"
+                          ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }
+                          : { color: "var(--m-text)" }
+                      }
+                    >
+                      <Calendar size={13} />
+                      <span>Syllabus & Exam Mode</span>
+                      <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">AI</span>
+                    </button>
                   </div>
-                  
-                  <form onSubmit={handleAutopilotSubmit} className="mb-6">
-                    <textarea 
-                      value={autopilotText}
-                      onChange={(e) => setAutopilotText(e.target.value)}
-                      placeholder="Type any command: 'create subject AI', 'create flashcards for Chemistry: ...', 'add grade Math 95/100', 'take note for History: ...', 'schedule my tasks', 'add income 1,00,000'..."
-                      className="w-full rounded-xl border p-3 text-xs outline-none resize-y min-h-[85px] transition focus:ring-1"
-                      style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
-                    />
-                    <div className="flex items-center justify-between mt-2">
-                      <p className="text-[10px] hidden sm:block" style={{ color: "var(--m-text-sub)" }}>
-                        Supports subjects, flashcards, grades, notes, schedule, tasks & finance.
-                      </p>
-                      <button type="submit" disabled={isSubmittingAutopilot || !autopilotText.trim()} className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition hover:opacity-90 disabled:opacity-50 ml-auto" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                        {isSubmittingAutopilot ? (
-                          <><span className="flex gap-1 mr-1"><span className="size-1.5 animate-bounce rounded-full bg-white" /><span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:150ms]" /><span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:300ms]" /></span> Processing...</>
-                        ) : (
-                          <>Run Autopilot <Sparkles size={14} /></>
-                        )}
-                      </button>
-                    </div>
-                  </form>
+
+                  {/* ─── Mode 1: Syllabus & Exam Countdown Planner ─── */}
+                  {autopilotMode === "syllabus" ? (
+                    <form onSubmit={handleAutopilotSubmit} className="mb-6 space-y-4">
+                      {/* Row 1: Exam Name, Date, Countdown badge, Daily Hours */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                          <label className="block text-[11px] font-bold mb-1" style={{ color: "var(--m-text-heading)" }}>
+                            Exam / Goal Name
+                          </label>
+                          <input
+                            type="text"
+                            required
+                            value={syllabusExamName}
+                            onChange={(e) => setSyllabusExamName(e.target.value)}
+                            placeholder="e.g. CBSE Class 12 Boards"
+                            className="w-full rounded-xl border px-3 py-2 text-xs outline-none bg-transparent"
+                            style={{ borderColor: "var(--m-border-light)", color: "var(--m-text)" }}
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-[11px] font-bold" style={{ color: "var(--m-text-heading)" }}>
+                              Exam Date
+                            </label>
+                            {(() => {
+                              const diff = Math.ceil((new Date(syllabusExamDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                              return (
+                                <span className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${diff > 0 ? "bg-amber-500/20 text-amber-300" : "bg-red-500/20 text-red-400"}`}>
+                                  {diff > 0 ? `⏳ ${diff}d left` : "Target Today"}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                          <input
+                            type="date"
+                            required
+                            value={syllabusExamDate}
+                            onChange={(e) => setSyllabusExamDate(e.target.value)}
+                            className="w-full rounded-xl border px-3 py-2 text-xs outline-none bg-transparent"
+                            style={{ borderColor: "var(--m-border-light)", color: "var(--m-text)" }}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold mb-1" style={{ color: "var(--m-text-heading)" }}>
+                            Daily Study Target
+                          </label>
+                          <div className="flex items-center gap-1.5">
+                            {[2, 3, 4, 6].map((hrs) => (
+                              <button
+                                key={hrs}
+                                type="button"
+                                onClick={() => setSyllabusDailyHours(hrs)}
+                                className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${
+                                  syllabusDailyHours === hrs
+                                    ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
+                                    : "bg-black/5 dark:bg-white/5 opacity-70 border-transparent hover:opacity-100"
+                                }`}
+                              >
+                                {hrs}h
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Row 2: Syllabus Input & File Upload */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-bold" style={{ color: "var(--m-text-heading)" }}>
+                            Syllabus & Topic Outline (Paste or Upload PDF)
+                          </label>
+                          <div className="flex items-center gap-2 text-[10px]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSyllabusExamName("CBSE Class 12 Boards");
+                                setSyllabusText(`Physics:
+1. Electrostatics: Electric Charges and Fields, Electrostatic Potential and Capacitance
+2. Current Electricity: Ohm's Law, Kirchhoff's Rules
+3. Optics: Ray Optics and Optical Instruments, Wave Optics
+4. Modern Physics: Dual Nature of Radiation, Atoms and Nuclei
+
+Chemistry:
+1. Solutions: Colligative Properties, Raoult's Law
+2. Electrochemistry: Nernst Equation, Kohlrausch Law
+3. Organic Chemistry: Haloalkanes, Alcohols, Aldehydes and Ketones
+
+Mathematics:
+1. Calculus: Continuity and Differentiability, Applications of Derivatives, Integrals
+2. Vectors and 3D Geometry
+3. Linear Programming and Probability`);
+                              }}
+                              className="opacity-70 hover:opacity-100 hover:underline cursor-pointer text-indigo-400"
+                            >
+                              Load CBSE Sample
+                            </button>
+                            <span className="opacity-40">•</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSyllabusExamName("University Calculus Finals");
+                                setSyllabusText(`Calculus & Linear Algebra Syllabus:
+- Limits, Continuity, and Derivative Rules
+- Applications of Derivatives: Optimization, Related Rates, Curve Sketching
+- Integration Techniques: Substitution, Integration by Parts, Partial Fractions
+- Definite Integrals, Areas, and Volumes of Revolution
+- Sequences, Infinite Series, and Taylor Polynomials
+- Matrices, Eigenvalues, and Linear Transformations`);
+                              }}
+                              className="opacity-70 hover:opacity-100 hover:underline cursor-pointer text-indigo-400"
+                            >
+                              Load Calculus Sample
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Drag and Drop / File Picker Area */}
+                        <div className="flex items-center gap-3 p-3 rounded-xl border border-dashed hover:border-indigo-500/50 transition cursor-pointer relative" style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-surface-alt)" }}>
+                          <input
+                            type="file"
+                            accept=".pdf,.txt,.md,.csv"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              setIsExtractingSyllabus(true);
+                              try {
+                                const { extractTextFromFile } = await import("./flashcards/pdfExtractor");
+                                const res = await extractTextFromFile(file);
+                                setSyllabusText(res.text);
+                                setSyllabusFileName(file.name);
+                                showToast(`Extracted ${res.pageCount || 1} pages from "${file.name}"! 📄`);
+                              } catch (err: any) {
+                                showToast(`Failed to parse file: ${err.message}`, "error");
+                              } finally {
+                                setIsExtractingSyllabus(false);
+                              }
+                            }}
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                          />
+                          <FileText size={20} className="text-indigo-400 shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold truncate" style={{ color: "var(--m-text-heading)" }}>
+                              {syllabusFileName ? `Attached: ${syllabusFileName}` : "Click or drop syllabus document (PDF, TXT, MD)"}
+                            </p>
+                            <p className="text-[10px] opacity-60">
+                              {isExtractingSyllabus ? "Extracting syllabus chapters with on-demand parser..." : "Autopilot extracts topics, sub-chapters and weights automatically"}
+                            </p>
+                          </div>
+                          {syllabusFileName && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSyllabusFileName("");
+                                setSyllabusText("");
+                              }}
+                              className="p-1 rounded-md opacity-60 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 cursor-pointer"
+                            >
+                              <X size={14} />
+                            </button>
+                          )}
+                        </div>
+
+                        <textarea
+                          value={syllabusText}
+                          onChange={(e) => setSyllabusText(e.target.value)}
+                          placeholder="Or paste syllabus text, textbook table of contents, or study topics directly..."
+                          className="w-full rounded-xl border p-3 text-xs outline-none resize-y min-h-[90px] transition focus:ring-1 bg-transparent"
+                          style={{ borderColor: "var(--m-border-light)", color: "var(--m-text)" }}
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <p className="text-[10px] opacity-60">
+                          Autopilot applies cognitive spaced-repetition: Theory ➔ Practice ➔ Mock Tests ➔ T-1 Rest Buffer.
+                        </p>
+                        <button
+                          type="submit"
+                          disabled={isSubmittingAutopilot || isExtractingSyllabus || (!syllabusText.trim() && !autopilotText.trim())}
+                          className="flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:opacity-90 disabled:opacity-50 ml-auto shadow-md cursor-pointer"
+                          style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                        >
+                          {isSubmittingAutopilot ? (
+                            <>
+                              <span className="flex gap-1 mr-1">
+                                <span className="size-1.5 animate-bounce rounded-full bg-white" />
+                                <span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:150ms]" />
+                                <span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:300ms]" />
+                              </span>
+                              Planning Roadmap...
+                            </>
+                          ) : (
+                            <>
+                              <span>Run Autopilot: Generate Exam Roadmap</span>
+                              <Sparkles size={14} />
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    /* ─── Mode 2: Quick Action Prompt Chips & Textarea ─── */
+                    <>
+                      <div className="my-3">
+                        <p className="text-[10px] font-bold mb-1.5 flex items-center gap-1" style={{ color: "var(--m-text-sub)" }}>
+                          <span>Quick Superpower Actions:</span>
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {[
+                            { label: "📂 New Subject", text: "Create a new subject called Machine Learning" },
+                            { label: "🃏 Bio Flashcards", text: "Create flashcards for Biology: Mitochondria -> Powerhouse of the cell, Ribosome -> Protein synthesis" },
+                            { label: "📊 Math Grade", text: "Add grade for Math: Midterm 95/100 weight 20%" },
+                            { label: "📓 CS Note", text: "Take note for CS: React hooks allow functional components to manage state and side effects" },
+                            { label: "🗓️ Task Schedule", text: "Make a schedule based on my tasks assigned" },
+                            { label: "💰 Add Income", text: "Add income 1,00,000" },
+                          ].map((chip, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => setAutopilotText(chip.text)}
+                              className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[10px] font-medium transition hover:scale-105 active:scale-95 cursor-pointer"
+                              style={{
+                                backgroundColor: "var(--m-surface-alt)",
+                                border: "1px solid var(--m-border-light)",
+                                color: "var(--m-text-heading)",
+                              }}
+                            >
+                              {chip.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      <form onSubmit={handleAutopilotSubmit} className="mb-6">
+                        <textarea 
+                          value={autopilotText}
+                          onChange={(e) => setAutopilotText(e.target.value)}
+                          placeholder="Type any command: 'create subject AI', 'create flashcards for Chemistry: ...', 'add grade Math 95/100', 'take note for History: ...', 'schedule my tasks', 'add income 1,00,000'..."
+                          className="w-full rounded-xl border p-3 text-xs outline-none resize-y min-h-[85px] transition focus:ring-1"
+                          style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
+                        />
+                        <div className="flex items-center justify-between mt-2">
+                          <p className="text-[10px] hidden sm:block" style={{ color: "var(--m-text-sub)" }}>
+                            Supports subjects, flashcards, grades, notes, schedule, tasks & finance.
+                          </p>
+                          <button type="submit" disabled={isSubmittingAutopilot || !autopilotText.trim()} className="flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-bold transition hover:opacity-90 disabled:opacity-50 ml-auto cursor-pointer" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                            {isSubmittingAutopilot ? (
+                              <><span className="flex gap-1 mr-1"><span className="size-1.5 animate-bounce rounded-full bg-white" /><span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:150ms]" /><span className="size-1.5 animate-bounce rounded-full bg-white [animation-delay:300ms]" /></span> Processing...</>
+                            ) : (
+                              <>Run Autopilot <Sparkles size={14} /></>
+                            )}
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  )}
 
                   <h4 className="text-xs font-bold mb-3" style={{ color: "var(--m-text-heading)" }}>Agent Activity Log</h4>
                   
@@ -3088,10 +3589,11 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                               </div>
                               <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold" style={{
                                 backgroundColor: "var(--m-surface)",
-                                color: run.status === "done" ? "var(--m-success)" : run.status === "error" ? "var(--m-danger)" : "var(--m-primary)",
+                                color: run.status === "done" ? "var(--m-success)" : run.status === "error" ? "var(--m-danger)" : run.status === "pending_approval" ? "#f59e0b" : "var(--m-primary)",
                                 border: "1px solid var(--m-border)",
                               }}>
                                 {run.status === "done" ? <><CheckCircle2 size={9} /> Complete ({totalActions} actions)</> :
+                                 run.status === "pending_approval" ? <><Sparkles size={9} className="text-amber-500" /> Plan Staged ({run.pendingScheduleItems?.length || 0} blocks, {run.pendingTasks?.length || 0} tasks)</> :
                                  run.status === "error" ? <><AlertCircle size={9} /> Error</> :
                                  <><span className="size-1.5 animate-pulse rounded-full" style={{ backgroundColor: "var(--m-primary)" }} /> {run.status === "extracting" ? "Extracting..." : run.status === "planning" ? "Planning..." : "Executing..."}</>
                                 }
@@ -3099,6 +3601,128 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                             </div>
 
                             <div className="p-3 space-y-3">
+                              {/* Syllabus & Exam Countdown Staged Card */}
+                              {run.isSyllabusRun && (
+                                <div className="rounded-xl p-3 border mb-1" style={{
+                                  background: "linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(236, 72, 153, 0.08))",
+                                  borderColor: "rgba(99, 102, 241, 0.3)",
+                                }}>
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-600 text-white shadow-xs">
+                                          <CalendarDays size={10} /> T-{run.daysRemaining ?? 30} Days
+                                        </span>
+                                        <h4 className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>
+                                          Target: {run.examName}
+                                        </h4>
+                                      </div>
+                                      <p className="text-[10px] mt-0.5" style={{ color: "var(--m-text-sub)" }}>
+                                        Exam Date: <span className="font-semibold" style={{ color: "var(--m-text)" }}>{run.examDate}</span> • Adaptive Spaced-Repetition Study Plan
+                                      </p>
+                                    </div>
+
+                                    {run.status === "pending_approval" && (
+                                      <div className="flex items-center gap-1.5">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleApproveSyllabusRun(run.id)}
+                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black text-white shadow-md transition hover:scale-105 active:scale-95 cursor-pointer"
+                                          style={{
+                                            background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                                          }}
+                                        >
+                                          <CheckCircle2 size={12} /> Approve & Deploy (+30 XP)
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => setAutopilotRuns(prev => prev.filter(r => r.id !== run.id))}
+                                          className="px-2 py-1.5 rounded-lg text-[10px] font-medium border transition hover:bg-red-500/10 hover:border-red-500/30 cursor-pointer"
+                                          style={{ borderColor: "var(--m-border)", color: "var(--m-text-sub)" }}
+                                          title="Dismiss plan"
+                                        >
+                                          Dismiss
+                                        </button>
+                                      </div>
+                                    )}
+
+                                    {run.status === "done" && (
+                                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold text-emerald-600 bg-emerald-500/10 border border-emerald-500/30">
+                                        <CheckCircle2 size={11} /> Approved & Active in Workspace
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Milestones Roadmaps */}
+                                  {run.roadmapMilestones && run.roadmapMilestones.length > 0 && (
+                                    <div className="mt-3 pt-2.5 border-t border-indigo-500/20">
+                                      <p className="text-[10px] font-bold uppercase tracking-wider mb-2 flex items-center gap-1" style={{ color: "var(--m-text-heading)" }}>
+                                        <Sparkles size={11} className="text-amber-500" /> Spaced-Repetition Countdown Milestones
+                                      </p>
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                        {run.roadmapMilestones.map((m, mIdx) => (
+                                          <div
+                                            key={mIdx}
+                                            className="p-2.5 rounded-lg border text-[9.5px] transition"
+                                            style={{
+                                              backgroundColor: "var(--m-surface)",
+                                              borderColor: "var(--m-border-light)",
+                                            }}
+                                          >
+                                            <div className="flex items-center justify-between gap-1 mb-1">
+                                              <span className="font-extrabold px-1.5 py-0.5 rounded text-[8.5px] bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20">
+                                                {m.countdownTag}
+                                              </span>
+                                              <span className="font-bold px-1.5 py-0.5 rounded text-[8.5px] bg-purple-500/15 text-purple-700 dark:text-purple-300">
+                                                {m.focusSubject}
+                                              </span>
+                                              <span className="text-[8.5px] font-semibold" style={{ color: "var(--m-text-sub)" }}>
+                                                {m.hours} hrs
+                                              </span>
+                                            </div>
+                                            <p className="font-medium leading-relaxed" style={{ color: "var(--m-text)" }}>
+                                              {m.goals}
+                                            </p>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {/* Pending Staged Schedule & Tasks Preview */}
+                                  {run.status === "pending_approval" && (
+                                    <div className="mt-3 pt-2.5 border-t border-indigo-500/20 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      <div className="p-2 rounded-lg border text-[9px]" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
+                                        <p className="font-bold flex items-center gap-1 text-indigo-600 mb-1">
+                                          <CalendarDays size={10} /> Pending Schedule Sessions ({run.pendingScheduleItems?.length || 0})
+                                        </p>
+                                        <ul className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                                          {run.pendingScheduleItems?.map((s, i) => (
+                                            <li key={i} className="flex justify-between items-center text-[8.5px]" style={{ color: "var(--m-text)" }}>
+                                              <span className="truncate pr-1">• {s.title}</span>
+                                              <span className="shrink-0 text-[8px] font-mono px-1 rounded bg-slate-100 dark:bg-slate-800" style={{ color: "var(--m-text-sub)" }}>{s.time}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                      <div className="p-2 rounded-lg border text-[9px]" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
+                                        <p className="font-bold flex items-center gap-1 text-emerald-600 mb-1">
+                                          <CheckCircle2 size={10} /> Pending Milestone Tasks ({run.pendingTasks?.length || 0})
+                                        </p>
+                                        <ul className="space-y-1 max-h-24 overflow-y-auto pr-1">
+                                          {run.pendingTasks?.map((t, i) => (
+                                            <li key={i} className="flex justify-between items-center text-[8.5px]" style={{ color: "var(--m-text)" }}>
+                                              <span className="truncate pr-1">• {t.title}</span>
+                                              <span className="shrink-0 text-[8px] font-mono px-1 rounded bg-amber-500/15 text-amber-600 font-bold">{t.priority}</span>
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                               {/* Extracted Items */}
                               {run.extractedItems.length > 0 && (
                                 <div>
@@ -3486,14 +4110,35 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   </h2>
                 </div>
 
-                {/* Instant View Mode Switcher */}
-                <div
-                  className="flex items-center gap-1 p-1 rounded-2xl border shrink-0"
-                  style={{
-                    backgroundColor: "var(--m-surface-alt)",
-                    borderColor: "var(--m-border-light)",
-                  }}
-                >
+                {/* Action shortcut & Instant View Mode Switcher */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAutopilotMode("syllabus");
+                      setActiveNav("Today");
+                      setTimeout(() => {
+                        document.getElementById("autopilot-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }, 100);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold transition shadow-xs cursor-pointer border hover:scale-105 active:scale-95"
+                    style={{
+                      background: "linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(236, 72, 153, 0.12))",
+                      borderColor: "rgba(99, 102, 241, 0.35)",
+                      color: "var(--m-primary)",
+                    }}
+                  >
+                    <Sparkles size={13} className="text-amber-500" />
+                    <span>Autopilot Exam Planner</span>
+                  </button>
+
+                  <div
+                    className="flex items-center gap-1 p-1 rounded-2xl border shrink-0"
+                    style={{
+                      backgroundColor: "var(--m-surface-alt)",
+                      borderColor: "var(--m-border-light)",
+                    }}
+                  >
                   <button
                     type="button"
                     onClick={() => setPlannerViewMode("timeline")}
@@ -3535,6 +4180,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   </button>
                 </div>
               </div>
+            </div>
 
               {/* 1. TIMELINE VIEW */}
               {plannerViewMode === "timeline" && (
@@ -4811,6 +5457,13 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
         onOpenInbox={() => setInboxOpen(true)}
         onOpenThemeSelector={() => setThemeSelectorOpen(true)}
         onOpenSubjectsModal={() => setSubjectsOpen(true)}
+        onOpenAutopilotSyllabus={() => {
+          setAutopilotMode("syllabus");
+          setActiveNav("Today");
+          setTimeout(() => {
+            document.getElementById("autopilot-section")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }, 100);
+        }}
         notes={notes}
         tasks={tasks}
         subjects={subjects}

@@ -54,6 +54,7 @@ interface CommandPaletteProps {
   onOpenThemeSelector: () => void;
   onOpenSubjectsModal: () => void;
   onToggleWideAngle?: () => void;
+  onOpenAutopilotSyllabus?: () => void;
   // Data
   notes: NoteEntry[];
   tasks: Task[];
@@ -76,6 +77,7 @@ export default function CommandPalette({
   onOpenThemeSelector,
   onOpenSubjectsModal,
   onToggleWideAngle,
+  onOpenAutopilotSyllabus,
   notes,
   tasks,
   subjects,
@@ -118,6 +120,23 @@ export default function CommandPalette({
         badge: `${validMinutes}m Focus`,
         onSelect: () => {
           onStartPomodoro(validMinutes);
+          onClose();
+        },
+      });
+    }
+
+    // ─── Autopilot Syllabus & Exam Countdown Intent ───
+    if (lower.includes("syllabus") || lower.includes("exam countdown") || lower.includes("exam plan") || lower.includes("study roadmap")) {
+      items.push({
+        id: "intent-autopilot-syllabus",
+        title: "Run Autopilot: Syllabus & Exam Countdown Planner",
+        subtitle: "Launch Autopilot to analyze syllabus topics and build a spaced-repetition plan",
+        category: "Smart Actions",
+        icon: <Calendar size={16} className="text-amber-400" />,
+        badge: "Autopilot",
+        onSelect: () => {
+          if (onOpenAutopilotSyllabus) onOpenAutopilotSyllabus();
+          else onNavigate("Today");
           onClose();
         },
       });
@@ -227,6 +246,19 @@ export default function CommandPalette({
         badge: "Vision AI",
         onSelect: () => {
           onOpenSnapAndSolve();
+          onClose();
+        },
+      },
+      {
+        id: "act-autopilot-syllabus",
+        title: "Autopilot: Syllabus & Exam Countdown Planner",
+        subtitle: "Generate spaced-repetition study schedule and countdown from syllabus",
+        category: "Quick Actions",
+        icon: <Calendar size={16} className="text-amber-400" />,
+        badge: "Autopilot AI",
+        onSelect: () => {
+          if (onOpenAutopilotSyllabus) onOpenAutopilotSyllabus();
+          else onNavigate("Today");
           onClose();
         },
       },

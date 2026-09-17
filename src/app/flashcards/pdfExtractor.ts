@@ -11,13 +11,28 @@ if (typeof Promise.withResolvers === "undefined") {
   };
 }
 
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-
-// Initialize PDF.js worker in browser context
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    pdfWorker || `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+/**
+ * Lazy singleton loader for pdfjs-dist.
+ * Ensures pdfjs-dist (and its ~1.2MB worker) are NEVER loaded on initial application load,
+ * but only fetched over the network when a student explicitly selects or drops a PDF document.
+ */
+let cachedPdfjsPromise: Promise<any> | null = null;
+export async function getPdfjs() {
+  if (!cachedPdfjsPromise) {
+    cachedPdfjsPromise = (async () => {
+      const [pdfjsLib, workerModule] = await Promise.all([
+        import('pdfjs-dist'),
+        import('pdfjs-dist/build/pdf.worker.min.mjs?url')
+      ]);
+      const workerUrl = workerModule.default || workerModule;
+      if (typeof window !== 'undefined') {
+        pdfjsLib.GlobalWorkerOptions.workerSrc =
+          workerUrl || `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+      }
+      return pdfjsLib;
+    })();
+  }
+  return cachedPdfjsPromise;
 }
 
 /**
@@ -28,6 +43,7 @@ export async function extractTextFromPDF(
   maxPages: number = 30
 ): Promise<{ text: string; pageCount: number; title?: string }> {
   try {
+    const pdfjsLib = await getPdfjs();
     const arrayBuffer = input instanceof File ? await input.arrayBuffer() : input;
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdfDoc = await loadingTask.promise;
