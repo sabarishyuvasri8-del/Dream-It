@@ -116,13 +116,12 @@ Output ONLY valid JSON matching this exact structure:
     }
 
     const parsed = safeParseJSON<any>(raw);
-    const totalMarks = Number(parsed.totalMarks) || paper.totalMarks || 1;
+    const allQuestions = paper.sections.flatMap(s => s.questions);
+    const calculatedTotalMarks = allQuestions.reduce((sum, q) => sum + (Number(q.marks) || 1), 0);
+    const totalMarks = calculatedTotalMarks > 0 ? calculatedTotalMarks : (Number(parsed.totalMarks) || paper.totalMarks || 1);
     const obtainedMarks = Math.min(totalMarks, Math.max(0, Number(parsed.obtainedMarks) || 0));
     const percentage = Math.round((obtainedMarks / totalMarks) * 100);
     const cbseGradeBand = calculateCBSEGrade(percentage);
-
-    // Map question evaluations with IDs from the paper
-    const allQuestions = paper.sections.flatMap(s => s.questions);
     const questionEvaluations: QuestionEvaluation[] = (parsed.questionEvaluations || []).map((qe: any, idx: number) => {
       const matchedQ = allQuestions.find(q => q.number === qe.questionNumber) || allQuestions[idx];
       return {

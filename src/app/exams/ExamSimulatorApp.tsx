@@ -243,17 +243,17 @@ export default function ExamSimulatorApp({
     }
 
     const allQuestions = activePaper.sections.flatMap((s) => s.questions);
+    const totalMarks = allQuestions.reduce((sum, q) => sum + (Number(q.marks) || 1), 0) || activePaper.totalMarks || 1;
 
     // If no handwritten photos were uploaded, calculate instant client-side grading!
     if (uploadedPhotos.length === 0) {
       let obtainedMarks = 0;
-      let totalMarks = activePaper.totalMarks || allQuestions.length;
       let correctCount = 0;
 
       const questionEvaluations = allQuestions.map((q, idx) => {
         const chosenKey = digitalAnswers[q.id];
         const isCorrect = !!(chosenKey && q.correctOption && chosenKey.toUpperCase().trim() === q.correctOption.toUpperCase().trim());
-        const maxMarks = q.marks || 1;
+        const maxMarks = Number(q.marks) || 1;
         const awardedMarks = isCorrect ? maxMarks : 0;
         if (isCorrect) {
           correctCount++;
