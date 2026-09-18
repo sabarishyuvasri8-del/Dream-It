@@ -452,6 +452,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setCommandPaletteOpen((prev) => !prev);
+      } else if (e.key === "Escape") {
+        setIsChatMaximized(false);
       }
     };
     window.addEventListener("keydown", handleKeyDown);
@@ -3992,8 +3994,15 @@ Mathematics:
                         <option key={s.id} value={s.id}>{s.name} Tutor</option>
                       ))}
                     </select>
-                    <button onClick={() => setIsChatMaximized(true)} className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10px] font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-primary)" }} title="Full screen">
-                      <Maximize2 size={13} />
+                    <button
+                      type="button"
+                      onClick={() => setIsChatMaximized(true)}
+                      className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition hover:scale-105 minimal-surface shadow-xs"
+                      style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
+                      title="Open Wide AI Chat"
+                    >
+                      <Maximize2 size={12} />
+                      <span>Wide</span>
                     </button>
                   </div>
                 </div>
@@ -4110,134 +4119,6 @@ Mathematics:
                   </div>
                 </form>
               </aside>
-
-              {/* ─── Full Screen Wide Angle AI Fullscreen Overlay ─── */}
-              {isChatMaximized && (
-                <div
-                  onDragEnter={handleChatDragEnter}
-                  onDragOver={handleChatDragOver}
-                  onDragLeave={handleChatDragLeave}
-                  onDrop={handleChatDrop}
-                  className="fixed inset-0 z-50 flex flex-col w-full h-full p-0 m-0 overflow-hidden minimal-surface animate-in fade-in duration-200 relative"
-                  style={{ backgroundColor: "var(--m-surface-solid)", color: "var(--m-text)" }}
-                >
-                  {/* Fullscreen Drag & Drop Visual Overlay */}
-                  {isChatDraggingOver && (
-                    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center p-8 text-center bg-black/85 backdrop-blur-xl border-4 border-dashed border-indigo-500 rounded-none animate-in fade-in duration-150 pointer-events-none">
-                      <div className="p-5 rounded-3xl bg-indigo-500/20 text-indigo-300 mb-4 shadow-2xl ring-1 ring-indigo-400/40 animate-bounce">
-                        <UploadCloud size={48} />
-                      </div>
-                      <h3 className="text-xl font-bold text-white tracking-wide font-[Roboto_Slab]">Drop PDF or Image anywhere</h3>
-                      <p className="text-sm text-indigo-200/80 mt-1.5 max-w-md">
-                        Release to attach to your chat with Dream It AI. Automatically extracts all PDF text and supports Gemini vision analysis!
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Fullscreen Header */}
-                  <div className="w-full px-4 sm:px-6 md:px-8 py-3.5 sm:py-4 flex items-center justify-between shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface)" }}>
-                    <div className="flex items-center gap-3">
-                      <div className="grid size-10 sm:size-11 place-items-center rounded-2xl shadow-sm" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                        <Brain size={22} />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h2 className="font-[Roboto_Slab] text-lg sm:text-xl font-bold" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
-                          <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
-                        </div>
-                        <p className="flex items-center gap-1.5 text-xs mt-0.5" style={{ color: "var(--m-text-sub)" }}>
-                          <span className="size-2 rounded-full animate-pulse" style={{ backgroundColor: "var(--m-success)" }} />
-                          Online & Ready for full-screen study assistance
-                        </p>
-                      </div>
-                    </div>
-                    <button onClick={() => setIsChatMaximized(false)} className="flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }} title="Close AI Chat">
-                      <X size={16} /><span>Close</span>
-                    </button>
-                  </div>
-
-                  {/* Fullscreen Messages Area (Stretches across entire screen) */}
-                  <div ref={chatMaxContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar w-full px-4 sm:px-6 md:px-10 py-6 max-w-6xl mx-auto">
-                    {messages.map((m, idx) => (
-                      <div
-                        key={idx}
-                        className={`max-w-[90%] md:max-w-[80%] rounded-2xl p-4 md:p-5 leading-relaxed transition contain-chat ${
-                          m.role === "assistant" ? "shadow-xs" : "ml-auto shadow-sm"
-                        }`}
-                        style={
-                          m.role === "assistant"
-                            ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
-                            : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
-                        }
-                      >
-                        {m.content ? (
-                          renderSimpleMarkdown(m.content)
-                        ) : (
-                          <div className="flex items-center gap-2.5 py-1">
-                            <Sparkles size={16} className="animate-spin" style={{ color: "var(--m-primary)" }} />
-                            <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI analyzing...</span>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                    {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
-                      <div className="flex w-fit items-center gap-3 rounded-2xl p-3.5 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }}>
-                        <Sparkles size={18} className="animate-spin" style={{ color: "var(--m-primary)" }} />
-                        <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI is analyzing your prompt...</span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Fullscreen Input Bar */}
-                  <form onSubmit={askCoach} className="w-full max-w-6xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
-                    {isExtractingChatFile && (
-                      <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                        <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
-                        <span>Reading & extracting text from document...</span>
-                      </div>
-                    )}
-                    {chatFile && !isExtractingChatFile && (
-                      <div className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                        <span className="flex items-center gap-2 truncate">
-                          {chatFile.isImage && chatFile.dataUrl ? (
-                            <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
-                          ) : chatFile.isPdf ? (
-                            <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
-                              <FileText size={15} />
-                              <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
-                            </span>
-                          ) : (
-                            <Paperclip size={14} />
-                          )}
-                          <span className="truncate">{chatFile.name}</span>
-                          <span className="text-[10px] opacity-75 font-mono">
-                            ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
-                          </span>
-                        </span>
-                        <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
-                      <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
-                        <Paperclip size={18} />
-                      </button>
-                      <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
-                        <Camera size={18} />
-                      </button>
-                      <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything... (Press Enter to send)" />
-                      <VoiceInputButton
-                        value={chatDraft}
-                        onChange={setChatDraft}
-                        disabled={isAsking}
-                        size={15}
-                      />
-                      <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:scale-105 disabled:opacity-40 shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                        <Send size={15} /><span>Send</span>
-                      </button>
-                    </div>
-                  </form>
-                </div>
-              )}
             </div>
           )}
 
@@ -5613,6 +5494,146 @@ Mathematics:
         tasks={tasks}
         subjects={subjects}
       />
+
+      {/* ─── Full Screen Wide Angle AI Fullscreen Overlay ─── */}
+      {isChatMaximized && (
+        <div
+          onDragEnter={handleChatDragEnter}
+          onDragOver={handleChatDragOver}
+          onDragLeave={handleChatDragLeave}
+          onDrop={handleChatDrop}
+          className="fixed inset-0 z-50 flex flex-col w-full h-full p-0 m-0 overflow-hidden minimal-surface animate-in fade-in duration-200"
+          style={{ backgroundColor: "var(--m-surface-solid)", color: "var(--m-text)" }}
+        >
+          {/* Fullscreen Drag & Drop Visual Overlay */}
+          {isChatDraggingOver && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center pointer-events-none bg-indigo-500/10 backdrop-blur-md border-4 border-dashed border-indigo-500 rounded-none animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex flex-col items-center gap-3 p-8 rounded-3xl bg-white/90 dark:bg-slate-900/90 shadow-2xl border border-indigo-500/20 text-center">
+                <div className="size-16 rounded-2xl bg-indigo-500/15 flex items-center justify-center text-indigo-500 animate-bounce">
+                  <Paperclip size={32} />
+                </div>
+                <div>
+                  <p className="text-base font-bold" style={{ color: "var(--m-text-heading)" }}>Drop your PDF or image here</p>
+                  <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>Dream It AI will automatically analyze the contents</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Fullscreen Header */}
+          <div className="flex items-center justify-between border-b px-4 sm:px-8 py-3.5 sm:py-4 shrink-0" style={{ borderColor: "var(--m-border)" }}>
+            <div className="flex items-center gap-3">
+              <div className="flex size-10 items-center justify-center rounded-2xl shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                <Brain size={22} />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h2 className="font-[Roboto_Slab] text-lg sm:text-xl font-bold" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
+                  <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
+                </div>
+                <p className="flex items-center gap-1.5 text-xs mt-0.5" style={{ color: "var(--m-text-sub)" }}>
+                  <span className="size-2 rounded-full animate-pulse" style={{ backgroundColor: "var(--m-success)" }} />
+                  Online &amp; Ready for full-screen study assistance
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsChatMaximized(false)}
+                className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs"
+                style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
+                title="Exit Wide View (Esc)"
+              >
+                <Minimize2 size={15} />
+                <span>Exit Wide</span>
+                <span className="hidden sm:inline-block text-[10px] opacity-60 font-mono ml-0.5">(Esc)</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Fullscreen Messages Area (Stretches across entire screen) */}
+          <div ref={chatMaxContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar w-full px-4 sm:px-6 md:px-10 py-6 max-w-6xl mx-auto">
+            {messages.map((m, idx) => (
+              <div
+                key={idx}
+                className={`max-w-[90%] md:max-w-[80%] rounded-2xl p-4 md:p-5 leading-relaxed transition contain-chat ${
+                  m.role === "assistant" ? "shadow-xs" : "ml-auto shadow-sm"
+                }`}
+                style={
+                  m.role === "assistant"
+                    ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
+                    : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
+                }
+              >
+                {m.content ? (
+                  renderSimpleMarkdown(m.content)
+                ) : (
+                  <div className="flex items-center gap-2.5 py-1">
+                    <Sparkles size={16} className="animate-spin" style={{ color: "var(--m-primary)" }} />
+                    <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI analyzing...</span>
+                  </div>
+                )}
+              </div>
+            ))}
+            {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
+              <div className="flex w-fit items-center gap-3 rounded-2xl p-3.5 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }}>
+                <Sparkles size={18} className="animate-spin" style={{ color: "var(--m-primary)" }} />
+                <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI is analyzing your prompt...</span>
+              </div>
+            )}
+          </div>
+
+          {/* Fullscreen Input Bar */}
+          <form onSubmit={askCoach} className="w-full max-w-6xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
+            {isExtractingChatFile && (
+              <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
+                <span>Reading &amp; extracting text from document...</span>
+              </div>
+            )}
+            {chatFile && !isExtractingChatFile && (
+              <div className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                <span className="flex items-center gap-2 truncate">
+                  {chatFile.isImage && chatFile.dataUrl ? (
+                    <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                  ) : chatFile.isPdf ? (
+                    <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
+                      <FileText size={15} />
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+                    </span>
+                  ) : (
+                    <Paperclip size={14} />
+                  )}
+                  <span className="truncate">{chatFile.name}</span>
+                  <span className="text-[10px] opacity-75 font-mono">
+                    ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
+                  </span>
+                </span>
+                <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
+              </div>
+            )}
+            <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
+              <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file (PDF / image)">
+                <Paperclip size={18} />
+              </button>
+              <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
+                <Camera size={18} />
+              </button>
+              <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or drag & drop PDFs / images... (Press Enter to send)" />
+              <VoiceInputButton
+                value={chatDraft}
+                onChange={setChatDraft}
+                disabled={isAsking}
+                size={15}
+              />
+              <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:scale-105 disabled:opacity-40 shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                <Send size={15} /><span>Send</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
     </main>
   );
