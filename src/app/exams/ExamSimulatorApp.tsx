@@ -28,6 +28,8 @@ import {
   TrendingUp,
   X,
   Zap,
+  Eye,
+  Check,
 } from "lucide-react";
 import {
   ExamConfig,
@@ -40,7 +42,7 @@ import {
   StoredExamRecord,
 } from "./types";
 import { generateCBSEExamPaper } from "./examGenerator";
-import { evaluateAnswerSheet } from "./handwrittenGrader";
+import { evaluateAnswerSheet, calculateCBSEGrade } from "./handwrittenGrader";
 import { ImageAttachment } from "../../lib/ai-client";
 
 interface ExamSimulatorAppProps {
@@ -49,6 +51,7 @@ interface ExamSimulatorAppProps {
   onAddGrade?: (assignmentName: string, score: number, total: number, subjectName: string) => void;
   onAddFlashcard?: (front: string, back: string, course: string) => void;
   onAddXP?: (amount: number) => void;
+  onExplainResultsWithAI?: (prompt: string) => void;
   showToast: (msg: string, type?: "success" | "error" | "info") => void;
 }
 
@@ -60,6 +63,7 @@ export default function ExamSimulatorApp({
   onAddGrade,
   onAddFlashcard,
   onAddXP,
+  onExplainResultsWithAI,
   showToast,
 }: ExamSimulatorAppProps) {
   // Navigation inside the Exam Module
@@ -80,6 +84,7 @@ export default function ExamSimulatorApp({
   const [digitalAnswers, setDigitalAnswers] = useState<Record<string, string>>({});
   const [remainingSeconds, setRemainingSeconds] = useState(1800);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const [instantFeedback, setInstantFeedback] = useState(true);
 
   // Handwritten Answer Upload State
   const [uploadedPhotos, setUploadedPhotos] = useState<ImageAttachment[]>([]);
@@ -233,10 +238,103 @@ export default function ExamSimulatorApp({
   const handleEvaluateSubmission = async () => {
     if (!activePaper) return;
     if (uploadedPhotos.length === 0 && Object.keys(digitalAnswers).length === 0) {
-      showToast("Please upload at least one photo of your handwritten paper or answer Section A digitally.", "error");
+      showToast("Please answer at least one question before submitting.", "error");
       return;
     }
 
+    const allQuestions = activePaper.sections.flatMap((s) => s.questions);
+
+    // If no handwritten photos were uploaded, calculate instant client-side grading!
+    if (uploadedPhotos.length === 0) {
+      let obtainedMarks = 0;
+      let totalMarks = activePaper.totalMarks || allQuestions.length;
+      let correctCount = 0;
+
+      const questionEvaluations = allQuestions.map((q, idx) => {
+        const chosenKey = digitalAnswers[q.id];
+        const isCorrect = !!(chosenKey && q.correctOption && chosenKey.toUpperCase().trim() === q.correctOption.toUpperCase().trim());
+        const maxMarks = q.marks || 1;
+        const awardedMarks = isCorrect ? maxMarks : 0;
+        if (isCorrect) {
+          correctCount++;
+          obtainedMarks += maxMarks;
+        }
+
+        const chosenOptionText = q.options?.find((o) => o.key === chosenKey)?.text || chosenKey || "(Not Answered / Skipped)";
+        const correctOptionText = q.options?.find((o) => o.key === q.correctOption)?.text || q.correctOption || "Correct Option";
+        const distractorCritique = q.distractorAnalysis?.find((d) => d.optionKey === chosenKey)?.whyWrongOrRight;
+
+        return {
+          questionNumber: q.number || idx + 1,
+          questionId: q.id,
+          questionText: q.questionText,
+          maxMarks,
+          awardedMarks,
+          studentAnswerText: chosenOptionText,
+          stepBreakdown: [
+            {
+              stepDescription: isCorrect
+                ? `Selected correct option (${q.correctOption})`
+                : `Selected option (${chosenKey || "Skipped"}), correct answer is (${q.correctOption})`,
+              maxMarks,
+              awardedMarks,
+            },
+          ],
+          lostMarksCritique: isCorrect ? undefined : (distractorCritique || `Correct answer is Option ${q.correctOption}: ${correctOptionText}`),
+          idealModelAnswer: `Option ${q.correctOption}: ${correctOptionText}\n\n${q.detailedExplanation}`,
+          examinerNotes: q.examinerTip,
+        };
+      });
+
+      const percentage = Math.round((obtainedMarks / totalMarks) * 100);
+      const cbseGradeBand = calculateCBSEGrade(percentage);
+
+      const localReport: HandwrittenEvaluationReport = {
+        id: crypto.randomUUID(),
+        examId: activePaper.id,
+        examTitle: activePaper.title,
+        subject: activePaper.subject,
+        classLevel: activePaper.classLevel,
+        totalMarks,
+        obtainedMarks,
+        percentage,
+        cbseGradeBand,
+        overallSummary: `You scored ${obtainedMarks} out of ${totalMarks} (${percentage}%) on ${activePaper.title}. ${
+          percentage >= 80
+            ? "Outstanding mastery of this topic!"
+            : percentage >= 50
+            ? "Good foundational understanding, with a few concept gaps to revise."
+            : "Needs targeted revision on core concepts."
+        }`,
+        strengths: [
+          `Answered ${correctCount} of ${allQuestions.length} questions accurately`,
+          percentage >= 70 ? "Demonstrated solid command of fundamental principles" : "Active recall attempt completed",
+        ],
+        criticalAreasToImprove: [
+          allQuestions.length - correctCount > 0
+            ? `Revise the ${allQuestions.length - correctCount} question(s) missed below`
+            : "Maintain consistent high performance",
+        ],
+        questionEvaluations,
+        evaluatedAt: new Date().toISOString(),
+      };
+
+      setEvaluationReport(localReport);
+      setCurrentView("scorecard");
+      showToast(`Quiz complete! Scored ${percentage}% (${cbseGradeBand}) 🏆`);
+      if (onAddXP) {
+        onAddXP(Math.max(10, Math.round(percentage / 3)));
+      }
+      saveExamRecord({
+        paper: activePaper,
+        evaluation: localReport,
+        userDigitalAnswers: digitalAnswers,
+        completedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    // If photos were uploaded, run multimodal vision OCR
     setIsEvaluating(true);
     setIsTimerRunning(false);
     showToast("Chief CBSE Board Examiner is evaluating your handwriting & step-marks...", "info");
@@ -264,6 +362,53 @@ export default function ExamSimulatorApp({
       userDigitalAnswers: digitalAnswers,
       completedAt: new Date().toISOString(),
     });
+  };
+
+  // ─── Explain Results With AI ───
+  const handleExplainWithAI = () => {
+    if (!evaluationReport || !activePaper) return;
+    const allQuestions = activePaper.sections.flatMap((s) => s.questions);
+    const correctCount = evaluationReport.questionEvaluations.filter((q) => q.awardedMarks === q.maxMarks).length;
+    const incorrectCount = evaluationReport.questionEvaluations.filter(
+      (q) => q.awardedMarks < q.maxMarks && !!digitalAnswers[q.questionId || ""]
+    ).length;
+    const skippedCount = evaluationReport.questionEvaluations.filter((q) => !digitalAnswers[q.questionId || ""]).length;
+
+    const wrongQuestions = evaluationReport.questionEvaluations.filter((q) => q.awardedMarks < q.maxMarks);
+    const wrongBreakdown = wrongQuestions
+      .map((q) => {
+        const orig = allQuestions.find((origQ) => origQ.number === q.questionNumber);
+        const chosenKey = digitalAnswers[orig?.id || ""];
+        const chosenText = orig?.options?.find((o) => o.key === chosenKey)?.text || chosenKey || "Skipped";
+        const correctText = orig?.options?.find((o) => o.key === orig?.correctOption)?.text || orig?.correctOption;
+        return `• Q${q.questionNumber}: "${q.questionText}"\n  - My Answer: ${chosenText} (${chosenKey || "Skipped"})\n  - Correct Option: ${correctText} (Option ${orig?.correctOption})\n  - Explanation: ${orig?.detailedExplanation || q.idealModelAnswer}`;
+      })
+      .join("\n\n");
+
+    const prompt = `Hey Dream It AI Tutor! 🎓 I just completed my Quiz on "${activePaper.subject}: ${activePaper.title}".
+
+📊 My Score Summary:
+- Score: ${evaluationReport.obtainedMarks} / ${evaluationReport.totalMarks} (${evaluationReport.percentage}%)
+- Performance: ${correctCount} Correct, ${incorrectCount} Incorrect, ${skippedCount} Skipped (Grade Band: ${evaluationReport.cbseGradeBand})
+
+${
+  wrongQuestions.length > 0
+    ? `⚠️ Here are the questions I got wrong or skipped:\n\n${wrongBreakdown}`
+    : "🎉 I scored 100% full marks on all questions!"
+}
+
+Please give me a complete Masterclass AI Breakdown of my quiz results:
+1. 🎯 Overall Diagnostic: Analyze my strong vs. weak concept areas in ${activePaper.subject}.
+2. 💡 Deep-Dive Explanations: Explain why my chosen answers were wrong and break down the correct reasoning simply with real-world examples.
+3. ⚡ High-Yield Revision Rules & Formula Sheet for "${activePaper.title}".
+4. 🚀 3-Step Action Plan & 1 Follow-up Challenge Question for me to test if I've mastered this topic now!`;
+
+    if (onExplainResultsWithAI) {
+      onExplainResultsWithAI(prompt);
+      showToast("Opened Dream It AI Tutor for a full diagnostic explanation! 🤖");
+    } else {
+      showToast("Diagnostic analysis generated. Open AI chat to discuss!", "info");
+    }
   };
 
   // ─── Sync Grade to Dream-It Gradebook ───
@@ -616,9 +761,28 @@ export default function ExamSimulatorApp({
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
+              {/* Instant Feedback Toggle */}
+              <button
+                type="button"
+                onClick={() => setInstantFeedback(!instantFeedback)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 ${
+                  instantFeedback
+                    ? "bg-emerald-500/15 border-emerald-500 text-emerald-400"
+                    : "border-[var(--m-border)] opacity-70"
+                }`}
+                style={!instantFeedback ? { backgroundColor: "var(--m-surface-alt)", color: "var(--m-text-sub)" } : {}}
+                title="Toggle instant answer reveal upon clicking an option"
+              >
+                <Zap size={14} className={instantFeedback ? "text-emerald-400 fill-emerald-400/20" : ""} />
+                <span>Instant Feedback: {instantFeedback ? "ON" : "OFF"}</span>
+              </button>
+
               {/* Answered Counter Pill */}
-              <div className="px-3 py-1.5 rounded-xl text-xs font-bold border" style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)", color: "var(--m-text)" }}>
-                {Object.keys(digitalAnswers).length} / {activePaper.sections.flatMap(s => s.questions).length} Answered
+              <div
+                className="px-3 py-1.5 rounded-xl text-xs font-bold border"
+                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)", color: "var(--m-text)" }}
+              >
+                {Object.keys(digitalAnswers).length} / {activePaper.sections.flatMap((s) => s.questions).length} Answered
               </div>
 
               {/* Timer Pill */}
@@ -646,7 +810,7 @@ export default function ExamSimulatorApp({
               <button
                 type="button"
                 onClick={handleEvaluateSubmission}
-                disabled={isEvaluating}
+                disabled={isEvaluating || Object.keys(digitalAnswers).length === 0}
                 className="px-4 py-2 rounded-xl text-xs font-bold shadow transition hover:scale-105 flex items-center gap-1.5 disabled:opacity-50"
                 style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
               >
@@ -706,83 +870,190 @@ export default function ExamSimulatorApp({
                 </div>
 
                 <div className="space-y-6">
-                  {sec.questions.map((q) => (
-                    <div
-                      key={q.id}
-                      className="p-5 rounded-2xl border space-y-3 transition"
-                      style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border-light)" }}
-                    >
-                      {/* Question Topline */}
-                      <div className="flex items-start justify-between gap-4">
-                        <div className="flex items-center gap-2">
-                          <span className="size-6 rounded-lg grid place-items-center text-xs font-bold" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                            {q.number}
-                          </span>
-                          <span className="text-xs font-bold uppercase" style={{ color: "var(--m-text-muted)" }}>
-                            [{q.type.replace("-", " ").toUpperCase()}]
+                  {sec.questions.map((q) => {
+                    const chosenKey = digitalAnswers[q.id];
+                    const isAnswered = !!chosenKey;
+                    const isCorrect = isAnswered && !!(q.correctOption && chosenKey.toUpperCase().trim() === q.correctOption.toUpperCase().trim());
+
+                    return (
+                      <div
+                        key={q.id}
+                        className="p-5 sm:p-6 rounded-2xl border space-y-3.5 transition"
+                        style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border-light)" }}
+                      >
+                        {/* Question Topline */}
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="size-6 rounded-lg grid place-items-center text-xs font-bold"
+                              style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                            >
+                              {q.number}
+                            </span>
+                            <span className="text-xs font-bold uppercase" style={{ color: "var(--m-text-muted)" }}>
+                              [{q.type.replace("-", " ").toUpperCase()}]
+                            </span>
+                          </div>
+                          <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/10" style={{ color: "var(--m-text-sub)" }}>
+                            [{q.marks} {q.marks === 1 ? "Mark" : "Marks"}]
                           </span>
                         </div>
-                        <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/10" style={{ color: "var(--m-text-sub)" }}>
-                          [{q.marks} {q.marks === 1 ? "Mark" : "Marks"}]
-                        </span>
-                      </div>
 
-                      {/* Question Text */}
-                      <p className="text-sm font-medium leading-relaxed" style={{ color: "var(--m-text-heading)" }}>
-                        {q.questionText}
-                      </p>
+                        {/* Question Text */}
+                        <p className="text-sm font-medium leading-relaxed" style={{ color: "var(--m-text-heading)" }}>
+                          {q.questionText}
+                        </p>
 
-                      {/* Case Study Context if present */}
-                      {q.caseStudyScenario && (
-                        <div className="p-4 rounded-xl text-xs italic my-2" style={{ backgroundColor: "var(--m-surface)", borderLeft: "3px solid var(--m-primary)", color: "var(--m-text)" }}>
-                          <b>Read the case study:</b> {q.caseStudyScenario}
-                        </div>
-                      )}
+                        {/* Case Study Context if present */}
+                        {q.caseStudyScenario && (
+                          <div
+                            className="p-4 rounded-xl text-xs italic my-2"
+                            style={{ backgroundColor: "var(--m-surface)", borderLeft: "3px solid var(--m-primary)", color: "var(--m-text)" }}
+                          >
+                            <b>Read the case study:</b> {q.caseStudyScenario}
+                          </div>
+                        )}
 
-                      {/* Section A MCQ Options with Interactive Radio Selector */}
-                      {q.options && q.options.length > 0 && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
-                          {q.options.map((opt) => {
-                            const isSelected = digitalAnswers[q.id] === opt.key;
-                            return (
-                              <button
-                                key={opt.key}
-                                type="button"
-                                onClick={() => setDigitalAnswers((prev) => ({ ...prev, [q.id]: opt.key }))}
-                                className="flex items-center gap-3 p-3 rounded-xl text-xs font-medium text-left border transition"
-                                style={
-                                  isSelected
-                                    ? { backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)", borderColor: "var(--m-primary)", color: "var(--m-text-heading)" }
-                                    : { backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)", color: "var(--m-text)" }
+                        {/* MCQ Options with Instant Visual Feedback */}
+                        {q.options && q.options.length > 0 && (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2">
+                            {q.options.map((opt) => {
+                              const isSelected = chosenKey === opt.key;
+                              const isThisCorrect = q.correctOption
+                                ? q.correctOption.toUpperCase().trim() === opt.key.toUpperCase().trim()
+                                : false;
+
+                              let optionBgStyle: React.CSSProperties = {
+                                backgroundColor: "var(--m-surface)",
+                                borderColor: "var(--m-border-light)",
+                                color: "var(--m-text)",
+                              };
+                              let badgeClass = "border-gray-400 text-[var(--m-text)]";
+                              let iconNode: React.ReactNode = opt.key;
+
+                              if (instantFeedback && isAnswered) {
+                                if (isSelected && isThisCorrect) {
+                                  optionBgStyle = {
+                                    backgroundColor: "color-mix(in srgb, #10b981 18%, var(--m-surface))",
+                                    borderColor: "#10b981",
+                                    color: "var(--m-text-heading)",
+                                  };
+                                  badgeClass = "bg-emerald-500 text-white border-emerald-500";
+                                  iconNode = <Check size={13} className="stroke-[3]" />;
+                                } else if (isSelected && !isThisCorrect) {
+                                  optionBgStyle = {
+                                    backgroundColor: "color-mix(in srgb, #f43f5e 18%, var(--m-surface))",
+                                    borderColor: "#f43f5e",
+                                    color: "var(--m-text-heading)",
+                                  };
+                                  badgeClass = "bg-rose-500 text-white border-rose-500";
+                                  iconNode = <X size={13} className="stroke-[3]" />;
+                                } else if (!isSelected && isThisCorrect) {
+                                  optionBgStyle = {
+                                    backgroundColor: "color-mix(in srgb, #10b981 12%, var(--m-surface))",
+                                    borderColor: "#10b981",
+                                    color: "var(--m-text-heading)",
+                                  };
+                                  badgeClass = "border-emerald-500 text-emerald-500 bg-emerald-500/10";
+                                  iconNode = <Check size={13} className="stroke-[3]" />;
+                                } else {
+                                  optionBgStyle = {
+                                    backgroundColor: "var(--m-surface)",
+                                    borderColor: "var(--m-border-light)",
+                                    color: "var(--m-text-sub)",
+                                    opacity: 0.65,
+                                  };
                                 }
-                              >
-                                <span className={`size-6 rounded-full grid place-items-center text-xs font-bold shrink-0 border ${
-                                  isSelected ? "bg-[var(--m-primary)] text-[var(--m-primary-text)] border-[var(--m-primary)]" : "border-gray-400"
-                                }`}>
-                                  {opt.key}
-                                </span>
-                                <span>{opt.text}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      )}
+                              } else if (isSelected) {
+                                optionBgStyle = {
+                                  backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)",
+                                  borderColor: "var(--m-primary)",
+                                  color: "var(--m-text-heading)",
+                                };
+                                badgeClass = "bg-[var(--m-primary)] text-[var(--m-primary-text)] border-[var(--m-primary)]";
+                              }
 
-                      {/* Digital Scratchpad for non-MCQ */}
-                      {!q.options && (
-                        <div className="pt-2">
-                          <textarea
-                            placeholder="Type your notes or key steps here, OR solve on physical paper and take a photo..."
-                            value={digitalAnswers[q.id] || ""}
-                            onChange={(e) => setDigitalAnswers((prev) => ({ ...prev, [q.id]: e.target.value }))}
-                            rows={2}
-                            className="w-full rounded-xl p-3 text-xs border"
-                            style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)", borderColor: "var(--m-border-light)" }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                              return (
+                                <button
+                                  key={opt.key}
+                                  type="button"
+                                  onClick={() => setDigitalAnswers((prev) => ({ ...prev, [q.id]: opt.key }))}
+                                  className="flex items-center gap-3 p-3 rounded-xl text-xs font-medium text-left border transition hover:scale-[1.01]"
+                                  style={optionBgStyle}
+                                >
+                                  <span className={`size-6 rounded-full grid place-items-center text-xs font-bold shrink-0 border ${badgeClass}`}>
+                                    {iconNode}
+                                  </span>
+                                  <span className="flex-1">{opt.text}</span>
+                                  {instantFeedback && isAnswered && isSelected && isThisCorrect && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white shrink-0">
+                                      Correct
+                                    </span>
+                                  )}
+                                  {instantFeedback && isAnswered && isSelected && !isThisCorrect && (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500 text-white shrink-0">
+                                      Incorrect
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* Instant Answer Explanation Box */}
+                        {instantFeedback && isAnswered && (
+                          <div
+                            className="p-4 rounded-2xl border text-xs space-y-2 animate-in fade-in slide-in-from-top-2 duration-200 mt-3"
+                            style={{
+                              backgroundColor: isCorrect
+                                ? "color-mix(in srgb, #10b981 10%, var(--m-surface))"
+                                : "color-mix(in srgb, #f43f5e 10%, var(--m-surface))",
+                              borderColor: isCorrect ? "#10b981" : "#f43f5e",
+                            }}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center gap-2 font-bold text-sm">
+                                {isCorrect ? (
+                                  <span className="flex items-center gap-1.5 text-emerald-500">
+                                    <CheckCircle2 size={16} /> Correct! (+{q.marks || 1} Mark)
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1.5 text-rose-500">
+                                    <AlertCircle size={16} /> Incorrect — Correct Answer is Option {q.correctOption}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] uppercase tracking-wider font-bold opacity-60">Instant Explanation</span>
+                            </div>
+
+                            <p className="leading-relaxed text-xs" style={{ color: "var(--m-text)" }}>
+                              {q.detailedExplanation}
+                            </p>
+
+                            {q.distractorAnalysis && (
+                              <div className="pt-2 border-t border-black/10 dark:border-white/10 text-[11px] space-y-1">
+                                {q.distractorAnalysis.find((d) => d.optionKey === chosenKey)?.whyWrongOrRight && (
+                                  <p style={{ color: "var(--m-text)" }}>
+                                    <span className="font-bold" style={{ color: "var(--m-primary)" }}>
+                                      Why your selection ({chosenKey}):{" "}
+                                    </span>
+                                    {q.distractorAnalysis.find((d) => d.optionKey === chosenKey)?.whyWrongOrRight}
+                                  </p>
+                                )}
+                              </div>
+                            )}
+
+                            {q.examinerTip && (
+                              <p className="text-[11px] font-medium text-amber-500/95 pt-1">
+                                ⚡ <b>Examiner Tip:</b> {q.examinerTip}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -942,43 +1213,107 @@ export default function ExamSimulatorApp({
       {/* ════════════════════════════ VIEW 4: SCORECARD ════════════════════════════ */}
       {currentView === "scorecard" && evaluationReport && (
         <div className="space-y-6">
-          {/* Grand Score Banner */}
+          {/* Grand Quiz Complete Card (Google AI Quiz Style) */}
           <div
-            className="rounded-3xl p-6 sm:p-10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl"
+            className="rounded-3xl p-6 sm:p-10 space-y-6 text-center shadow-xl relative overflow-hidden"
             style={{
-              background: "linear-gradient(135deg, color-mix(in srgb, var(--m-primary) 15%, transparent), var(--m-surface))",
+              background: "linear-gradient(180deg, color-mix(in srgb, var(--m-primary) 12%, var(--m-surface)), var(--m-surface))",
               border: "1px solid var(--m-border)",
             }}
           >
-            <div className="space-y-2 text-center md:text-left">
+            <div className="space-y-1">
               <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">
-                OFFICIAL CBSE CORRECTION REPORT
+                Quiz complete! Let&apos;s see how you scored
               </span>
               <h2 className="text-2xl sm:text-3xl font-bold font-[Roboto_Slab]" style={{ color: "var(--m-text-heading)" }}>
                 {evaluationReport.examTitle}
               </h2>
-              <p className="text-xs max-w-xl" style={{ color: "var(--m-text-sub)" }}>
+              <p className="text-xs max-w-xl mx-auto" style={{ color: "var(--m-text-sub)" }}>
                 {evaluationReport.overallSummary}
               </p>
             </div>
 
-            {/* Score Pill / Badge */}
-            <div className="flex items-center gap-6">
-              <div className="text-center">
-                <div className="text-4xl sm:text-5xl font-bold font-mono" style={{ color: "var(--m-primary)" }}>
-                  {evaluationReport.obtainedMarks}
-                  <span className="text-xl font-normal" style={{ color: "var(--m-text-muted)" }}>
-                    /{evaluationReport.totalMarks}
-                  </span>
-                </div>
-                <div className="text-xs font-bold uppercase tracking-widest mt-1" style={{ color: "var(--m-text-muted)" }}>
-                  {evaluationReport.percentage}% SCORE
-                </div>
+            {/* Big Percentage & Stats Pills */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-10 py-3">
+              <div className="text-6xl sm:text-7xl font-extrabold font-mono tracking-tight" style={{ color: "var(--m-primary)" }}>
+                {evaluationReport.percentage}%
               </div>
 
-              <div className="size-16 rounded-2xl bg-emerald-500 text-white grid place-items-center shadow-lg font-bold text-2xl font-mono">
-                {evaluationReport.cbseGradeBand}
+              <div className="flex flex-wrap items-center justify-center gap-2.5 sm:gap-3">
+                {/* Correct Pill */}
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl font-bold text-xs sm:text-sm bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                  <span>Correct</span>
+                  <span className="size-6 rounded-full bg-emerald-500 text-white text-xs font-mono grid place-items-center">
+                    {evaluationReport.questionEvaluations.filter((q) => q.awardedMarks === q.maxMarks).length}
+                  </span>
+                </div>
+
+                {/* Incorrect Pill */}
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl font-bold text-xs sm:text-sm bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                  <span>Incorrect</span>
+                  <span className="size-6 rounded-full bg-rose-500 text-white text-xs font-mono grid place-items-center">
+                    {
+                      evaluationReport.questionEvaluations.filter(
+                        (q) => q.awardedMarks < q.maxMarks && !!digitalAnswers[q.questionId || ""]
+                      ).length
+                    }
+                  </span>
+                </div>
+
+                {/* Skipped Pill */}
+                <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl font-bold text-xs sm:text-sm bg-slate-500/15 text-slate-300 border border-slate-500/30">
+                  <span>Skipped</span>
+                  <span className="size-6 rounded-full bg-slate-600 text-white text-xs font-mono grid place-items-center">
+                    {evaluationReport.questionEvaluations.filter((q) => !digitalAnswers[q.questionId || ""]).length}
+                  </span>
+                </div>
+
+                {/* Grade Badge */}
+                <div className="flex items-center gap-2 px-3.5 py-2 rounded-2xl font-bold text-xs sm:text-sm border border-black/10 dark:border-white/10" style={{ backgroundColor: "var(--m-surface-alt)" }}>
+                  <span className="text-[11px] opacity-70">Grade:</span>
+                  <span className="font-mono text-emerald-400 font-extrabold">{evaluationReport.cbseGradeBand}</span>
+                </div>
               </div>
+            </div>
+
+            {/* Primary Action Buttons (Matching Screenshot 3) */}
+            <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleExplainWithAI}
+                className="px-6 py-3 rounded-2xl font-bold text-xs sm:text-sm shadow-xl transition hover:scale-105 flex items-center gap-2"
+                style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+              >
+                <BrainCircuit size={17} />
+                <span>Explain my results with AI</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentView("generator");
+                  setDigitalAnswers({});
+                  setActivePaper(null);
+                  setEvaluationReport(null);
+                }}
+                className="px-5 py-3 rounded-2xl font-bold text-xs sm:text-sm border transition hover:scale-105 flex items-center gap-2"
+                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)", color: "var(--m-text)" }}
+              >
+                <RotateCcw size={15} />
+                <span>Create another quiz</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setCurrentView("exam_hall");
+                }}
+                className="px-5 py-3 rounded-2xl font-bold text-xs sm:text-sm border transition hover:scale-105 flex items-center gap-2"
+                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)", color: "var(--m-text)" }}
+              >
+                <Eye size={15} />
+                <span>Review answers in Exam Hall</span>
+              </button>
             </div>
           </div>
 
@@ -986,7 +1321,7 @@ export default function ExamSimulatorApp({
           <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border-light)" }}>
             <div className="flex items-center gap-2 text-xs font-medium" style={{ color: "var(--m-text-sub)" }}>
               <CheckCircle2 size={16} className="text-emerald-500" />
-              <span>Step-marking verification completed according to CBSE rubrics.</span>
+              <span>Diagnostic scorecard ready for review and revision flashcards.</span>
             </div>
 
             <div className="flex items-center gap-3">
@@ -1008,7 +1343,7 @@ export default function ExamSimulatorApp({
                 style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
               >
                 <Layers size={14} />
-                <span>Generate Flashcards from Weaknesses</span>
+                <span>Generate Flashcards from Mistakes</span>
               </button>
             </div>
           </div>

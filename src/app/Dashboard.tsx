@@ -3053,6 +3053,10 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
                   }
                 }}
                 onAddXP={(amt) => addXP(amt)}
+                onExplainResultsWithAI={(analysisPrompt) => {
+                  setIsChatMaximized(true);
+                  askCoach(undefined, analysisPrompt);
+                }}
                 showToast={showToast}
               />
             </Suspense>
