@@ -10,7 +10,8 @@ import { ExamConfig, ExamPaper, ExamQuestion, SectionType } from "./types";
 
 /**
  * Builds the comprehensive prompt for Agent 1 and Agent 2 to synthesize
- * an authentic CBSE Board examination paper with professional-grade explanations.
+ * an authentic, 100% Multiple Choice Question (MCQ) examination paper
+ * with professional-grade distractor analysis and step-by-step logic.
  */
 function buildExamPrompt(config: ExamConfig): string {
   const { classLevel, subject, topicOrChapter, sourceNoteContent, difficulty, lengthType, totalMarks, durationMinutes } = config;
@@ -19,36 +20,34 @@ function buildExamPrompt(config: ExamConfig): string {
   if (lengthType === "diagnostic_20") {
     questionDistribution = `
 - Total Marks: 20 Marks | Duration: 30 Minutes
-- Section A: 4 Questions (1 mark each: 3 MCQs with 4 options A/B/C/D, 1 Assertion-Reason question) = 4 Marks
-- Section B: 2 Questions (2 marks each VSA with step working) = 4 Marks
-- Section C: 2 Questions (3 marks each SA) = 6 Marks
-- Section D: 1 Question (4 marks Case-Based with 3 subparts or 1 Long Answer) = 6 Marks
-Total = 20 Marks
+- Structure: 20 Multiple Choice Questions (1 mark each = 20 Marks)
+  - Section A: Core Conceptual & Definition MCQs (10 MCQs, 1 mark each = 10 Marks)
+  - Section B: Application, Calculations & Code/Problem Solving MCQs (7 MCQs, 1 mark each = 7 Marks)
+  - Section C: Assertion-Reason & Logic MCQs (3 MCQs, 1 mark each = 3 Marks)
+Total = 20 MCQs
 `;
   } else if (lengthType === "mid_term_40") {
     questionDistribution = `
 - Total Marks: 40 Marks | Duration: 60 Minutes
-- Section A: 8 Questions (1 mark each: 6 MCQs with 4 options A/B/C/D, 2 Assertion-Reason questions) = 8 Marks
-- Section B: 4 Questions (2 marks each VSA) = 8 Marks
-- Section C: 4 Questions (3 marks each SA) = 12 Marks
-- Section D: 1 Question (5 marks Long Answer with derivation, structured steps, or code analysis) = 5 Marks
-- Section E: 1 Question (4 marks Case-Based with 3 subparts) = 7 Marks (adjusted to total 40)
-Total = 40 Marks
+- Structure: 30 Multiple Choice Questions (40 Marks total)
+  - Section A: Fundamental Concept MCQs (12 MCQs, 1 mark each = 12 Marks)
+  - Section B: Application, Calculations & Code Analysis MCQs (12 MCQs, 1.5 marks each = 18 Marks)
+  - Section C: Case-Based & Assertion-Reason MCQs (6 MCQs, 1.67 marks each or 10 Marks total)
+Total = 30 MCQs (40 Marks)
 `;
   } else {
     // 80 Marks Full Board Simulation
     questionDistribution = `
-- Total Marks: 80 Marks | Duration: 180 Minutes (Full CBSE Pattern)
-- Section A: 12 Questions (1 mark each: 10 MCQs with 4 options A/B/C/D, 2 Assertion-Reason questions) = 12 Marks
-- Section B: 6 Questions (2 marks each VSA) = 12 Marks
-- Section C: 7 Questions (3 marks each SA) = 21 Marks
-- Section D: 3 Questions (5 marks each Long Answer) = 15 Marks
-- Section E: 3 Questions (4 marks each Case-Based) = 12 Marks
-(Total tailored to match comprehensive 80 marks board exam)
+- Total Marks: 80 Marks | Duration: 120-180 Minutes
+- Structure: 50 Multiple Choice Questions (80 Marks total)
+  - Section A: Foundational Knowledge MCQs (20 MCQs = 30 Marks)
+  - Section B: Advanced Application & Complex Calculations/Code MCQs (20 MCQs = 30 Marks)
+  - Section C: Assertion-Reason & Case-Scenario MCQs (10 MCQs = 20 Marks)
+Total = 50 MCQs (80 Marks)
 `;
   }
 
-  return `You are acting as two master educational agents collaborating to create a state-of-the-art CBSE Question Paper:
+  return `You are acting as two master educational agents collaborating to create a state-of-the-art 100% Multiple Choice Question (MCQ) Examination Paper:
 AGENT 1: Chief CBSE Question Paper Setter (Strictly adheres to official CBSE curriculum, NCERT guidelines, Blooms taxonomy, and zero ambiguity).
 AGENT 2: Senior Pedagogy & Solution Master (Author of national reference textbooks; delivers professional-grade explanations and distractor analysis).
 
@@ -64,48 +63,47 @@ ${sourceNoteContent ? `\nSOURCE STUDY NOTES CONTEXT:\n\"\"\"\n${sourceNoteConten
 BLUEPRINT & QUESTION DISTRIBUTION:
 ${questionDistribution}
 
-STRICT PROFESSIONAL REQUIREMENTS FOR QUESTIONS & MCQS:
-1. Every MCQ in Section A MUST have exactly 4 authentic, plausible options labeled A, B, C, and D.
-2. For Assertion-Reason questions, use standard official CBSE options:
+STRICT 100% MCQ REQUIREMENTS (MANDATORY):
+1. EVERY SINGLE QUESTION WITHOUT EXCEPTION MUST BE A MULTIPLE CHOICE QUESTION (MCQ) WITH EXACTLY 4 OPTIONS: A, B, C, and D.
+2. DO NOT GENERATE ANY OPEN-ENDED TEXT QUESTIONS, VSA WITHOUT OPTIONS, SHORT ANSWERS WITHOUT OPTIONS, OR ESSAYS.
+3. Every MCQ must designate a "correctOption" ("A", "B", "C", or "D").
+4. For Assertion-Reason questions, use standard official options:
    - A: Both Assertion (A) and Reason (R) are true and Reason (R) is the correct explanation of Assertion (A).
    - B: Both Assertion (A) and Reason (R) are true but Reason (R) is not the correct explanation of Assertion (A).
    - C: Assertion (A) is true but Reason (R) is false.
    - D: Assertion (A) is false but Reason (R) is true.
-3. For Computer Science questions (or STEM subjects), ensure all code snippets are clean, valid, and properly escaped in JSON.
-4. For Section B, C, D questions, provide realistic CBSE word problems, scientific derivations, biological diagrams explanations, or numerical calculations.
-5. For Case-Based questions (Section E), provide a realistic scenario followed by concise sub-questions.
+5. For STEM / Computer Science, convert code tracing, syntax error identification, and output predictions into clean 4-option MCQs.
+6. Options must be authentic and plausible; distractors must reflect common conceptual or calculation pitfalls.
 
-EXPLANATIONS & MARKING SCHEME:
-- Detailed Explanation: Clear, textbook-quality breakdown showing foundational principles and step-by-step logic.
-- Distractor Analysis: For Section A MCQs, explain why the correct option is right and common pitfalls in incorrect options.
-- Marking Scheme: Concise step-by-step marks distribution.
-- Examiner Tip: Short high-impact tip to avoid traps.
+EXPLANATIONS & DISTRACTOR ANALYSIS:
+- Detailed Explanation: Step-by-step breakdown of why the correct option is right.
+- Distractor Analysis: Array of 4 items explaining why Option A, B, C, D are correct or incorrect.
+- Key Formulas / Concepts: Array of core formulas tested.
+- Examiner Tip: High-yield tip to avoid traps.
 
 CRITICAL JSON RULES:
-- Output valid JSON only without introductory commentary.
+- Output valid JSON only without commentary.
 - Ensure all double quotes inside strings are escaped with \\" and newlines with \\n.
 
 OUTPUT SCHEMA TEMPLATE:
 {
-  "title": "${subject} Examination - ${topicOrChapter}",
+  "title": "${subject} MCQ Examination - ${topicOrChapter}",
   "subject": "${subject}",
   "classLevel": "${classLevel}",
   "difficulty": "${difficulty}",
   "totalMarks": ${totalMarks},
   "durationMinutes": ${durationMinutes},
   "generalInstructions": [
-    "All questions are compulsory.",
-    "Section A contains 1 mark objective questions.",
-    "Section B contains 2 marks VSA questions.",
-    "Section C contains 3 marks SA questions.",
-    "Section D contains 5 marks LA questions.",
-    "Section E contains 4 marks Case-Based questions."
+    "All questions are compulsory objective-type Multiple Choice Questions (MCQs).",
+    "Each question has four options (A, B, C, D) with exactly one correct option.",
+    "Select the option you believe is most accurate.",
+    "There is no negative marking unless specified."
   ],
   "sections": [
     {
       "section": "Section A",
-      "title": "Objective & Multiple Choice Questions",
-      "instructions": "Select the single correct option for each question.",
+      "title": "Conceptual & Foundation MCQs",
+      "instructions": "Select the correct option (A, B, C, or D) for each question.",
       "questions": [
         {
           "number": 1,
@@ -119,7 +117,7 @@ OUTPUT SCHEMA TEMPLATE:
             { "key": "D", "text": "Option D" }
           ],
           "correctOption": "A",
-          "detailedExplanation": "Complete textbook explanation...",
+          "detailedExplanation": "Textbook-quality explanation...",
           "distractorAnalysis": [
             { "optionKey": "A", "text": "Option A", "isCorrect": true, "whyWrongOrRight": "Correct because..." },
             { "optionKey": "B", "text": "Option B", "isCorrect": false, "whyWrongOrRight": "Incorrect because..." },
@@ -127,10 +125,10 @@ OUTPUT SCHEMA TEMPLATE:
             { "optionKey": "D", "text": "Option D", "isCorrect": false, "whyWrongOrRight": "Incorrect because..." }
           ],
           "markingScheme": [
-            { "stepDescription": "Correct option", "marks": 1 }
+            { "stepDescription": "Correct option selection", "marks": 1 }
           ],
           "keyFormulasOrConcepts": ["Key principle"],
-          "examinerTip": "Key tip..."
+          "examinerTip": "Common trap to watch out for..."
         }
       ]
     }

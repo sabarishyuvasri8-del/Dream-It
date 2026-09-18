@@ -490,7 +490,7 @@ export default function ExamSimulatorApp({
             {/* Exam Length / Marks */}
             <div className="space-y-2">
               <label className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--m-text-muted)" }}>
-                Exam Duration & Weightage
+                Exam Duration & Weightage (100% MCQ Pattern)
               </label>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div
@@ -506,7 +506,7 @@ export default function ExamSimulatorApp({
                     <span className="font-bold text-sm" style={{ color: "var(--m-text-heading)" }}>⚡ Quick Diagnostic</span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-500">20 Marks</span>
                   </div>
-                  <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>30 Minutes • 9 Questions • Ideal for daily revision</p>
+                  <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>30 Minutes • 20 MCQs • Rapid daily revision</p>
                 </div>
 
                 <div
@@ -522,7 +522,7 @@ export default function ExamSimulatorApp({
                     <span className="font-bold text-sm" style={{ color: "var(--m-text-heading)" }}>📑 Half Assessment</span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-500">40 Marks</span>
                   </div>
-                  <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>60 Minutes • 18 Questions • Mid-term practice</p>
+                  <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>60 Minutes • 30 MCQs • Mid-term practice</p>
                 </div>
 
                 <div
@@ -538,7 +538,7 @@ export default function ExamSimulatorApp({
                     <span className="font-bold text-sm" style={{ color: "var(--m-text-heading)" }}>🏆 Full Board Mock</span>
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-500">80 Marks</span>
                   </div>
-                  <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>180 Minutes • 30+ Questions • Authentic Board Exam</p>
+                  <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>120 Minutes • 50 MCQs • Full Syllabus Board Mock</p>
                 </div>
               </div>
             </div>
@@ -587,12 +587,12 @@ export default function ExamSimulatorApp({
               {isGenerating ? (
                 <>
                   <div className="size-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
-                  <span>Synthesizing CBSE Paper & Distractor Analysis... (takes ~10s)</span>
+                  <span>Synthesizing 100% MCQ Paper & Distractor Analysis... (takes ~10s)</span>
                 </>
               ) : (
                 <>
                   <BrainCircuit size={18} />
-                  <span>Generate Complete CBSE Examination Paper</span>
+                  <span>Generate 100% MCQ Examination Paper</span>
                 </>
               )}
             </button>
@@ -609,21 +609,26 @@ export default function ExamSimulatorApp({
             style={{ backgroundColor: "color-mix(in srgb, var(--m-surface) 92%, transparent)", border: "1px solid var(--m-border)" }}
           >
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">LIVE EXAMINATION HALL</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-500">LIVE EXAMINATION HALL (100% MCQ)</span>
               <h2 className="text-lg font-bold font-[Roboto_Slab]" style={{ color: "var(--m-text-heading)" }}>
                 {activePaper.title}
               </h2>
             </div>
 
-            <div className="flex items-center gap-4">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Answered Counter Pill */}
+              <div className="px-3 py-1.5 rounded-xl text-xs font-bold border" style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)", color: "var(--m-text)" }}>
+                {Object.keys(digitalAnswers).length} / {activePaper.sections.flatMap(s => s.questions).length} Answered
+              </div>
+
               {/* Timer Pill */}
               <div
-                className={`flex items-center gap-2 px-4 py-2 rounded-2xl font-mono text-base font-bold shadow-inner ${
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl font-mono text-xs sm:text-sm font-bold shadow-inner ${
                   remainingSeconds < 300 ? "animate-pulse text-red-500 bg-red-500/10" : ""
                 }`}
                 style={{ backgroundColor: "var(--m-surface-alt)", color: remainingSeconds < 300 ? "#ef4444" : "var(--m-primary)" }}
               >
-                <Clock size={16} />
+                <Clock size={15} />
                 <span>{formatCountdown(remainingSeconds)}</span>
               </div>
 
@@ -631,32 +636,28 @@ export default function ExamSimulatorApp({
               <button
                 type="button"
                 onClick={() => setIsTimerRunning(!isTimerRunning)}
-                className="px-3 py-2 rounded-xl text-xs font-bold border transition"
+                className="px-3 py-1.5 rounded-xl text-xs font-bold border transition"
                 style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)", color: "var(--m-text)" }}
               >
                 {isTimerRunning ? "Pause" : "Resume"}
               </button>
 
-              {/* Print Paper */}
+              {/* Ready to Grade / Submit */}
               <button
                 type="button"
-                onClick={() => window.print()}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition"
-                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)", color: "var(--m-text)" }}
-                title="Print official question paper to solve on physical answer sheet"
-              >
-                <Printer size={15} />
-                <span className="hidden sm:inline">Print Paper</span>
-              </button>
-
-              {/* Ready to Grade */}
-              <button
-                type="button"
-                onClick={() => setCurrentView("handwritten_grader")}
-                className="px-4 py-2 rounded-xl text-xs font-bold shadow transition hover:scale-105"
+                onClick={handleEvaluateSubmission}
+                disabled={isEvaluating}
+                className="px-4 py-2 rounded-xl text-xs font-bold shadow transition hover:scale-105 flex items-center gap-1.5 disabled:opacity-50"
                 style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
               >
-                Upload Answers
+                {isEvaluating ? (
+                  <>
+                    <div className="size-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                    <span>Grading...</span>
+                  </>
+                ) : (
+                  <span>Submit &amp; Grade Exam</span>
+                )}
               </button>
             </div>
           </div>
@@ -788,18 +789,42 @@ export default function ExamSimulatorApp({
 
             {/* Bottom Actions */}
             <div className="pt-6 border-t flex flex-col sm:flex-row items-center justify-between gap-4" style={{ borderColor: "var(--m-border-light)" }}>
-              <p className="text-xs" style={{ color: "var(--m-text-sub)" }}>
-                Solved on physical paper? Take clear photos and proceed to handwritten vision grading.
-              </p>
-              <button
-                type="button"
-                onClick={() => setCurrentView("handwritten_grader")}
-                className="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition hover:scale-105"
-                style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
-              >
-                <Camera size={16} />
-                <span>Upload Handwritten Answer Sheet</span>
-              </button>
+              <div className="space-y-1 text-left">
+                <p className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>
+                  {Object.keys(digitalAnswers).length} of {activePaper.sections.flatMap(s => s.questions).length} Questions Answered
+                </p>
+                <p className="text-[11px]" style={{ color: "var(--m-text-sub)" }}>
+                  Ready to evaluate? Submit your answers for instant CBSE grading &amp; distractor feedback.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setCurrentView("handwritten_grader")}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl font-bold text-xs border flex items-center justify-center gap-2 transition hover:bg-black/5 dark:hover:bg-white/5"
+                  style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
+                  title="Upload photos of scratch calculations or notes"
+                >
+                  <Camera size={15} />
+                  <span>Upload Scratch Sheet (Optional)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleEvaluateSubmission}
+                  disabled={isEvaluating || Object.keys(digitalAnswers).length === 0}
+                  className="w-full sm:w-auto px-6 py-2.5 rounded-xl font-bold text-xs flex items-center justify-center gap-2 shadow-lg transition hover:scale-105 disabled:opacity-40"
+                  style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                >
+                  {isEvaluating ? (
+                    <>
+                      <div className="size-3.5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                      <span>Grading Exam...</span>
+                    </>
+                  ) : (
+                    <span>Submit &amp; Grade MCQ Exam 🏆</span>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
