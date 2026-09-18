@@ -159,7 +159,7 @@ export default function CommandPalette({
           onClose();
         },
       });
-    } else if (trimmed.length > 2 && !pomodoroMatch && !lower.startsWith("ask") && !lower.startsWith("ai:")) {
+    } else if (trimmed.length > 0 && !pomodoroMatch && !lower.startsWith("ask") && !lower.startsWith("ai:")) {
       // Provide instant "Create task: [query]" suggestion for any typed text
       items.push({
         id: "suggest-create-task",
@@ -192,7 +192,7 @@ export default function CommandPalette({
           onClose();
         },
       });
-    } else if (trimmed.length > 2 && (lower.includes("?") || lower.startsWith("how") || lower.startsWith("what") || lower.startsWith("why") || lower.startsWith("explain"))) {
+    } else if (trimmed.length > 0 && !pomodoroMatch && !taskMatch) {
       items.push({
         id: "suggest-ask-ai",
         title: `Ask AI: "${trimmed}"`,
