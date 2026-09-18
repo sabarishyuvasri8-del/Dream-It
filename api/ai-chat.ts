@@ -61,9 +61,11 @@ export default async function handler(req: any, res?: any) {
     const {
       messages = [],
       image,
-      model = "gemini-3.1-flash-lite",
+      model = "gemini-3.5-flash-lite",
       temperature = 0.2,
-      max_tokens = 4096,
+      max_tokens = 8192,
+      responseMimeType,
+      response_mime_type,
       top_p,
     } = body || {};
 
@@ -116,6 +118,7 @@ export default async function handler(req: any, res?: any) {
     let requestedModel = model || "gemini-3.5-flash-lite";
     if (
       requestedModel === "gemma-4-31b-it" ||
+      requestedModel === "gemini-3.1-flash-lite" ||
       requestedModel === "gemini-2.0-flash" ||
       requestedModel === "gemini-2.5-flash" ||
       requestedModel === "gemini-2.5-flash-lite"
@@ -125,11 +128,13 @@ export default async function handler(req: any, res?: any) {
 
     let googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${apiKey.trim()}`;
 
+    const chosenMimeType = responseMimeType || response_mime_type;
     const requestBody: any = {
       contents,
       generationConfig: {
         temperature: typeof temperature === "number" ? temperature : 0.2,
-        maxOutputTokens: typeof max_tokens === "number" ? max_tokens : 4096,
+        maxOutputTokens: typeof max_tokens === "number" ? Math.min(8192, Math.max(512, max_tokens)) : 8192,
+        ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
         topP: top_p,
       },
     };

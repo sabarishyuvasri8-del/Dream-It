@@ -6,6 +6,7 @@
  */
 
 import { fetchAI, ImageAttachment } from "../../lib/ai-client";
+import { safeParseJSON } from "../../lib/json-repair";
 import { ExamPaper, HandwrittenEvaluationReport, QuestionEvaluation } from "./types";
 
 /**
@@ -100,26 +101,21 @@ Output ONLY valid JSON matching this exact structure:
       messages: [{ role: "user", content: prompt }],
       image: primaryImage,
       temperature: 0.1,
-      max_tokens: 4096,
-      timeoutMs: 45000,
+      max_tokens: 8192,
+      responseMimeType: "application/json",
+      timeoutMs: 50000,
     });
 
     if (res.error) {
       return { error: res.error };
     }
 
-    let raw = (res.content || "").trim();
-    if (raw.startsWith("```")) {
-      raw = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+    const raw = (res.content || "").trim();
+    if (!raw) {
+      return { error: "Evaluator returned an empty response. Please retry." };
     }
 
-    const firstBrace = raw.indexOf("{");
-    const lastBrace = raw.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      raw = raw.substring(firstBrace, lastBrace + 1);
-    }
-
-    const parsed = JSON.parse(raw);
+    const parsed = safeParseJSON<any>(raw);
     const totalMarks = Number(parsed.totalMarks) || paper.totalMarks || 1;
     const obtainedMarks = Math.min(totalMarks, Math.max(0, Number(parsed.obtainedMarks) || 0));
     const percentage = Math.round((obtainedMarks / totalMarks) * 100);

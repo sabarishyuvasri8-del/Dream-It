@@ -25,6 +25,7 @@ export interface AIChatRequest {
   image?: ImageAttachment;
   temperature?: number;
   max_tokens?: number;
+  responseMimeType?: string;
   top_p?: number;
   timeoutMs?: number;
   onChunk?: (text: string) => void;
@@ -63,7 +64,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
   const requestedModel = normalizeModelName(params.model);
 
   // 1. Check in-memory cache
-  const cacheKey = `${requestedModel}_${params.image?.name || ""}_${JSON.stringify(params.messages)}`;
+  const cacheKey = `${requestedModel}_${params.image?.name || ""}_${params.responseMimeType || ""}_${JSON.stringify(params.messages)}`;
   const cached = aiCache.get(cacheKey);
   if (cached && Date.now() < cached.expiry) {
     if (params.onChunk) {
@@ -77,7 +78,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     hasImage: !!params.image,
   });
 
-  const defaultTimeout = params.image ? 45000 : (params.max_tokens && params.max_tokens > 1500 ? 40000 : 25000);
+  const defaultTimeout = params.image ? 45000 : (params.max_tokens && params.max_tokens > 1500 ? 50000 : 25000);
   const timeoutDuration = params.timeoutMs ?? defaultTimeout;
 
   // 2. Primary Route: /api/ai-chat serverless endpoint
@@ -94,7 +95,8 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         image: params.image,
         model: requestedModel,
         temperature: params.temperature,
-        max_tokens: params.max_tokens,
+        max_tokens: params.max_tokens || 8192,
+        responseMimeType: params.responseMimeType,
         top_p: params.top_p,
       }),
     });
@@ -183,7 +185,8 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         contents,
         generationConfig: {
           temperature: typeof params.temperature === "number" ? params.temperature : 0.2,
-          maxOutputTokens: typeof params.max_tokens === "number" ? params.max_tokens : 4096,
+          maxOutputTokens: typeof params.max_tokens === "number" ? params.max_tokens : 8192,
+          ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
           topP: params.top_p,
         },
       };

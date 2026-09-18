@@ -5,6 +5,7 @@
  */
 
 import { fetchAI } from "../../lib/ai-client";
+import { safeParseJSON } from "../../lib/json-repair";
 import { ExamConfig, ExamPaper, ExamQuestion, SectionType } from "./types";
 
 /**
@@ -30,8 +31,8 @@ Total = 20 Marks
 - Section A: 8 Questions (1 mark each: 6 MCQs with 4 options A/B/C/D, 2 Assertion-Reason questions) = 8 Marks
 - Section B: 4 Questions (2 marks each VSA) = 8 Marks
 - Section C: 4 Questions (3 marks each SA) = 12 Marks
-- Section D: 1 Question (5 marks Long Answer with derivation or structured steps) = 5 Marks
-- Section E: 1 Question (4 marks Case-Based with 3 subparts i, ii, iii) = 7 Marks (or adjusted to total 40)
+- Section D: 1 Question (5 marks Long Answer with derivation, structured steps, or code analysis) = 5 Marks
+- Section E: 1 Question (4 marks Case-Based with 3 subparts) = 7 Marks (adjusted to total 40)
 Total = 40 Marks
 `;
   } else {
@@ -64,23 +65,27 @@ BLUEPRINT & QUESTION DISTRIBUTION:
 ${questionDistribution}
 
 STRICT PROFESSIONAL REQUIREMENTS FOR QUESTIONS & MCQS:
-1. Every MCQ in Section A MUST have exactly 4 authentic, plausible options labeled A, B, C, and D. DO NOT create silly or obvious joke options. Distractors must represent common student mathematical or conceptual pitfalls.
+1. Every MCQ in Section A MUST have exactly 4 authentic, plausible options labeled A, B, C, and D.
 2. For Assertion-Reason questions, use standard official CBSE options:
    - A: Both Assertion (A) and Reason (R) are true and Reason (R) is the correct explanation of Assertion (A).
    - B: Both Assertion (A) and Reason (R) are true but Reason (R) is not the correct explanation of Assertion (A).
    - C: Assertion (A) is true but Reason (R) is false.
    - D: Assertion (A) is false but Reason (R) is true.
-3. For Section B, C, D questions, provide realistic CBSE word problems, scientific derivations, biological diagrams explanations, or numerical calculations.
-4. For Case-Based questions (Section E), provide a realistic scientific or real-world paragraph followed by 3 sub-questions.
+3. For Computer Science questions (or STEM subjects), ensure all code snippets are clean, valid, and properly escaped in JSON.
+4. For Section B, C, D questions, provide realistic CBSE word problems, scientific derivations, biological diagrams explanations, or numerical calculations.
+5. For Case-Based questions (Section E), provide a realistic scenario followed by concise sub-questions.
 
-STRICT REQUIREMENTS FOR PROFESSIONAL-GRADE EXPLANATIONS (Agent 2):
-1. Detailed Explanation: Must NOT be just 1 sentence. Provide a comprehensive, textbook-quality breakdown showing foundational principles, formulas, and step-by-step logic.
-2. Distractor Analysis: For Section A MCQs, provide an array "distractorAnalysis" explaining why the correct option is right AND why each of the other 3 options is incorrect (pointing out the misconception!).
-3. Marking Scheme: An array of steps with fractional marks allocated (e.g. "Formula & Principle: 1 mark", "Substitution of values: 1 mark", "Calculations and SI Units: 1 mark").
-4. Examiner Tip: A short tip on how to secure full marks or avoid common calculation traps.
+EXPLANATIONS & MARKING SCHEME:
+- Detailed Explanation: Clear, textbook-quality breakdown showing foundational principles and step-by-step logic.
+- Distractor Analysis: For Section A MCQs, explain why the correct option is right and common pitfalls in incorrect options.
+- Marking Scheme: Concise step-by-step marks distribution.
+- Examiner Tip: Short high-impact tip to avoid traps.
 
-OUTPUT FORMAT:
-Output ONLY valid JSON matching this exact structure without markdown code fences if possible:
+CRITICAL JSON RULES:
+- Output valid JSON only without introductory commentary.
+- Ensure all double quotes inside strings are escaped with \\" and newlines with \\n.
+
+OUTPUT SCHEMA TEMPLATE:
 {
   "title": "${subject} Examination - ${topicOrChapter}",
   "subject": "${subject}",
@@ -89,13 +94,12 @@ Output ONLY valid JSON matching this exact structure without markdown code fence
   "totalMarks": ${totalMarks},
   "durationMinutes": ${durationMinutes},
   "generalInstructions": [
-    "This question paper contains multiple sections. All questions are compulsory.",
-    "Section A comprises objective type questions of 1 mark each.",
-    "Section B comprises Very Short Answer (VSA) type questions carrying 2 marks each.",
-    "Section C comprises Short Answer (SA) type questions carrying 3 marks each.",
-    "Section D comprises Long Answer (LA) type questions carrying 5 marks each.",
-    "Section E comprises Case-Based integrated units of assessment of 4 marks each.",
-    "Use of calculators is strictly prohibited."
+    "All questions are compulsory.",
+    "Section A contains 1 mark objective questions.",
+    "Section B contains 2 marks VSA questions.",
+    "Section C contains 3 marks SA questions.",
+    "Section D contains 5 marks LA questions.",
+    "Section E contains 4 marks Case-Based questions."
   ],
   "sections": [
     {
@@ -106,7 +110,7 @@ Output ONLY valid JSON matching this exact structure without markdown code fence
         {
           "number": 1,
           "type": "mcq",
-          "questionText": "Question text here...",
+          "questionText": "Question text...",
           "marks": 1,
           "options": [
             { "key": "A", "text": "Option A" },
@@ -115,7 +119,7 @@ Output ONLY valid JSON matching this exact structure without markdown code fence
             { "key": "D", "text": "Option D" }
           ],
           "correctOption": "A",
-          "detailedExplanation": "Complete textbook-grade explanation...",
+          "detailedExplanation": "Complete textbook explanation...",
           "distractorAnalysis": [
             { "optionKey": "A", "text": "Option A", "isCorrect": true, "whyWrongOrRight": "Correct because..." },
             { "optionKey": "B", "text": "Option B", "isCorrect": false, "whyWrongOrRight": "Incorrect because..." },
@@ -123,10 +127,10 @@ Output ONLY valid JSON matching this exact structure without markdown code fence
             { "optionKey": "D", "text": "Option D", "isCorrect": false, "whyWrongOrRight": "Incorrect because..." }
           ],
           "markingScheme": [
-            { "stepDescription": "Correct option identification", "marks": 1 }
+            { "stepDescription": "Correct option", "marks": 1 }
           ],
-          "keyFormulasOrConcepts": ["Key formula or principle"],
-          "examinerTip": "Common trap to watch out for..."
+          "keyFormulasOrConcepts": ["Key principle"],
+          "examinerTip": "Key tip..."
         }
       ]
     }
@@ -142,72 +146,73 @@ export async function generateCBSEExamPaper(config: ExamConfig): Promise<{ paper
 
   try {
     const aiRes = await fetchAI({
-      model: "gemini-3.1-flash-lite",
+      model: "gemini-3.5-flash-lite",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 5000,
-      timeoutMs: 45000,
+      max_tokens: 8192,
+      responseMimeType: "application/json",
+      timeoutMs: 55000,
     });
 
     if (aiRes.error) {
       return { error: aiRes.error };
     }
 
-    let raw = (aiRes.content || "").trim();
-    if (raw.startsWith("```")) {
-      raw = raw.replace(/^```(?:json)?\n?/, "").replace(/\n?```$/, "").trim();
+    const raw = (aiRes.content || "").trim();
+    if (!raw) {
+      return { error: "AI service returned an empty response. Please try again." };
     }
 
-    // Extract exact JSON object boundaries in case of conversational prefixes
-    const firstBrace = raw.indexOf("{");
-    const lastBrace = raw.lastIndexOf("}");
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      raw = raw.substring(firstBrace, lastBrace + 1);
+    // Parse JSON with multi-layered repair engine
+    const parsed = safeParseJSON<any>(raw);
+
+    if (!parsed || typeof parsed !== "object") {
+      return { error: "Failed to parse question paper blueprint. Please try again." };
     }
 
-    // Parse JSON
-    const parsed = JSON.parse(raw);
-
-    if (!parsed.sections || !Array.isArray(parsed.sections) || parsed.sections.length === 0) {
+    const sectionsArray = Array.isArray(parsed.sections) ? parsed.sections : [];
+    if (sectionsArray.length === 0) {
       return { error: "AI generated an incomplete paper blueprint. Please click generate again." };
     }
     
     // Validate and enrich with unique IDs
     const paper: ExamPaper = {
       id: crypto.randomUUID(),
-      title: parsed.title || `${config.subject} Examination`,
+      title: parsed.title || `${config.subject} Examination - ${config.topicOrChapter}`,
       subject: config.subject,
       classLevel: config.classLevel,
       difficulty: config.difficulty,
       totalMarks: Number(parsed.totalMarks) || config.totalMarks,
       durationMinutes: Number(parsed.durationMinutes) || config.durationMinutes,
       createdAt: new Date().toISOString(),
-      generalInstructions: Array.isArray(parsed.generalInstructions) ? parsed.generalInstructions : [
-        "All questions are compulsory.",
-        "Draw neat diagrams wherever necessary.",
-        "Write step-by-step solutions with appropriate units."
-      ],
-      sections: (parsed.sections || []).map((sec: any) => ({
+      generalInstructions: Array.isArray(parsed.generalInstructions) && parsed.generalInstructions.length > 0 
+        ? parsed.generalInstructions 
+        : [
+            "All questions are compulsory.",
+            "Draw neat diagrams or write formatted code wherever necessary.",
+            "Write step-by-step solutions with appropriate units."
+          ],
+      sections: sectionsArray.map((sec: any) => ({
         section: (sec.section || "Section A") as SectionType,
         title: sec.title || sec.section || "Section",
         instructions: sec.instructions || "Answer all questions in this section.",
-        questions: (sec.questions || []).map((q: any, qIdx: number) => ({
+        questions: (Array.isArray(sec.questions) ? sec.questions : []).map((q: any, qIdx: number) => ({
           id: crypto.randomUUID(),
           number: q.number || qIdx + 1,
           section: (sec.section || "Section A") as SectionType,
-          type: q.type || "mcq",
+          type: q.type || (q.options ? "mcq" : "vsa"),
           questionText: q.questionText || "Question",
           marks: Number(q.marks) || 1,
-          options: q.options || undefined,
+          options: Array.isArray(q.options) ? q.options : undefined,
           correctOption: q.correctOption || undefined,
           assertionText: q.assertionText || undefined,
           reasonText: q.reasonText || undefined,
           caseStudyScenario: q.caseStudyScenario || undefined,
-          subParts: q.subParts || undefined,
+          subParts: Array.isArray(q.subParts) ? q.subParts : undefined,
           markingScheme: Array.isArray(q.markingScheme) && q.markingScheme.length > 0 
             ? q.markingScheme 
-            : [{ stepDescription: "Complete accurate answer", marks: q.marks || 1 }],
-          detailedExplanation: q.detailedExplanation || "No explanation provided.",
+            : [{ stepDescription: "Complete accurate answer", marks: Number(q.marks) || 1 }],
+          detailedExplanation: q.detailedExplanation || "Refer to standard textbook principles.",
           distractorAnalysis: Array.isArray(q.distractorAnalysis) ? q.distractorAnalysis : undefined,
           keyFormulasOrConcepts: Array.isArray(q.keyFormulasOrConcepts) ? q.keyFormulasOrConcepts : [],
           examinerTip: q.examinerTip || undefined,

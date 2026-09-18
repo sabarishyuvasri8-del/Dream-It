@@ -5,6 +5,7 @@
  */
 
 import { fetchAI } from '../../lib/ai-client';
+import { safeParseJSON } from '../../lib/json-repair';
 
 export interface GeneratedCard {
   id: string;
@@ -115,32 +116,26 @@ export async function generateFlashcardsAndSummary(
 
   try {
     const aiRes = await fetchAI({
-      model: 'gemini-3.1-flash-lite',
+      model: 'gemini-3.5-flash-lite',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
-      max_tokens: 4500,
-      timeoutMs: 40000,
+      max_tokens: 8192,
+      responseMimeType: 'application/json',
+      timeoutMs: 45000,
     });
 
     if (aiRes.error) {
       return { error: aiRes.error };
     }
 
-    let raw = (aiRes.content || '').trim();
-    if (raw.startsWith('```')) {
-      raw = raw.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+    const raw = (aiRes.content || '').trim();
+    if (!raw) {
+      return { error: 'Failed to extract active recall cards from document. Please retry.' };
     }
 
-    // Exact JSON boundary extraction
-    const firstBrace = raw.indexOf('{');
-    const lastBrace = raw.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1) {
-      raw = raw.substring(firstBrace, lastBrace + 1);
-    }
+    const parsed = safeParseJSON<any>(raw);
 
-    const parsed = JSON.parse(raw);
-
-    if (!parsed.flashcards || !Array.isArray(parsed.flashcards) || parsed.flashcards.length === 0) {
+    if (!parsed || !parsed.flashcards || !Array.isArray(parsed.flashcards) || parsed.flashcards.length === 0) {
       return { error: 'Failed to extract active recall cards from document. Please retry.' };
     }
 
