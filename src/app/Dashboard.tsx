@@ -75,6 +75,7 @@ import {
   X,
   Zap,
   Loader2,
+  UploadCloud,
 } from "lucide-react";
 import {
   AttachedFile,
@@ -367,16 +368,22 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const chatMaxContainerRef = useRef<HTMLDivElement>(null);
 
 
-  // ─── AI File Attachment ───
+  // ─── AI File Attachment & Drag-and-Drop ───
   const [chatFile, setChatFile] = useState<{
+    id?: string;
     name: string;
     size: number;
     type: string;
     content: string;
     isImage?: boolean;
+    isPdf?: boolean;
+    pageCount?: number;
     base64?: string;
     dataUrl?: string;
   } | null>(null);
+  const [isExtractingChatFile, setIsExtractingChatFile] = useState(false);
+  const [isChatDraggingOver, setIsChatDraggingOver] = useState(false);
+  const chatDragCounterRef = useRef(0);
   const chatFileInputRef = useRef<HTMLInputElement>(null);
 
   // ─── Notes State ───
@@ -511,6 +518,22 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       chatMaxContainerRef.current.scrollTop = chatMaxContainerRef.current.scrollHeight;
     }
   }, [messages, isAsking, isChatMaximized]);
+
+  // ─── Global Drag & Drop Prevention (Stop browser from navigating away on dropped files) ───
+  useEffect(() => {
+    const handleGlobalDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const handleGlobalDrop = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("dragover", handleGlobalDragOver);
+    window.addEventListener("drop", handleGlobalDrop);
+    return () => {
+      window.removeEventListener("dragover", handleGlobalDragOver);
+      window.removeEventListener("drop", handleGlobalDrop);
+    };
+  }, []);
 
   // ─── Load workspace (Optimistic Instant Hydration) ───
   useEffect(() => {
@@ -2431,48 +2454,107 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     }
   };
 
-  // ─── Chat file attach ───
+  // ─── Chat file attach & Drag-and-Drop Ingestion ───
+  const processAndAttachChatFile = async (file: File) => {
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      showToast("File too large for AI chat (max 25MB)", "error");
+      return;
+    }
+
+    const isImage = Boolean(file.type.startsWith("image/") || file.name.match(/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i));
+    const isPDF = Boolean(file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
+
+    try {
+      setIsExtractingChatFile(true);
+      let contentText = "";
+      let base64 = "";
+      let dataUrl = "";
+      let pageCount: number | undefined;
+
+      if (isImage) {
+        dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+        contentText = `[IMAGE: ${file.name} (${formatFileSize(file.size)})]`;
+        showToast(`Attached image: ${file.name} 📸`);
+      } else if (isPDF) {
+        showToast(`Reading PDF "${file.name}"... 📄`);
+        const { extractTextFromFile } = await import("./flashcards/pdfExtractor");
+        const extracted = await extractTextFromFile(file);
+        contentText = extracted.text || `[PDF: ${file.name} (${formatFileSize(file.size)})]`;
+        pageCount = extracted.pageCount;
+        showToast(`Attached PDF: ${file.name} (${pageCount || 1} pages) ✨`);
+      } else if (file.type.startsWith("text/") || file.name.match(/\.(txt|md|py|js|ts|tsx|jsx|json|csv|html|css|cpp|c|java|sql)$/i)) {
+        contentText = await file.text();
+        showToast(`Attached ${file.name} 📝`);
+      } else {
+        contentText = await file.text().catch(() => `[Attachment: ${file.name}]`);
+        showToast(`Attached ${file.name}`);
+      }
+
+      setChatFile({
+        name: file.name,
+        size: file.size,
+        type: file.type || (isImage ? "image/jpeg" : isPDF ? "application/pdf" : "application/octet-stream"),
+        content: contentText,
+        isImage,
+        isPdf: isPDF,
+        pageCount,
+        base64,
+        dataUrl,
+      });
+    } catch (err: any) {
+      console.error("[ChatFileAttach] Error reading file:", err);
+      showToast(`Failed reading file: ${err.message}`, "error");
+    } finally {
+      setIsExtractingChatFile(false);
+    }
+  };
+
   const handleChatFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      const file = e.target.files[0];
-      if (file.size > 15 * 1024 * 1024) {
-        showToast("File too large for AI chat (max 15MB)", "error");
-        return;
-      }
-      try {
-        let contentText = "";
-        let base64 = "";
-        let dataUrl = "";
-        const isImage = Boolean(file.type.startsWith("image/") || file.name.match(/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i));
+      await processAndAttachChatFile(e.target.files[0]);
+      e.target.value = "";
+    }
+  };
 
-        if (isImage) {
-          dataUrl = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          });
-          base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
-          contentText = `[IMAGE: ${file.name} (${formatFileSize(file.size)})]`;
-        } else if (file.type.startsWith("text/") || file.name.match(/\.(txt|md|py|js|ts|tsx|jsx|json|csv|html|css|cpp|c|java|sql)$/i)) {
-          contentText = await file.text();
-        } else {
-          contentText = await file.text().catch(() => `[Attachment: ${file.name}]`);
-        }
+  const handleChatDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    chatDragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsChatDraggingOver(true);
+    }
+  };
 
-        setChatFile({
-          name: file.name,
-          size: file.size,
-          type: file.type || (isImage ? "image/jpeg" : "application/octet-stream"),
-          content: contentText,
-          isImage,
-          base64,
-          dataUrl,
-        });
-        showToast(`Attached ${file.name}`);
-      } catch (err: any) {
-        showToast(`Failed reading file: ${err.message}`, "error");
-      }
+  const handleChatDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleChatDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    chatDragCounterRef.current -= 1;
+    if (chatDragCounterRef.current <= 0) {
+      chatDragCounterRef.current = 0;
+      setIsChatDraggingOver(false);
+    }
+  };
+
+  const handleChatDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    chatDragCounterRef.current = 0;
+    setIsChatDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processAndAttachChatFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -2482,19 +2564,21 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     const rawQuestion = customQuery || chatDraft.trim();
     if (!rawQuestion && !chatFile && !isAsking) return;
 
-    const questionText = rawQuestion || (chatFile ? (chatFile.isImage ? "Please analyze this image in detail." : `Please analyze attached file: ${chatFile.name}`) : "");
+    const questionText = rawQuestion || (chatFile ? (chatFile.isImage ? "Please analyze this image in detail." : `Please analyze attached document: ${chatFile.name}`) : "");
     const attachedFileBackup = chatFile;
 
     const displayMessage = attachedFileBackup
       ? (attachedFileBackup.isImage && attachedFileBackup.dataUrl
           ? `![${attachedFileBackup.name}](${attachedFileBackup.dataUrl})\n\n📎 **${attachedFileBackup.name}** (${formatFileSize(attachedFileBackup.size)})\n\n${questionText}`
-          : `📎 **${attachedFileBackup.name}** (${formatFileSize(attachedFileBackup.size)})\n\n${questionText}`)
+          : attachedFileBackup.isPdf
+            ? `📄 **${attachedFileBackup.name}** (${attachedFileBackup.pageCount ? `${attachedFileBackup.pageCount} pages, ` : ""}${formatFileSize(attachedFileBackup.size)})\n\n${questionText}`
+            : `📎 **${attachedFileBackup.name}** (${formatFileSize(attachedFileBackup.size)})\n\n${questionText}`)
       : questionText;
 
     const promptForAI = attachedFileBackup
       ? (attachedFileBackup.isImage
           ? questionText
-          : `[ATTACHED FILE: ${attachedFileBackup.name} (${formatFileSize(attachedFileBackup.size)})]\n--- FILE CONTENT START ---\n${attachedFileBackup.content.slice(0, 15000)}\n--- FILE CONTENT END ---\n\nUser Question: ${questionText}`)
+          : `[ATTACHED DOCUMENT: ${attachedFileBackup.name} (${attachedFileBackup.pageCount ? `${attachedFileBackup.pageCount} pages, ` : ""}${formatFileSize(attachedFileBackup.size)})]\n--- DOCUMENT CONTENT START ---\n${attachedFileBackup.content.slice(0, 25000)}\n--- DOCUMENT CONTENT END ---\n\nUser Question: ${questionText}`)
       : questionText;
 
     setMessages((curr) => [...curr, { role: "user", content: displayMessage }]);
@@ -3860,7 +3944,27 @@ Mathematics:
               </div>
 
               {/* ─── Right: AI Chat Panel (Visible on Desktop / Wide screens) ─── */}
-              <aside className="hidden xl:flex flex-col overflow-hidden rounded-2xl w-full minimal-surface h-[calc(100vh-120px)] min-h-[520px] sticky top-4 shadow-sm feature-zoom" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)" }}>
+              <aside
+                onDragEnter={handleChatDragEnter}
+                onDragOver={handleChatDragOver}
+                onDragLeave={handleChatDragLeave}
+                onDrop={handleChatDrop}
+                className="hidden xl:flex flex-col overflow-hidden rounded-2xl w-full minimal-surface h-[calc(100vh-120px)] min-h-[520px] sticky top-4 shadow-sm feature-zoom relative"
+                style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)" }}
+              >
+                {/* Visual Drag & Drop Overlay */}
+                {isChatDraggingOver && (
+                  <div className="absolute inset-0 z-40 flex flex-col items-center justify-center p-6 text-center bg-indigo-950/85 backdrop-blur-md border-2 border-dashed border-indigo-400 rounded-2xl animate-in fade-in duration-150 pointer-events-none">
+                    <div className="p-3.5 rounded-2xl bg-indigo-500/20 text-indigo-300 mb-3 shadow-lg ring-1 ring-indigo-400/40 animate-bounce">
+                      <UploadCloud size={32} />
+                    </div>
+                    <h3 className="text-sm font-bold text-white tracking-wide">Drop PDF or JPG here</h3>
+                    <p className="text-[11px] text-indigo-200/80 mt-1 max-w-[220px]">
+                      Dream It AI will instantly read textbooks, exam papers, notes, or diagrams
+                    </p>
+                  </div>
+                )}
+
                 {/* Side Panel Header */}
                 <div className="flex items-center justify-between p-3.5 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                   <div className="flex items-center gap-2">
@@ -3959,18 +4063,31 @@ Mathematics:
                 {/* Chat Input (Positioned cleanly at bottom) */}
                 <form onSubmit={askCoach} className="shrink-0 p-3" style={{ borderTop: "1px solid var(--m-border-light)" }}>
                   <input ref={chatFileInputRef} type="file" onChange={handleChatFileSelect} className="hidden" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.docx,.doc,.txt,.py,.js,.ts,.tsx,.jsx,.json,.csv,.html,.css,.cpp,.c,.java,.sql,.md" />
-                  {chatFile && (
+                  {isExtractingChatFile && (
+                    <div className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium mb-2 animate-pulse" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
+                      <Loader2 size={13} className="animate-spin text-indigo-400 shrink-0" />
+                      <span className="truncate">Reading & extracting text from document...</span>
+                    </div>
+                  )}
+                  {chatFile && !isExtractingChatFile && (
                     <div className="flex items-center justify-between rounded-xl px-3 py-1.5 text-xs font-bold mb-2" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
                       <span className="flex items-center gap-2 truncate">
                         {chatFile.isImage && chatFile.dataUrl ? (
                           <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                        ) : chatFile.isPdf ? (
+                          <span className="flex items-center gap-1 shrink-0 text-rose-400">
+                            <FileText size={14} />
+                            <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+                          </span>
                         ) : (
                           <Paperclip size={13} />
                         )}
                         <span className="truncate">{chatFile.name}</span>
-                        <span className="text-[10px] opacity-75 font-mono">({formatFileSize(chatFile.size)})</span>
+                        <span className="text-[10px] opacity-75 font-mono">
+                          ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
+                        </span>
                       </span>
-                      <button type="button" onClick={() => setChatFile(null)} className="p-0.5 rounded-md transition hover:opacity-75"><X size={14} /></button>
+                      <button type="button" onClick={() => setChatFile(null)} className="p-0.5 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
                     </div>
                   )}
                   <div className="flex items-center gap-2 rounded-2xl p-1.5 pl-2.5" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
@@ -3997,9 +4114,26 @@ Mathematics:
               {/* ─── Full Screen Wide Angle AI Fullscreen Overlay ─── */}
               {isChatMaximized && (
                 <div
-                  className="fixed inset-0 z-50 flex flex-col w-full h-full p-0 m-0 overflow-hidden minimal-surface animate-in fade-in duration-200"
+                  onDragEnter={handleChatDragEnter}
+                  onDragOver={handleChatDragOver}
+                  onDragLeave={handleChatDragLeave}
+                  onDrop={handleChatDrop}
+                  className="fixed inset-0 z-50 flex flex-col w-full h-full p-0 m-0 overflow-hidden minimal-surface animate-in fade-in duration-200 relative"
                   style={{ backgroundColor: "var(--m-surface-solid)", color: "var(--m-text)" }}
                 >
+                  {/* Fullscreen Drag & Drop Visual Overlay */}
+                  {isChatDraggingOver && (
+                    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center p-8 text-center bg-black/85 backdrop-blur-xl border-4 border-dashed border-indigo-500 rounded-none animate-in fade-in duration-150 pointer-events-none">
+                      <div className="p-5 rounded-3xl bg-indigo-500/20 text-indigo-300 mb-4 shadow-2xl ring-1 ring-indigo-400/40 animate-bounce">
+                        <UploadCloud size={48} />
+                      </div>
+                      <h3 className="text-xl font-bold text-white tracking-wide font-[Roboto_Slab]">Drop PDF or Image anywhere</h3>
+                      <p className="text-sm text-indigo-200/80 mt-1.5 max-w-md">
+                        Release to attach to your chat with Dream It AI. Automatically extracts all PDF text and supports Gemini vision analysis!
+                      </p>
+                    </div>
+                  )}
+
                   {/* Fullscreen Header */}
                   <div className="w-full px-4 sm:px-6 md:px-8 py-3.5 sm:py-4 flex items-center justify-between shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface)" }}>
                     <div className="flex items-center gap-3">
@@ -4054,22 +4188,33 @@ Mathematics:
                     )}
                   </div>
 
-
-
                   {/* Fullscreen Input Bar */}
                   <form onSubmit={askCoach} className="w-full max-w-6xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
-                    {chatFile && (
+                    {isExtractingChatFile && (
+                      <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                        <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
+                        <span>Reading & extracting text from document...</span>
+                      </div>
+                    )}
+                    {chatFile && !isExtractingChatFile && (
                       <div className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
                         <span className="flex items-center gap-2 truncate">
                           {chatFile.isImage && chatFile.dataUrl ? (
                             <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                          ) : chatFile.isPdf ? (
+                            <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
+                              <FileText size={15} />
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+                            </span>
                           ) : (
                             <Paperclip size={14} />
                           )}
                           <span className="truncate">{chatFile.name}</span>
-                          <span className="text-[10px] opacity-75 font-mono">({formatFileSize(chatFile.size)})</span>
+                          <span className="text-[10px] opacity-75 font-mono">
+                            ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
+                          </span>
                         </span>
-                        <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75"><X size={14} /></button>
+                        <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
                       </div>
                     )}
                     <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>

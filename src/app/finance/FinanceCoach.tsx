@@ -13,11 +13,18 @@ import {
   calculateFutureValue,
 } from "../../lib/finance-calculations";
 import { DEFAULT_EXPENSE_CATEGORIES, DEFAULT_INCOME_CATEGORIES } from "../../lib/finance-defaults";
-import { Bot, Send, Sparkles, Trash2, User } from "lucide-react";
+import { Bot, Send, Sparkles, Trash2, User, Paperclip, FileText, UploadCloud, X, Loader2 } from "lucide-react";
 import { useUser } from "@clerk/clerk-react";
 import VoiceInputButton from "../components/VoiceInputButton";
 import { fetchAI } from "../../lib/ai-client";
 import MarkdownRenderer from "../components/MarkdownRenderer";
+
+function formatFileSize(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -205,6 +212,117 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
   const [isAsking, setIsAsking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // ─── File Attachment & Drag-and-Drop ───
+  const [attachedFile, setAttachedFile] = useState<{
+    name: string;
+    size: number;
+    type: string;
+    content: string;
+    isImage?: boolean;
+    isPdf?: boolean;
+    pageCount?: number;
+    base64?: string;
+    dataUrl?: string;
+  } | null>(null);
+  const [isExtractingFile, setIsExtractingFile] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const processAndAttachFile = async (file: File) => {
+    if (!file) return;
+    if (file.size > 25 * 1024 * 1024) {
+      alert("File too large for AI Money Coach (max 25MB)");
+      return;
+    }
+
+    const isImage = Boolean(file.type.startsWith("image/") || file.name.match(/\.(png|jpg|jpeg|gif|webp|bmp|svg)$/i));
+    const isPDF = Boolean(file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
+
+    try {
+      setIsExtractingFile(true);
+      let contentText = "";
+      let base64 = "";
+      let dataUrl = "";
+      let pageCount: number | undefined;
+
+      if (isImage) {
+        dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+        contentText = `[IMAGE RECEIPT / INVOICE: ${file.name} (${formatFileSize(file.size)})]`;
+      } else if (isPDF) {
+        const { extractTextFromFile } = await import("../flashcards/pdfExtractor");
+        const extracted = await extractTextFromFile(file);
+        contentText = extracted.text || `[PDF DOCUMENT: ${file.name} (${formatFileSize(file.size)})]`;
+        pageCount = extracted.pageCount;
+      } else {
+        contentText = await file.text().catch(() => `[Attachment: ${file.name}]`);
+      }
+
+      setAttachedFile({
+        name: file.name,
+        size: file.size,
+        type: file.type || (isImage ? "image/jpeg" : isPDF ? "application/pdf" : "application/octet-stream"),
+        content: contentText,
+        isImage,
+        isPdf: isPDF,
+        pageCount,
+        base64,
+        dataUrl,
+      });
+    } catch (err: any) {
+      console.error("[FinanceCoach] File processing error:", err);
+    } finally {
+      setIsExtractingFile(false);
+    }
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processAndAttachFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await processAndAttachFile(e.target.files[0]);
+      e.target.value = "";
+    }
+  };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -214,18 +332,39 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
 
   const sendMessage = async (e?: FormEvent, customQuery?: string) => {
     if (e) e.preventDefault();
-    const question = customQuery || draft.trim();
-    if (!question || isAsking) return;
+    const rawQuestion = customQuery || draft.trim();
+    if (!rawQuestion && !attachedFile && !isAsking) return;
 
-    setMessages((prev) => [...prev, { role: "user", content: question }]);
+    const question = rawQuestion || (attachedFile ? (attachedFile.isImage ? "Please analyze this financial receipt/bill in detail and extract the transaction." : `Please analyze this financial document: ${attachedFile.name}`) : "");
+    const attachedBackup = attachedFile;
+
+    const displayContent = attachedBackup
+      ? (attachedBackup.isImage && attachedBackup.dataUrl
+          ? `![${attachedBackup.name}](${attachedBackup.dataUrl})\n\n📎 **${attachedBackup.name}** (${formatFileSize(attachedBackup.size)})\n\n${question}`
+          : attachedBackup.isPdf
+            ? `📄 **${attachedBackup.name}** (${attachedBackup.pageCount ? `${attachedBackup.pageCount} pages, ` : ""}${formatFileSize(attachedBackup.size)})\n\n${question}`
+            : `📎 **${attachedBackup.name}** (${formatFileSize(attachedBackup.size)})\n\n${question}`)
+      : question;
+
+    const promptForAI = attachedBackup
+      ? (attachedBackup.isImage
+          ? question
+          : `[ATTACHED FINANCIAL STATEMENT / RECEIPT: ${attachedBackup.name} (${attachedBackup.pageCount ? `${attachedBackup.pageCount} pages, ` : ""}${formatFileSize(attachedBackup.size)})]\n--- DOCUMENT CONTENT START ---\n${attachedBackup.content.slice(0, 25000)}\n--- DOCUMENT CONTENT END ---\n\nUser Question: ${question}`)
+      : question;
+
+    setMessages((prev) => [...prev, { role: "user", content: displayContent }]);
     if (!customQuery) setDraft("");
+    setAttachedFile(null);
     setIsAsking(true);
 
     const systemPrompt = SYSTEM_PROMPT_TEMPLATE + financialContext;
     const history = messages
       .filter((m) => !m.content.includes("temporarily unavailable") && !m.content.includes("Rate Limit Exceeded"))
       .slice(-8)
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({
+        role: m.role,
+        content: m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]"),
+      }));
 
     try {
       setMessages((prev) => [...prev, { role: "assistant", content: "" }]);
@@ -235,8 +374,14 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
         messages: [
           { role: "system", content: systemPrompt },
           ...history,
-          { role: "user", content: question },
+          { role: "user", content: promptForAI },
         ],
+        image: attachedBackup?.isImage && attachedBackup.base64 ? {
+          name: attachedBackup.name,
+          mimeType: attachedBackup.type,
+          base64Data: attachedBackup.base64,
+          dataUrl: attachedBackup.dataUrl,
+        } : undefined,
         max_tokens: 4096,
         temperature: 0.4,
         top_p: 0.9,
@@ -274,7 +419,27 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
   };
 
   return (
-    <div className="flex flex-col" style={{ minHeight: "70vh" }}>
+    <div
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className="flex flex-col relative"
+      style={{ minHeight: "70vh" }}
+    >
+      {/* Drag & Drop Visual Overlay */}
+      {isDragging && (
+        <div className="absolute inset-0 z-40 flex flex-col items-center justify-center p-8 text-center bg-black/85 backdrop-blur-md border-4 border-dashed border-emerald-500 rounded-3xl animate-in fade-in duration-150 pointer-events-none">
+          <div className="p-4 rounded-2xl bg-emerald-500/20 text-emerald-300 mb-3 shadow-lg ring-1 ring-emerald-400/40 animate-bounce">
+            <UploadCloud size={40} />
+          </div>
+          <h3 className="text-lg font-bold text-white tracking-wide font-[Roboto_Slab]">Drop Receipt, Invoice, or Bank Statement</h3>
+          <p className="text-xs text-emerald-200/80 mt-1 max-w-sm">
+            Release to analyze with AI Money Coach. Reads PDF statements and processes receipt images with Gemini vision!
+          </p>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-2">
@@ -403,6 +568,53 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
         <div ref={chatEndRef} />
       </div>
 
+      {/* Attached File Preview Pill */}
+      {isExtractingFile && (
+        <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium mb-2 border border-emerald-500/30 bg-emerald-500/10 text-emerald-400 animate-pulse">
+          <Loader2 size={14} className="animate-spin shrink-0" />
+          <span>Extracting financial document data...</span>
+        </div>
+      )}
+      {attachedFile && !isExtractingFile && (
+        <div
+          className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 border"
+          style={{
+            backgroundColor: "var(--m-surface-alt)",
+            borderColor: "var(--m-border)",
+            color: "var(--m-primary)",
+          }}
+        >
+          <span className="flex items-center gap-2 truncate">
+            {attachedFile.isImage && attachedFile.dataUrl ? (
+              <img
+                src={attachedFile.dataUrl}
+                alt={attachedFile.name}
+                className="size-7 object-cover rounded-md border border-black/10 shrink-0"
+              />
+            ) : attachedFile.isPdf ? (
+              <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
+                <FileText size={15} />
+                <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+              </span>
+            ) : (
+              <Paperclip size={14} />
+            )}
+            <span className="truncate">{attachedFile.name}</span>
+            <span className="text-[10px] opacity-75 font-mono">
+              ({attachedFile.pageCount ? `${attachedFile.pageCount} pgs • ` : ""}{formatFileSize(attachedFile.size)})
+            </span>
+          </span>
+          <button
+            type="button"
+            onClick={() => setAttachedFile(null)}
+            className="p-1 rounded-md transition hover:opacity-75"
+            title="Remove attachment"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
       {/* Input Area */}
       <div
         className="rounded-2xl border p-2 flex items-center gap-2"
@@ -411,6 +623,13 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
           borderColor: "var(--m-border)",
         }}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.csv,.txt"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
         {messages.length > 0 && (
           <button
             onClick={clearChat}
@@ -421,14 +640,23 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
             <Trash2 size={16} />
           </button>
         )}
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          className="flex items-center justify-center size-9 rounded-xl transition hover:opacity-70 shrink-0"
+          style={{ color: "var(--m-text-sub)" }}
+          title="Attach receipt, invoice or bank statement (PDF, JPG, PNG)"
+        >
+          <Paperclip size={16} />
+        </button>
         <form onSubmit={sendMessage} className="flex-1 flex items-center gap-2">
           <input
             type="text"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Ask about your finances..."
+            placeholder="Ask about finances or drop receipt/statement..."
             disabled={isAsking}
-            className="flex-1 bg-transparent px-3 py-2 text-sm outline-none"
+            className="flex-1 bg-transparent px-2 py-2 text-sm outline-none"
             style={{ color: "var(--m-text-heading)" }}
           />
           <VoiceInputButton
@@ -439,7 +667,7 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
           />
           <button
             type="submit"
-            disabled={isAsking || !draft.trim()}
+            disabled={isAsking || (!draft.trim() && !attachedFile)}
             className="grid size-9 place-items-center rounded-xl transition-all hover:scale-105 disabled:opacity-40 shrink-0"
             style={{
               backgroundColor: "var(--m-primary)",

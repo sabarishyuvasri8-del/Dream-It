@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft } from "lucide-react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -37,6 +37,43 @@ export default function ChatModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragCounterRef = useRef(0);
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      setSelectedFile(e.dataTransfer.files[0]);
+    }
+  };
 
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -247,7 +284,21 @@ export default function ChatModal({
         </div>
 
         {/* Right Area: Chat History */}
-        <div className={`flex-1 flex-col relative w-full md:w-auto min-w-0 ${!activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ backgroundColor: "var(--m-bg)" }}>
+        <div
+          onDragEnter={handleDragEnter}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`flex-1 flex-col relative w-full md:w-auto min-w-0 ${!activeFriend ? 'hidden md:flex' : 'flex'}`}
+          style={{ backgroundColor: "var(--m-bg)" }}
+        >
+          {isDragging && (
+            <div className="absolute inset-0 z-50 flex flex-col items-center justify-center p-6 text-center bg-black/80 backdrop-blur-md border-4 border-dashed border-indigo-500 rounded-none animate-in fade-in duration-150 pointer-events-none">
+              <UploadCloud size={36} className="text-indigo-400 mb-2 animate-bounce" />
+              <h4 className="text-base font-bold text-white">Drop file to attach</h4>
+              <p className="text-xs text-indigo-200 mt-1">Supports images, PDFs, notes, and documents</p>
+            </div>
+          )}
           {/* Header */}
           <div className="flex flex-col min-w-0" style={{ backgroundColor: "var(--m-surface)" }}>
             <div className="p-4 flex items-center justify-between border-b shrink-0" style={{ borderColor: "var(--m-border)" }}>

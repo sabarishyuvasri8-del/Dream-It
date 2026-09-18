@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ArrowRight,
   HelpCircle,
+  FileText,
 } from "lucide-react";
 import MarkdownRenderer from "./MarkdownRenderer";
 import { ImageAttachment } from "../../lib/ai-client";
@@ -71,6 +72,11 @@ export default function SnapAndSolveModal({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Drag-and-drop & document extraction states
+  const [isDragging, setIsDragging] = useState(false);
+  const [isExtractingDoc, setIsExtractingDoc] = useState(false);
+  const dragCounterRef = useRef(0);
 
   // Start / Stop camera
   const stopCamera = useCallback(() => {
@@ -161,24 +167,110 @@ export default function SnapAndSolveModal({
     stopCamera();
   };
 
-  // Handle file input upload
+  // Handle file input upload & drag-and-drop
+  const processUploadFile = async (file: File) => {
+    if (!file) return;
+    const isPDF = Boolean(file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf"));
+
+    if (isPDF) {
+      try {
+        setIsExtractingDoc(true);
+        const { extractTextFromFile } = await import("../flashcards/pdfExtractor");
+        const res = await extractTextFromFile(file);
+        setUserNote((prev) => (prev ? `${prev}\n\n[PDF Question Text]:\n${res.text}` : res.text));
+        
+        // Generate a synthetic question card thumbnail for the PDF document
+        const canvas = document.createElement("canvas");
+        canvas.width = 600;
+        canvas.height = 400;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#0f172a";
+          ctx.fillRect(0, 0, 600, 400);
+          ctx.fillStyle = "#818cf8";
+          ctx.font = "bold 24px sans-serif";
+          ctx.fillText("📄 PDF Question Document", 35, 60);
+          ctx.font = "bold 18px sans-serif";
+          ctx.fillStyle = "#f8fafc";
+          ctx.fillText(file.name.slice(0, 45), 35, 100);
+          ctx.font = "14px monospace";
+          ctx.fillStyle = "#94a3b8";
+          const previewLines = res.text.slice(0, 300).split("\n").filter(Boolean).slice(0, 8);
+          previewLines.forEach((line, i) => {
+            ctx.fillText(line.slice(0, 60), 35, 145 + i * 26);
+          });
+        }
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.9);
+        const base64Data = dataUrl.replace(/^data:.*?;base64,/, "");
+        setCapturedImage({
+          name: file.name,
+          mimeType: "image/jpeg",
+          base64Data,
+          dataUrl,
+        });
+        stopCamera();
+      } catch (err: any) {
+        setErrorMsg(`Failed reading PDF: ${err.message}`);
+      } finally {
+        setIsExtractingDoc(false);
+      }
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const base64Data = dataUrl.replace(/^data:.*?;base64,/, "");
+        setCapturedImage({
+          name: file.name,
+          mimeType: file.type || "image/jpeg",
+          base64Data,
+          dataUrl,
+        });
+        stopCamera();
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      const base64Data = dataUrl.replace(/^data:.*?;base64,/, "");
-      setCapturedImage({
-        name: file.name,
-        mimeType: file.type || "image/jpeg",
-        base64Data,
-        dataUrl,
-      });
-    };
-    reader.readAsDataURL(file);
+    processUploadFile(file);
     e.target.value = "";
+  };
+
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current += 1;
+    if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+      setIsDragging(true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processUploadFile(e.dataTransfer.files[0]);
+    }
   };
 
   // Retake photo
@@ -256,6 +348,10 @@ export default function SnapAndSolveModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
       <div
+        onDragEnter={handleDragEnter}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         className="relative w-full max-w-2xl rounded-3xl overflow-hidden border shadow-2xl flex flex-col my-auto max-h-[92vh]"
         style={{
           backgroundColor: "var(--m-surface)",
@@ -263,6 +359,19 @@ export default function SnapAndSolveModal({
           color: "var(--m-text)",
         }}
       >
+        {/* Drag & Drop Visual Overlay */}
+        {isDragging && (
+          <div className="absolute inset-0 z-50 flex flex-col items-center justify-center p-6 text-center bg-black/85 backdrop-blur-md border-4 border-dashed border-indigo-500 rounded-3xl animate-in fade-in duration-150 pointer-events-none">
+            <div className="p-4 rounded-2xl bg-indigo-500/20 text-indigo-300 mb-3 shadow-lg ring-1 ring-indigo-400/40 animate-bounce">
+              <UploadCloud size={36} />
+            </div>
+            <h3 className="text-base font-bold text-white tracking-wide font-[Roboto_Slab]">Drop Question Image or PDF</h3>
+            <p className="text-xs text-indigo-200/80 mt-1 max-w-sm">
+              Release to load into Snap & Solve AI Assistant
+            </p>
+          </div>
+        )}
+
         {/* Header */}
         <div
           className="px-5 py-4 flex items-center justify-between border-b shrink-0"
@@ -412,10 +521,18 @@ export default function SnapAndSolveModal({
           {!capturedImage && tab === "upload" && (
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="rounded-2xl border-2 border-dashed p-10 text-center cursor-pointer transition hover:border-[var(--m-primary)]"
+              onDragEnter={handleDragEnter}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`rounded-2xl border-2 border-dashed p-10 text-center cursor-pointer transition ${
+                isDragging ? "border-indigo-500 scale-[1.02]" : "hover:border-[var(--m-primary)]"
+              }`}
               style={{
-                backgroundColor: "var(--m-surface-alt)",
-                borderColor: "var(--m-border)",
+                backgroundColor: isDragging
+                  ? "color-mix(in srgb, var(--m-primary) 12%, transparent)"
+                  : "var(--m-surface-alt)",
+                borderColor: isDragging ? "var(--m-primary)" : "var(--m-border)",
               }}
             >
               <div
@@ -425,13 +542,21 @@ export default function SnapAndSolveModal({
                   color: "var(--m-primary)",
                 }}
               >
-                <UploadCloud size={28} />
+                {isExtractingDoc ? (
+                  <Loader2 size={28} className="animate-spin text-indigo-400" />
+                ) : (
+                  <UploadCloud size={28} />
+                )}
               </div>
               <h3 className="text-sm font-bold font-[Roboto_Slab]" style={{ color: "var(--m-text-heading)" }}>
-                Click or Drop Question Photo Here
+                {isExtractingDoc
+                  ? "Extracting Text from PDF..."
+                  : isDragging
+                  ? "Drop Question PDF or JPG Here!"
+                  : "Click or Drop Question Photo or PDF Here"}
               </h3>
               <p className="text-xs mt-1" style={{ color: "var(--m-text-sub)" }}>
-                Supports handwritten notes, textbook pages, math formulas, or screenshots (PNG, JPG, WEBP)
+                Supports handwritten notes, textbook pages, math formulas, exam questions, or PDFs (PNG, JPG, WEBP, PDF)
               </p>
             </div>
           )}
@@ -440,7 +565,7 @@ export default function SnapAndSolveModal({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/*"
+            accept=".pdf,.png,.jpg,.jpeg,.gif,.webp"
             onChange={handleFileUpload}
             className="hidden"
           />
