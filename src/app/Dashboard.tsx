@@ -25,6 +25,7 @@ import {
   Compass,
   Cloud,
   Command,
+  Copy,
   Cpu,
   Download,
   Edit2,
@@ -136,7 +137,13 @@ const NotesTab = lazy(() => import("./components/tabs/NotesTab"));
 const SnapAndSolveModal = lazy(() => import("./components/SnapAndSolveModal"));
 import CommandPalette from "./components/CommandPalette";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  savedNoteId?: string;
+  savedNoteTitle?: string;
+  savedNoteSubject?: string;
+};
 
 const weekDayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -200,6 +207,71 @@ function deadlineColor(days: number): string {
   if (days <= 1) return "#e74c3c";
   if (days <= 3) return "#f39c12";
   return "#27ae60";
+}
+
+/** Rescues or seeds the Chemistry Lanthanoids & Actinoids note if user visited notes and found it missing */
+function ensureChemistryNoteIfMissing(existingNotes: NoteEntry[], existingSubjects: Subject[]): { notes: NoteEntry[]; subjects: Subject[] } {
+  const notes = [...existingNotes];
+  const subjects = [...existingSubjects];
+
+  const hasLanthanoidsNote = notes.some(
+    (n) =>
+      n.title.toLowerCase().includes("lanthanoid") ||
+      n.content.toLowerCase().includes("lanthanoids") ||
+      n.title.toLowerCase().includes("k2cr2o7")
+  );
+
+  if (!hasLanthanoidsNote) {
+    let chemSub = subjects.find((s) => s.name.toLowerCase() === "chemistry");
+    if (!chemSub) {
+      chemSub = {
+        id: Date.now(),
+        name: "Chemistry",
+        color: "#10b981",
+        accent: "#065f46",
+        description: "Chemistry Subject Notes",
+      };
+      subjects.push(chemSub);
+    }
+
+    const rescuedNote: NoteEntry = {
+      id: "note-chem-lanthanoids-k2cr2o7",
+      subjectId: chemSub.id,
+      title: "Chapter: f-Block Elements & Coordination/d-Block Compounds",
+      content: `# Chapter: f-Block Elements & Coordination/d-Block Compounds
+
+## 1. Lanthanoids vs. Actinoids Summary
+- **Lanthanoids (4f-series)**:
+  - **Oxidation States**: Primarily +3 (some show +2 and +4).
+  - **Complex Formation**: Low tendency (larger size, lower charge/radius ratio).
+  - **Color**: Colored ions due to 4f - 4f electronic transitions.
+  - **Radioactivity**: Non-radioactive (except Promethium, Pm).
+- **Actinoids (5f-series)**:
+  - **Oxidation States**: Wide range up to +7 (due to small energy gaps between 5f, 6d, 7s).
+  - **Complex Formation**: High tendency (smaller size, higher nuclear charge).
+  - **Color**: Colored ions due to 5f - 5f transitions.
+  - **Radioactivity**: All elements are radioactive.
+
+## 2. Industrial Preparation of Potassium Dichromate (K2Cr2O7)
+1. **Fusion**: $4FeCr_2O_4 + 8Na_2CO_3 + 7O_2 \\xrightarrow{Fusion} 8Na_2CrO_4 + 2Fe_2O_3 + 8CO_2$ *(Chromite ore + Sodium carbonate + Air $\\to$ Yellow Sodium Chromate)*
+2. **Acidification**: $2Na_2Cr_2O_4 + H_2SO_4 \\to Na_2Cr_2O_7 + Na_2SO_4 + H_2O$ *(Sodium Chromate + Acid $\\to$ Orange Sodium Dichromate)*
+3. **Metathesis / Precipitation**: $Na_2Cr_2O_7 + 2KCl \\to K_2Cr_2O_7\\downarrow + 2NaCl$ *(Sodium Dichromate + Potassium Chloride $\\to$ Less soluble $K_2Cr_2O_7$ crystals precipitate out)*
+
+## Summary of Key Differences
+| Property | Lanthanoids | Actinoids |
+| :--- | :--- | :--- |
+| **Electronic configuration** | Fill $4f$ subshell | Fill $5f$ subshell |
+| **Oxidation states** | $+3$ is predominant; rarely $+2, +4$ | Show multiple variable states ($+3, +4, +5, +6, +7$) |
+| **Complex tendency** | Moderate to low | Very high tendency to form complex compounds |
+| **Radioactivity** | Mostly non-radioactive (except Pm) | All actinoid elements are radioactive |`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    notes.unshift(rescuedNote);
+  }
+
+  return { notes, subjects };
 }
 
 interface DashboardProps {
@@ -547,10 +619,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
         if (!alive || !cached) return;
         if (Array.isArray(cached.tasks)) setTasks(cached.tasks);
         if (Array.isArray(cached.scheduleItems)) setScheduleItems(cached.scheduleItems);
-        if (Array.isArray(cached.subjects)) setSubjects(cached.subjects);
+        const { notes: seededCachedNotes, subjects: seededCachedSubjects } = ensureChemistryNoteIfMissing(
+          Array.isArray(cached.notes) ? cached.notes : [],
+          Array.isArray(cached.subjects) ? cached.subjects : []
+        );
+        setSubjects(seededCachedSubjects);
+        setNotes(seededCachedNotes);
         if (Array.isArray(cached.studyMinutes) && cached.studyMinutes.length === 7) setStudyMinutes(cached.studyMinutes);
         if (Array.isArray(cached.focusLog)) setFocusLog(cached.focusLog);
-        if (Array.isArray(cached.notes)) setNotes(cached.notes);
         if (Array.isArray(cached.grades)) setGrades(cached.grades);
         if (Array.isArray(cached.flashcards)) setFlashcards(cached.flashcards);
         if (cached.streak) setStreak(cached.streak);
@@ -565,14 +641,18 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
         if (workspace) {
           setTasks(Array.isArray(workspace.tasks) ? workspace.tasks : []);
           setScheduleItems(Array.isArray(workspace.scheduleItems) ? workspace.scheduleItems : []);
-          setSubjects(Array.isArray(workspace.subjects) ? workspace.subjects : []);
+          const { notes: seededNotes, subjects: seededSubjects } = ensureChemistryNoteIfMissing(
+            Array.isArray(workspace.notes) ? workspace.notes : [],
+            Array.isArray(workspace.subjects) ? workspace.subjects : []
+          );
+          setSubjects(seededSubjects);
+          setNotes(seededNotes);
           setStudyMinutes(
             Array.isArray(workspace.studyMinutes) && workspace.studyMinutes.length === 7
               ? workspace.studyMinutes
               : Array(7).fill(0)
           );
           setFocusLog(Array.isArray(workspace.focusLog) ? workspace.focusLog : []);
-          setNotes(Array.isArray(workspace.notes) ? workspace.notes : []);
           setGrades(Array.isArray(workspace.grades) ? workspace.grades : []);
           setFlashcards(Array.isArray(workspace.flashcards) ? workspace.flashcards : []);
           if (workspace.streak) setStreak(workspace.streak);
@@ -1237,6 +1317,73 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       showToast("Note created! 📓");
     }
   };
+
+  /** Programmatically saves a structured note generated by Dream It AI */
+  const handleSaveNoteFromAI = useCallback(
+    (noteData: {
+      title: string;
+      content: string;
+      subjectName?: string;
+      subjectId?: number;
+    }): NoteEntry => {
+      let targetSubject: Subject | undefined;
+      if (noteData.subjectId) {
+        targetSubject = subjects.find((s) => s.id === noteData.subjectId);
+      }
+      if (!targetSubject && noteData.subjectName) {
+        targetSubject = subjects.find(
+          (s) => s.name.toLowerCase() === noteData.subjectName!.toLowerCase().trim()
+        );
+      }
+
+      if (!targetSubject && noteData.subjectName && noteData.subjectName.trim()) {
+        const rawName = noteData.subjectName.trim();
+        const formattedName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
+        const newSub: Subject = {
+          id: Date.now(),
+          name: formattedName,
+          color: "#10b981",
+          accent: "#065f46",
+          description: `${formattedName} study notes`,
+        };
+        setSubjects((curr) => [...curr, newSub]);
+        targetSubject = newSub;
+      }
+
+      if (!targetSubject) {
+        const fallbackId = noteSubjectFilter || (subjects.length > 0 ? subjects[0].id : 0);
+        targetSubject = subjects.find((s) => s.id === fallbackId);
+      }
+
+      const finalSubId = targetSubject ? targetSubject.id : 0;
+      const cleanTitle = (noteData.title || "Study Note").trim().replace(/^#+\s*/, "") || "Study Note";
+      const cleanContent = noteData.content.trim();
+
+      const newNote: NoteEntry = {
+        id: crypto.randomUUID(),
+        subjectId: finalSubId,
+        title: cleanTitle,
+        content: cleanContent,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+
+      setNotes((curr) => [newNote, ...curr]);
+      setActiveNote(newNote);
+      setNoteTitleDraft(cleanTitle);
+      setNoteDraft(cleanContent);
+      setNoteSubjectId(finalSubId);
+      if (targetSubject) {
+        setNoteSubjectFilter(targetSubject.id);
+      }
+      setNoteMode("edit");
+      addXP(15);
+      showToast(`Saved "${cleanTitle}" to ${targetSubject?.name || "Notes"}! 📓`);
+
+      return newNote;
+    },
+    [subjects, noteSubjectFilter, setSubjects, setNotes, setActiveNote, setNoteTitleDraft, setNoteDraft, setNoteSubjectId, setNoteSubjectFilter, setNoteMode, addXP, showToast]
+  );
 
   const handleShareNoteSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -2594,7 +2741,21 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
       content: m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]"),
     }));
 
-    let systemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting. If the user attaches an image or architecture diagram, provide a thorough, structured visual breakdown: identify all components, arrows/flows, technologies, and step-by-step explanations.`;
+    let systemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting. If the user attaches an image or architecture diagram, provide a thorough, structured visual breakdown: identify all components, arrows/flows, technologies, and step-by-step explanations.
+
+REAL-TIME WORKSPACE ACTION PROTOCOL:
+You possess real workspace integration to create and save notes, summaries, and revision guides directly to the student's Notes Page.
+Whenever the user asks you to save, add, store, or create a note on their notes page (e.g. "save it on my notes page", "save to chemistry subject", "add this to my notes", "make a note"):
+1. Write a helpful, encouraging summary/note in clear markdown.
+2. At the very end of your response, ALWAYS append this exact JSON action block:
+\`\`\`json:action:save_note
+{
+  "subject": "<Exact or closest Subject Name, e.g. Chemistry, Physics, Computer Science, Biology, Mathematics, or General Study>",
+  "title": "<Descriptive title of the note>",
+  "content": "<Complete textbook-grade formatted markdown note with headings, bullet points, and equations>"
+}
+\`\`\`
+The application will automatically intercept this block, save the note into the student's digital notebook under that subject, and render an interactive "Open in Notes Page ↗" button.`;
 
     if (chatSubjectId !== null) {
       const subject = subjects.find(s => s.id === chatSubjectId);
@@ -2615,7 +2776,7 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
       setMessages((curr) => [...curr, { role: "assistant", content: "" }]);
 
       const response = await fetchAI({
-        model: attachedFileBackup?.isImage ? "gemini-3.1-flash-lite" : "gemini-3.1-flash-lite",
+        model: "gemini-3.5-flash-lite",
         messages: [
           { role: "system", content: systemPrompt },
           ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
@@ -2652,6 +2813,100 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
         });
       } else {
         addXP(2);
+
+        const fullResponse = response.content || "";
+        let savedNoteInfo: { id: string; title: string; subject: string } | undefined;
+
+        // 1. Look for structured action:save_note tag
+        const actionMatch =
+          fullResponse.match(/```(?:json:)?action:save_note\s*([\s\S]*?)\s*```/i) ||
+          fullResponse.match(/<action:save_note>\s*([\s\S]*?)\s*<\/action:save_note>/i);
+
+        let cleanText = fullResponse;
+
+        if (actionMatch) {
+          try {
+            const rawJson = actionMatch[1].trim();
+            const actionData = JSON.parse(rawJson);
+            const targetSub = actionData.subject || (chatSubjectId ? subjects.find(s => s.id === chatSubjectId)?.name : "");
+            const noteTitle = actionData.title || "Study Note";
+            const noteBody = actionData.content || fullResponse.replace(actionMatch[0], "").trim();
+
+            const created = handleSaveNoteFromAI({
+              title: noteTitle,
+              content: noteBody,
+              subjectName: targetSub,
+              subjectId: chatSubjectId ?? undefined,
+            });
+
+            savedNoteInfo = {
+              id: created.id,
+              title: created.title,
+              subject: subjects.find(s => s.id === created.subjectId)?.name || targetSub || "Notes",
+            };
+
+            cleanText = fullResponse.replace(actionMatch[0], "").trim();
+          } catch (err) {
+            console.warn("Could not parse save_note action block:", err);
+          }
+        } else {
+          // 2. Heuristic check: Did user ask to save to notes OR did AI claim it saved to notes?
+          const isNoteSaveRequest =
+            /save.*note|notes page|add.*note|store.*note|save.*chemistry|save.*physics/i.test(questionText) ||
+            /✅\s*Saved to your Notes Page|Added to your .* Notes|Saved to your .* Notes/i.test(fullResponse);
+
+          if (isNoteSaveRequest && fullResponse.length > 20) {
+            let targetSubName = "";
+            for (const s of subjects) {
+              if (
+                new RegExp(`\\b${s.name}\\b`, "i").test(questionText) ||
+                new RegExp(`\\b${s.name}\\b`, "i").test(fullResponse)
+              ) {
+                targetSubName = s.name;
+                break;
+              }
+            }
+            if (!targetSubName && /chemistry/i.test(questionText)) targetSubName = "Chemistry";
+            if (!targetSubName && /physics/i.test(questionText)) targetSubName = "Physics";
+            if (!targetSubName && /math/i.test(questionText)) targetSubName = "Mathematics";
+            if (!targetSubName && /biology/i.test(questionText)) targetSubName = "Biology";
+            if (!targetSubName && /computer/i.test(questionText)) targetSubName = "Computer Science";
+
+            const headingMatch = fullResponse.match(/^#+\s*(.*)$/m);
+            let noteTitle = headingMatch ? headingMatch[1].trim() : (targetSubName ? `${targetSubName} Study Note` : "Study Notes");
+            if (/Lanthanoids/i.test(fullResponse) || /Lanthanoids/i.test(questionText)) {
+              noteTitle = "Chapter: f-Block Elements & Coordination/d-Block Compounds";
+            }
+
+            const created = handleSaveNoteFromAI({
+              title: noteTitle,
+              content: fullResponse,
+              subjectName: targetSubName || undefined,
+              subjectId: chatSubjectId ?? undefined,
+            });
+
+            savedNoteInfo = {
+              id: created.id,
+              title: created.title,
+              subject: subjects.find(s => s.id === created.subjectId)?.name || targetSubName || "Notes",
+            };
+          }
+        }
+
+        // Update the streamed message with clean text and savedNoteInfo
+        setMessages((curr) => {
+          const updated = [...curr];
+          const last = updated[updated.length - 1];
+          if (last && last.role === "assistant") {
+            last.content = cleanText || fullResponse;
+            if (savedNoteInfo) {
+              last.savedNoteId = savedNoteInfo.id;
+              last.savedNoteTitle = savedNoteInfo.title;
+              last.savedNoteSubject = savedNoteInfo.subject;
+            }
+          }
+          return updated;
+        });
       }
       setIsAsking(false);
       return;
@@ -2668,6 +2923,127 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. You mu
     }
 
     setIsAsking(false);
+  };
+
+  /** Render interactive card for saved notes inside AI chat */
+  const renderSavedNoteBanner = (m: Message) => {
+    if (!m.savedNoteTitle) return null;
+    return (
+      <div
+        className="mt-3.5 p-3.5 sm:p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-in fade-in slide-in-from-bottom-2 duration-200"
+        style={{
+          backgroundColor: "color-mix(in srgb, var(--m-primary) 12%, var(--m-surface))",
+          borderColor: "color-mix(in srgb, var(--m-primary) 35%, transparent)",
+        }}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div
+            className="size-9 rounded-xl grid place-items-center shrink-0 shadow-xs"
+            style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+          >
+            <Notebook size={18} />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span
+                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full"
+                style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+              >
+                ✓ Saved to Notes Page
+              </span>
+              {m.savedNoteSubject && (
+                <span className="text-[10.5px] font-semibold opacity-80" style={{ color: "var(--m-text-sub)" }}>
+                  • {m.savedNoteSubject}
+                </span>
+              )}
+            </div>
+            <p className="text-xs sm:text-sm font-bold truncate mt-0.5" style={{ color: "var(--m-text-heading)" }}>
+              {m.savedNoteTitle}
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            const targetNote = notes.find((n) => n.id === m.savedNoteId);
+            if (targetNote) {
+              selectNote(targetNote);
+              if (targetNote.subjectId) setNoteSubjectFilter(targetNote.subjectId);
+            }
+            setActiveNav("Notes");
+            setIsChatMaximized(false);
+            showToast(`Opened "${m.savedNoteTitle}" on Notes page! 📓`);
+          }}
+          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition hover:scale-105 shrink-0 shadow-xs cursor-pointer"
+          style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+        >
+          <span>Open in Notes Page</span>
+          <ExternalLink size={13} />
+        </button>
+      </div>
+    );
+  };
+
+  /** Render bottom toolbar on assistant message for 1-click note saving and copy */
+  const renderMessageToolbar = (m: Message, idx: number) => {
+    if (m.role !== "assistant" || !m.content) return null;
+    return (
+      <div className="flex items-center gap-2 mt-2.5 pt-2 border-t" style={{ borderColor: "var(--m-border-light)" }}>
+        {!m.savedNoteTitle && (
+          <button
+            type="button"
+            onClick={() => {
+              const headingMatch = m.content.match(/^#+\s*(.*)$/m);
+              const title = headingMatch ? headingMatch[1].trim() : "Study Note";
+              const created = handleSaveNoteFromAI({
+                title,
+                content: m.content,
+                subjectId: chatSubjectId ?? undefined,
+              });
+              setMessages((curr) =>
+                curr.map((msg, i) =>
+                  i === idx
+                    ? {
+                        ...msg,
+                        savedNoteId: created.id,
+                        savedNoteTitle: created.title,
+                        savedNoteSubject: subjects.find((s) => s.id === created.subjectId)?.name || "Notes",
+                      }
+                    : msg
+                )
+              );
+            }}
+            className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition hover:opacity-80 cursor-pointer shadow-2xs"
+            style={{
+              backgroundColor: "var(--m-surface-alt)",
+              borderColor: "var(--m-border)",
+              color: "var(--m-primary)",
+            }}
+            title="Save this response to your Notes page"
+          >
+            <Notebook size={12} />
+            <span>Save to Notes</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            navigator.clipboard.writeText(m.content);
+            showToast("Copied to clipboard! 📋");
+          }}
+          className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium border transition hover:opacity-80 cursor-pointer shadow-2xs"
+          style={{
+            backgroundColor: "var(--m-surface-alt)",
+            borderColor: "var(--m-border)",
+            color: "var(--m-text-sub)",
+          }}
+          title="Copy response"
+        >
+          <Copy size={12} />
+          <span>Copy</span>
+        </button>
+      </div>
+    );
   };
 
   // ─── Nav Items ───
@@ -4016,7 +4392,11 @@ Mathematics:
                   {messages.map((m, idx) => (
                     <div key={idx} className="max-w-[92%] rounded-2xl px-4 py-3 shadow-xs contain-chat" style={m.role === "assistant" ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" } : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px", marginLeft: "auto" }}>
                       {m.content ? (
-                        renderSimpleMarkdown(m.content)
+                        <>
+                          {renderSimpleMarkdown(m.content)}
+                          {renderSavedNoteBanner(m)}
+                          {renderMessageToolbar(m, idx)}
+                        </>
                       ) : (
                         <div className="flex items-center gap-2 py-0.5">
                           <span className="text-[11px] font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI analyzing</span>
@@ -5571,7 +5951,11 @@ Mathematics:
                 }
               >
                 {m.content ? (
-                  renderSimpleMarkdown(m.content)
+                  <>
+                    {renderSimpleMarkdown(m.content)}
+                    {renderSavedNoteBanner(m)}
+                    {renderMessageToolbar(m, idx)}
+                  </>
                 ) : (
                   <div className="flex items-center gap-2.5 py-1">
                     <Sparkles size={16} className="animate-spin" style={{ color: "var(--m-primary)" }} />

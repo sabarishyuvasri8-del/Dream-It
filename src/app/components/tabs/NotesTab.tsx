@@ -242,7 +242,18 @@ export const NotesTab: FC<NotesTabProps> = ({
           />
           <select
             value={noteSubjectFilter ?? ""}
-            onChange={(e) => setNoteSubjectFilter(e.target.value ? Number(e.target.value) : null)}
+            onChange={(e) => {
+              const val = e.target.value ? Number(e.target.value) : null;
+              setNoteSubjectFilter(val);
+              if (val) {
+                const noteInSub = notes.find((n) => Number(n.subjectId) === Number(val));
+                if (noteInSub) {
+                  selectNote(noteInSub);
+                } else {
+                  handleSubjectChange(val);
+                }
+              }
+            }}
             className="w-full rounded-xl px-3 py-2 text-xs outline-none border cursor-pointer"
             style={{
               borderColor: "var(--m-border)",
