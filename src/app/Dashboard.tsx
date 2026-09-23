@@ -125,6 +125,7 @@ import InboxModal from "./components/InboxModal";
 import FriendsModal from "./components/FriendsModal";
 import { useAppStore } from "../lib/store";
 import ChatModal from "./components/ChatModal";
+import { AIThinkingStatus } from "./components/AIThinkingStatus";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { OfflineSyncIndicator } from "./components/OfflineSyncIndicator";
 import { subscribePWAInstall, promptPWAInstall, isPWAInstalled } from "../lib/pwa";
@@ -4367,25 +4368,13 @@ Mathematics:
                       {m.content ? (
                         renderSimpleMarkdown(m.content)
                       ) : (
-                        <div className="flex items-center gap-2 py-0.5">
-                          <span className="text-[11px] font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI analyzing</span>
-                          <span className="flex gap-1">
-                            <span className="size-1.5 animate-bounce rounded-full" style={{ backgroundColor: "var(--m-primary)" }} />
-                            <span className="size-1.5 animate-bounce rounded-full [animation-delay:150ms]" style={{ backgroundColor: "var(--m-primary)" }} />
-                            <span className="size-1.5 animate-bounce rounded-full [animation-delay:300ms]" style={{ backgroundColor: "var(--m-primary)" }} />
-                          </span>
-                        </div>
+                        <AIThinkingStatus size="sm" />
                       )}
                     </div>
                   ))}
                   {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
                     <div className="flex w-fit items-center gap-2 rounded-2xl px-4 py-3 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px" }}>
-                      <span className="text-[11px] font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI thinking</span>
-                      <span className="flex gap-1">
-                        <span className="size-1.5 animate-bounce rounded-full" style={{ backgroundColor: "var(--m-primary)" }} />
-                        <span className="size-1.5 animate-bounce rounded-full [animation-delay:150ms]" style={{ backgroundColor: "var(--m-primary)" }} />
-                        <span className="size-1.5 animate-bounce rounded-full [animation-delay:300ms]" style={{ backgroundColor: "var(--m-primary)" }} />
-                      </span>
+                      <AIThinkingStatus size="sm" />
                     </div>
                   )}
                 </div>
@@ -5922,17 +5911,13 @@ Mathematics:
                 {m.content ? (
                   renderSimpleMarkdown(m.content)
                 ) : (
-                  <div className="flex items-center gap-2.5 py-1">
-                    <Sparkles size={16} className="animate-spin" style={{ color: "var(--m-primary)" }} />
-                    <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI analyzing...</span>
-                  </div>
+                  <AIThinkingStatus size="lg" />
                 )}
               </div>
             ))}
             {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
               <div className="flex w-fit items-center gap-3 rounded-2xl p-3.5 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }}>
-                <Sparkles size={18} className="animate-spin" style={{ color: "var(--m-primary)" }} />
-                <span className="text-xs font-bold" style={{ color: "var(--m-primary)" }}>Dream It AI is analyzing your prompt...</span>
+                <AIThinkingStatus size="lg" />
               </div>
             )}
           </div>
