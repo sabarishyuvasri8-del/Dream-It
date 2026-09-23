@@ -23,6 +23,7 @@ import {
   Code,
   Coffee,
   Compass,
+  Copy,
   Cloud,
   Command,
   Cpu,
@@ -53,6 +54,7 @@ import {
   MessageCircle,
   Paperclip,
   Pause,
+  Pencil,
   Play,
   Plus,
   Palette,
@@ -61,6 +63,7 @@ import {
   Send,
   Search,
   Settings2,
+  Share,
   Sparkles,
   Star,
   StickyNote,
@@ -368,6 +371,11 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatMaxContainerRef = useRef<HTMLDivElement>(null);
+
+  // ─── AI Chat Message Actions (ChatGPT-style Copy, Share, Edit) ───
+  const [copiedMessageIdx, setCopiedMessageIdx] = useState<number | null>(null);
+  const [editingMessageIdx, setEditingMessageIdx] = useState<number | null>(null);
+  const [editingMessageDraft, setEditingMessageDraft] = useState("");
 
 
   // ─── AI File Attachment & Drag-and-Drop ───
@@ -2741,7 +2749,7 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
   };
 
   // ─── AI Chat — Backend Powered Dream It AI ───
-  const askCoach = async (e?: FormEvent, customQuery?: string) => {
+  const askCoach = async (e?: FormEvent, customQuery?: string, overrideHistory?: Message[]) => {
     if (e) e.preventDefault();
     const rawQuestion = customQuery || chatDraft.trim();
     if (!rawQuestion && !chatFile && !isAsking) return;
@@ -2763,13 +2771,14 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
           : `[ATTACHED DOCUMENT: ${attachedFileBackup.name} (${attachedFileBackup.pageCount ? `${attachedFileBackup.pageCount} pages, ` : ""}${formatFileSize(attachedFileBackup.size)})]\n--- DOCUMENT CONTENT START ---\n${attachedFileBackup.content.slice(0, 25000)}\n--- DOCUMENT CONTENT END ---\n\nUser Question: ${questionText}`)
       : questionText;
 
-    setMessages((curr) => [...curr, { role: "user", content: displayMessage }]);
+    const baseHistory = overrideHistory ?? messages;
+    setMessages([...baseHistory, { role: "user", content: displayMessage }]);
     if (!customQuery) setChatDraft("");
     setChatFile(null);
     setIsAsking(true);
 
     // Strip heavy base64 data URLs from history to keep memory & network payload ultra lean
-    const chatHistory = messages.slice(-8).map((m) => ({
+    const chatHistory = baseHistory.slice(-8).map((m) => ({
       role: m.role,
       content: m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]"),
     }));
@@ -3018,6 +3027,107 @@ You can save notes and flashcards. When asked to save to notes or create flashca
     }
 
     setIsAsking(false);
+  };
+
+  // ─── AI Message Action Handlers (Copy, Share, Edit, Regenerate) ───
+  const getCleanMessageText = (content: string) => {
+    return content
+      .replace(/^!\[.*?\]\(.*?\)\s*/, "")
+      .replace(/^(?:📎|📄)\s*\*\*.*?\*\*.*?\n\n/, "")
+      .trim();
+  };
+
+  const handleCopyMessage = async (content: string, idx: number) => {
+    const textToCopy = getCleanMessageText(content);
+    try {
+      if (typeof navigator !== "undefined" && navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToCopy);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = textToCopy;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopiedMessageIdx(idx);
+      showToast("Copied to clipboard! 📋", "success");
+      setTimeout(() => {
+        setCopiedMessageIdx((curr) => (curr === idx ? null : curr));
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to copy:", err);
+      showToast("Failed to copy message", "error");
+    }
+  };
+
+  const handleShareMessage = async (content: string) => {
+    const textToShare = getCleanMessageText(content);
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: "Dream It AI",
+          text: textToShare,
+        });
+        return;
+      } catch (err: any) {
+        if (err.name === "AbortError") return;
+      }
+    }
+    // Fallback: copy to clipboard
+    try {
+      if (typeof navigator !== "undefined" && navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(textToShare);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = textToShare;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      showToast("Content copied to clipboard to share! 🚀", "success");
+    } catch {
+      showToast("Unable to share content", "error");
+    }
+  };
+
+  const handleStartEditMessage = (idx: number, content: string) => {
+    setEditingMessageIdx(idx);
+    setEditingMessageDraft(getCleanMessageText(content));
+  };
+
+  const handleCancelEditMessage = () => {
+    setEditingMessageIdx(null);
+    setEditingMessageDraft("");
+  };
+
+  const handleSaveAndSubmitEdit = (idx: number) => {
+    const trimmed = editingMessageDraft.trim();
+    if (!trimmed || isAsking) return;
+    setEditingMessageIdx(null);
+    setEditingMessageDraft("");
+    // Truncate messages to before this edited message, then re-ask with edited prompt
+    const historyToKeep = messages.slice(0, idx);
+    askCoach(undefined, trimmed, historyToKeep);
+  };
+
+  const handleRegenerateResponse = (idx: number) => {
+    if (isAsking) return;
+    let userIdx = idx - 1;
+    while (userIdx >= 0 && messages[userIdx].role !== "user") {
+      userIdx--;
+    }
+    if (userIdx >= 0) {
+      const userMsg = messages[userIdx];
+      const historyToKeep = messages.slice(0, userIdx);
+      const promptToReask = getCleanMessageText(userMsg.content);
+      askCoach(undefined, promptToReask, historyToKeep);
+    }
   };
 
   // ─── Nav Items ───
@@ -4362,13 +4472,121 @@ Mathematics:
                 </div>
 
                 {/* Messages Container (Fills middle area perfectly) */}
-                <div ref={chatContainerRef} className="flex-1 space-y-3 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
+                <div ref={chatContainerRef} className="flex-1 space-y-3.5 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
                   {messages.map((m, idx) => (
-                    <div key={idx} className="max-w-[92%] rounded-2xl px-4 py-3 shadow-xs contain-chat" style={m.role === "assistant" ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" } : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px", marginLeft: "auto" }}>
-                      {m.content ? (
-                        renderSimpleMarkdown(m.content)
-                      ) : (
-                        <AIThinkingStatus size="sm" />
+                    <div
+                      key={idx}
+                      className={`group flex flex-col ${m.role === "user" ? "items-end ml-auto" : "items-start"} max-w-[92%]`}
+                    >
+                      <div
+                        className="w-full rounded-2xl px-4 py-3 shadow-xs contain-chat"
+                        style={
+                          m.role === "assistant"
+                            ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
+                            : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
+                        }
+                      >
+                        {editingMessageIdx === idx ? (
+                          <div className="space-y-2 py-0.5">
+                            <textarea
+                              value={editingMessageDraft}
+                              onChange={(e) => setEditingMessageDraft(e.target.value)}
+                              rows={Math.max(2, Math.min(6, editingMessageDraft.split("\n").length))}
+                              className="w-full resize-none rounded-xl p-2.5 text-xs leading-relaxed outline-none border transition focus:ring-1 focus:ring-white/40"
+                              style={{
+                                backgroundColor: "rgba(0, 0, 0, 0.25)",
+                                color: "inherit",
+                                borderColor: "rgba(255, 255, 255, 0.2)",
+                              }}
+                              autoFocus
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleSaveAndSubmitEdit(idx);
+                                } else if (e.key === "Escape") {
+                                  handleCancelEditMessage();
+                                }
+                              }}
+                            />
+                            <div className="flex items-center justify-end gap-1.5 pt-0.5">
+                              <button
+                                type="button"
+                                onClick={handleCancelEditMessage}
+                                className="rounded-lg px-2.5 py-1 text-[11px] font-medium transition hover:bg-white/10"
+                                style={{ border: "1px solid rgba(255,255,255,0.2)", color: "inherit" }}
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!editingMessageDraft.trim() || isAsking}
+                                onClick={() => handleSaveAndSubmitEdit(idx)}
+                                className="rounded-lg px-3 py-1 text-[11px] font-bold transition hover:scale-102 disabled:opacity-40 shadow-xs"
+                                style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text, #ffffff)" }}
+                              >
+                                Send
+                              </button>
+                            </div>
+                          </div>
+                        ) : m.content ? (
+                          renderSimpleMarkdown(m.content)
+                        ) : (
+                          <AIThinkingStatus size="sm" />
+                        )}
+                      </div>
+
+                      {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
+                      {m.content && editingMessageIdx !== idx && (
+                        <div
+                          className={`flex items-center gap-1.5 mt-1 text-[11px] opacity-80 hover:opacity-100 transition-opacity ${
+                            m.role === "user" ? "justify-end pr-1" : "justify-start pl-1"
+                          }`}
+                          style={{ color: "var(--m-text-sub)" }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => handleCopyMessage(m.content, idx)}
+                            className="p-1 rounded-md transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                            title="Copy message"
+                            aria-label="Copy message"
+                          >
+                            {copiedMessageIdx === idx ? (
+                              <Check size={13} className="text-emerald-400" />
+                            ) : (
+                              <Copy size={13} />
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleShareMessage(m.content)}
+                            className="p-1 rounded-md transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                            title="Share"
+                            aria-label="Share message"
+                          >
+                            <Share size={13} />
+                          </button>
+                          {m.role === "user" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditMessage(idx, m.content)}
+                              className="p-1 rounded-md transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                              title="Edit prompt"
+                              aria-label="Edit message"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => handleRegenerateResponse(idx)}
+                              className="p-1 rounded-md transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                              title="Regenerate response"
+                              aria-label="Regenerate response"
+                            >
+                              <RotateCcw size={13} />
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
@@ -5899,19 +6117,121 @@ Mathematics:
             {messages.map((m, idx) => (
               <div
                 key={idx}
-                className={`max-w-[90%] md:max-w-[80%] rounded-2xl p-4 md:p-5 leading-relaxed transition contain-chat ${
-                  m.role === "assistant" ? "shadow-xs" : "ml-auto shadow-sm"
-                }`}
-                style={
-                  m.role === "assistant"
-                    ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
-                    : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
-                }
+                className={`group flex flex-col ${
+                  m.role === "user" ? "items-end ml-auto" : "items-start"
+                } max-w-[90%] md:max-w-[80%]`}
               >
-                {m.content ? (
-                  renderSimpleMarkdown(m.content)
-                ) : (
-                  <AIThinkingStatus size="lg" />
+                <div
+                  className={`w-full rounded-2xl p-4 md:p-5 leading-relaxed transition contain-chat ${
+                    m.role === "assistant" ? "shadow-xs" : "shadow-sm"
+                  }`}
+                  style={
+                    m.role === "assistant"
+                      ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
+                      : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
+                  }
+                >
+                  {editingMessageIdx === idx ? (
+                    <div className="space-y-3 py-1">
+                      <textarea
+                        value={editingMessageDraft}
+                        onChange={(e) => setEditingMessageDraft(e.target.value)}
+                        rows={Math.max(2, Math.min(8, editingMessageDraft.split("\n").length))}
+                        className="w-full resize-none rounded-xl p-3 text-xs sm:text-sm leading-relaxed outline-none border transition focus:ring-2 focus:ring-white/30"
+                        style={{
+                          backgroundColor: "rgba(0, 0, 0, 0.25)",
+                          color: "inherit",
+                          borderColor: "rgba(255, 255, 255, 0.2)",
+                        }}
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            handleSaveAndSubmitEdit(idx);
+                          } else if (e.key === "Escape") {
+                            handleCancelEditMessage();
+                          }
+                        }}
+                      />
+                      <div className="flex items-center justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={handleCancelEditMessage}
+                          className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:bg-white/10"
+                          style={{ border: "1px solid rgba(255,255,255,0.2)", color: "inherit" }}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!editingMessageDraft.trim() || isAsking}
+                          onClick={() => handleSaveAndSubmitEdit(idx)}
+                          className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-bold transition hover:scale-102 disabled:opacity-40 shadow-xs"
+                          style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text, #ffffff)" }}
+                        >
+                          <span>Send</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : m.content ? (
+                    renderSimpleMarkdown(m.content)
+                  ) : (
+                    <AIThinkingStatus size="lg" />
+                  )}
+                </div>
+
+                {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
+                {m.content && editingMessageIdx !== idx && (
+                  <div
+                    className={`flex items-center gap-1.5 mt-1.5 text-xs opacity-80 hover:opacity-100 transition-opacity ${
+                      m.role === "user" ? "justify-end pr-1" : "justify-start pl-1"
+                    }`}
+                    style={{ color: "var(--m-text-sub)" }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => handleCopyMessage(m.content, idx)}
+                      className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                      title="Copy message"
+                      aria-label="Copy message"
+                    >
+                      {copiedMessageIdx === idx ? (
+                        <Check size={14} className="text-emerald-400" />
+                      ) : (
+                        <Copy size={14} />
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleShareMessage(m.content)}
+                      className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                      title="Share"
+                      aria-label="Share message"
+                    >
+                      <Share size={14} />
+                    </button>
+                    {m.role === "user" ? (
+                      <button
+                        type="button"
+                        onClick={() => handleStartEditMessage(idx, m.content)}
+                        className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                        title="Edit message"
+                        aria-label="Edit message"
+                      >
+                        <Pencil size={14} />
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => handleRegenerateResponse(idx)}
+                        className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                        title="Regenerate response"
+                        aria-label="Regenerate response"
+                      >
+                        <RotateCcw size={14} />
+                      </button>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
