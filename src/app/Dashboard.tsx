@@ -58,6 +58,8 @@ import {
   Paperclip,
   Pause,
   Pencil,
+  Pin,
+  PinOff,
   Play,
   Plus,
   Palette,
@@ -153,6 +155,7 @@ export interface AIChatSession {
   updatedAt: number;
   subjectId: number | null;
   messages: Message[];
+  isPinned?: boolean;
 }
 
 const weekDayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -226,6 +229,101 @@ interface DashboardProps {
   userName?: string;
   userImageUrl?: string;
   onSignOut: () => void;
+}
+
+const DEFAULT_WELCOME_MESSAGE: Message = {
+  role: "assistant",
+  content: "Welcome! I'm **Dream It AI**, your intelligent study assistant.\n\nAsk me study questions, math problems, code debugging, or attach files — I'm here to help you excel!",
+};
+
+function safeSaveSessionsToStorage(key: string, sessions: AIChatSession[]): boolean {
+  try {
+    localStorage.setItem(key, JSON.stringify(sessions));
+    return true;
+  } catch (e) {
+    try {
+      const sanitized = sessions.map((sess, idx) => {
+        if (idx === 0) return sess;
+        return {
+          ...sess,
+          messages: sess.messages.map((m) => ({
+            ...m,
+            content: m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]"),
+          })),
+        };
+      });
+      localStorage.setItem(key, JSON.stringify(sanitized));
+      return true;
+    } catch {
+      try {
+        const minimal = sessions.slice(0, 30).map((sess) => ({
+          ...sess,
+          messages: sess.messages.map((m) => ({
+            role: m.role,
+            content: m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]"),
+          })),
+        }));
+        localStorage.setItem(key, JSON.stringify(minimal));
+        return true;
+      } catch (err) {
+        console.warn("Storage full while saving sessions:", err);
+        return false;
+      }
+    }
+  }
+}
+
+function groupSessionsByDate(sessions: AIChatSession[]): { section: string; items: AIChatSession[] }[] {
+  // Only include sessions that have actual user messages (exclude empty new chat placeholders)
+  const validSessions = sessions
+    .filter((s) => s.messages && s.messages.some((m) => m.role === "user"))
+    .sort((a, b) => {
+      const timeDiff = (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+      if (timeDiff !== 0) return timeDiff;
+      return b.id.localeCompare(a.id);
+    });
+
+  const now = new Date();
+  const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfYesterday = startOfToday - 86400000;
+  const startOf7Days = startOfToday - 6 * 86400000;
+  const startOf30Days = startOfToday - 29 * 86400000;
+
+  const pinned: AIChatSession[] = [];
+  const today: AIChatSession[] = [];
+  const yesterday: AIChatSession[] = [];
+  const last7Days: AIChatSession[] = [];
+  const last30Days: AIChatSession[] = [];
+  const older: AIChatSession[] = [];
+
+  for (const session of validSessions) {
+    if (session.isPinned) {
+      pinned.push(session);
+      continue;
+    }
+    const t = session.updatedAt || session.createdAt || 0;
+    if (t >= startOfToday) {
+      today.push(session);
+    } else if (t >= startOfYesterday) {
+      yesterday.push(session);
+    } else if (t >= startOf7Days) {
+      last7Days.push(session);
+    } else if (t >= startOf30Days) {
+      last30Days.push(session);
+    } else {
+      older.push(session);
+    }
+  }
+
+  const groups: { section: string; items: AIChatSession[] }[] = [];
+  if (pinned.length > 0) groups.push({ section: "Pinned", items: pinned });
+  if (today.length > 0) groups.push({ section: "Today", items: today });
+  if (yesterday.length > 0) groups.push({ section: "Yesterday", items: yesterday });
+  if (last7Days.length > 0) groups.push({ section: "Previous 7 Days", items: last7Days });
+  if (last30Days.length > 0) groups.push({ section: "Previous 30 Days", items: last30Days });
+  if (older.length > 0) groups.push({ section: "Older", items: older });
+
+  return groups;
 }
 
 export default function Dashboard({ accessToken, userId, userEmail, userName, userImageUrl, onSignOut }: DashboardProps) {
@@ -372,11 +470,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
 
   // ─── AI Chat — Dream It AI ───
 
-  const DEFAULT_WELCOME: Message = {
-    role: "assistant",
-    content: "Welcome! I'm **Dream It AI**, your intelligent study assistant.\n\nAsk me study questions, math problems, code debugging, or attach files — I'm here to help you excel!",
-  };
-  const [messages, setMessages] = useState<Message[]>([DEFAULT_WELCOME]);
+  const DEFAULT_WELCOME: Message = DEFAULT_WELCOME_MESSAGE;
+  const [messages, setMessages] = useState<Message[]>([DEFAULT_WELCOME_MESSAGE]);
   const [chatDraft, setChatDraft] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [chatSubjectId, setChatSubjectId] = useState<number | null>(null);
@@ -390,6 +485,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const activeChatSessionIdRef = useRef<string | null>(null);
   activeChatSessionIdRef.current = activeChatSessionId;
+  const messagesRef = useRef<Message[]>([DEFAULT_WELCOME_MESSAGE]);
+  messagesRef.current = messages;
   const [showPastChatsDrawer, setShowPastChatsDrawer] = useState(false);
   const [wideSidebarOpen, setWideSidebarOpen] = useState(true);
 
@@ -397,6 +494,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [copiedMessageIdx, setCopiedMessageIdx] = useState<number | null>(null);
   const [editingMessageIdx, setEditingMessageIdx] = useState<number | null>(null);
   const [editingMessageDraft, setEditingMessageDraft] = useState("");
+
+  // ─── Chat Session Rename & 3-Dots Menu (ChatGPT/Claude style) ───
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renamingTitleDraft, setRenamingTitleDraft] = useState("");
+  const [openMenuSessionId, setOpenMenuSessionId] = useState<string | null>(null);
+
+  // Chronologically grouped sessions (Today, Yesterday, Previous 7 Days, Previous 30 Days, Older) — ChatGPT & Claude style
+  const groupedChatSessions = useMemo(() => groupSessionsByDate(chatSessions), [chatSessions]);
 
 
   // ─── AI File Attachment & Drag-and-Drop ───
@@ -2797,52 +2902,143 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     return new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
 
-  const saveCurrentSession = useCallback((updatedMessages: Message[], customTitle?: string) => {
+  // ─── BULLETPROOF session persistence (reads/writes localStorage directly) ───
+  const flushSessionToStorage = useCallback((sessionId: string, msgs: Message[], bumpTimestamp: boolean = true) => {
     const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
-    setChatSessions((prevSessions) => {
-      let currentId = activeChatSessionIdRef.current || activeChatSessionId;
-      const targetIndex = prevSessions.findIndex((s) => s.id === currentId);
+    try {
+      const raw = localStorage.getItem(storageKey);
+      let sessions: AIChatSession[] = raw ? JSON.parse(raw) : [];
 
-      const firstUserMsg = updatedMessages.find((m) => m.role === "user");
-      const generatedTitle = firstUserMsg ? generateSessionTitle(firstUserMsg.content) : "New Chat";
+      const firstUserMsg = msgs.find((m) => m.role === "user");
+      const title = firstUserMsg ? generateSessionTitle(firstUserMsg.content) : "New Chat";
 
-      let next: AIChatSession[];
-      if (targetIndex >= 0) {
-        const existing = prevSessions[targetIndex];
-        const newTitle = customTitle || (existing.title === "New Chat" && firstUserMsg ? generatedTitle : existing.title);
-        const updated: AIChatSession = {
-          ...existing,
-          title: newTitle,
-          updatedAt: Date.now(),
+      const idx = sessions.findIndex((s) => s.id === sessionId);
+      if (idx >= 0) {
+        sessions[idx] = {
+          ...sessions[idx],
+          messages: msgs,
+          updatedAt: bumpTimestamp ? Date.now() : (sessions[idx].updatedAt || Date.now()),
           subjectId: chatSubjectId,
-          messages: updatedMessages,
+          title: sessions[idx].title === "New Chat" && firstUserMsg ? title : sessions[idx].title,
         };
-        next = [...prevSessions];
-        next[targetIndex] = updated;
       } else {
-        const newId = currentId || ("session_" + Date.now());
-        activeChatSessionIdRef.current = newId;
-        const newSession: AIChatSession = {
-          id: newId,
-          title: customTitle || generatedTitle,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          subjectId: chatSubjectId,
-          messages: updatedMessages,
-        };
-        next = [newSession, ...prevSessions];
-        setActiveChatSessionId(newId);
+        // Only insert into sessions list if there is an actual user message
+        if (firstUserMsg) {
+          sessions.unshift({
+            id: sessionId,
+            title,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            subjectId: chatSubjectId,
+            messages: msgs,
+          });
+        }
       }
 
-      next.sort((a, b) => b.updatedAt - a.updatedAt);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch (err) {
-        console.warn("Failed writing AI chat sessions to localStorage:", err);
+      // Only keep sessions that have user messages (clean list like ChatGPT / Claude)
+      sessions = sessions.filter((s) => s.messages && s.messages.some((m) => m.role === "user"));
+      sessions.sort((a, b) => {
+        const timeDiff = (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+        if (timeDiff !== 0) return timeDiff;
+        return b.id.localeCompare(a.id);
+      });
+      safeSaveSessionsToStorage(storageKey, sessions);
+      setChatSessions(sessions);
+    } catch (err) {
+      console.warn("Failed writing AI chat sessions to localStorage:", err);
+    }
+  }, [userId, chatSubjectId]);
+
+  // Legacy wrapper so existing callsites still compile
+  const saveCurrentSession = useCallback((updatedMessages: Message[], _customTitle?: string) => {
+    const sid = activeChatSessionIdRef.current;
+    if (sid) {
+      flushSessionToStorage(sid, updatedMessages, true);
+    }
+  }, [flushSessionToStorage]);
+
+  // ─── Chat Session Rename Handlers (ChatGPT / Claude style) ───
+  const handleStartRenameSession = (sessionId: string, currentTitle: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setRenamingSessionId(sessionId);
+    setRenamingTitleDraft(currentTitle);
+  };
+
+  const handleCancelRenameSession = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setRenamingSessionId(null);
+    setRenamingTitleDraft("");
+  };
+
+  const handleSaveRenameSession = (sessionId: string, e?: React.MouseEvent | React.FormEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const cleanTitle = renamingTitleDraft.trim();
+    if (!cleanTitle) {
+      setRenamingSessionId(null);
+      return;
+    }
+    const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      let sessions: AIChatSession[] = raw ? JSON.parse(raw) : [];
+      const idx = sessions.findIndex((s) => s.id === sessionId);
+      if (idx >= 0) {
+        sessions[idx] = { ...sessions[idx], title: cleanTitle };
+        safeSaveSessionsToStorage(storageKey, sessions);
       }
-      return next;
-    });
-  }, [activeChatSessionId, chatSubjectId, userId]);
+      setChatSessions(sessions);
+    } catch {}
+    setRenamingSessionId(null);
+    setRenamingTitleDraft("");
+    showToast("Chat renamed ✏️", "success");
+  };
+
+  // ─── Chat Session Pinning Handler (ChatGPT / Claude style) ───
+  const handleTogglePinSession = (sessionId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
+    let isNowPinned = false;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      let sessions: AIChatSession[] = raw ? JSON.parse(raw) : chatSessions;
+      const idx = sessions.findIndex((s) => s.id === sessionId);
+      if (idx >= 0) {
+        isNowPinned = !sessions[idx].isPinned;
+        sessions[idx] = { ...sessions[idx], isPinned: isNowPinned };
+        safeSaveSessionsToStorage(storageKey, sessions);
+        setChatSessions([...sessions]);
+      }
+    } catch (err) {
+      console.warn("Failed toggling pin status:", err);
+    }
+    setOpenMenuSessionId(null);
+    showToast(isNowPinned ? "Chat pinned 📌" : "Chat unpinned", "info");
+  };
+
+  // Close 3-dots chat menu when clicking outside
+  useEffect(() => {
+    if (!openMenuSessionId) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("[data-chat-menu-trigger]") && !target.closest("[data-chat-menu-dropdown]")) {
+        setOpenMenuSessionId(null);
+      }
+    };
+    window.addEventListener("mousedown", handleOutsideClick);
+    return () => window.removeEventListener("mousedown", handleOutsideClick);
+  }, [openMenuSessionId]);
 
   // ─── AI Chat — Backend Powered Dream It AI ───
   const askCoach = async (e?: FormEvent, customQuery?: string, overrideHistory?: Message[]) => {
@@ -2877,7 +3073,8 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     const baseHistory = overrideHistory ?? messages;
     const nextUserMessages: Message[] = [...baseHistory, { role: "user", content: displayMessage }];
     setMessages(nextUserMessages);
-    saveCurrentSession(nextUserMessages);
+    messagesRef.current = nextUserMessages;
+    flushSessionToStorage(currentSessionId, nextUserMessages);
     if (!customQuery) setChatDraft("");
     setChatFile(null);
     setIsAsking(true);
@@ -2938,9 +3135,14 @@ WORKSPACE EXECUTIVE POWERS:
 You can save notes and flashcards. When asked to save to notes or create flashcards, append the action command blocks at the very end.`;
     }
 
+    let accumulatedStreamedText = "";
     try {
       // Create empty message for streaming
-      setMessages((curr) => [...curr, { role: "assistant", content: "" }]);
+      setMessages((curr) => {
+        const next = [...curr, { role: "assistant", content: "" }];
+        messagesRef.current = next;
+        return next;
+      });
 
       const response = await fetchAI({
         model: "gemini-3.6-flash",
@@ -2958,14 +3160,18 @@ You can save notes and flashcards. When asked to save to notes or create flashca
         max_tokens: 2048,
         temperature: chatSubjectId ? 0.1 : 0.4,
         onChunk: (chunk: string) => {
-          setMessages((curr) => {
-            const updated = [...curr];
-            const last = updated[updated.length - 1];
-            if (last && last.role === "assistant") {
-              last.content += chunk;
-            }
-            return updated;
-          });
+          accumulatedStreamedText += chunk;
+          if (activeChatSessionIdRef.current === currentSessionId) {
+            setMessages((curr) => {
+              const updated = [...curr];
+              const last = updated[updated.length - 1];
+              if (last && last.role === "assistant") {
+                last.content = accumulatedStreamedText;
+              }
+              messagesRef.current = updated;
+              return updated;
+            });
+          }
         }
       });
 
@@ -2974,21 +3180,24 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           ...nextUserMessages,
           { role: "assistant", content: `⚠️ **Dream It AI**: ${response.error}` },
         ];
-        setMessages(errorMessages);
-        saveCurrentSession(errorMessages);
+        if (activeChatSessionIdRef.current === currentSessionId) {
+          setMessages(errorMessages);
+          messagesRef.current = errorMessages;
+        }
+        flushSessionToStorage(currentSessionId, errorMessages);
       } else {
         addXP(2);
 
-        // ─── Process AI Executive Actions ───
-        let fullContent = response.content || "";
+        // ─── Process AI Content Reliably ───
+        let fullContent = (response.content || accumulatedStreamedText || "").trim();
+        if (!fullContent && messagesRef.current.length > 0) {
+          const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+          if (lastMsg && lastMsg.role === "assistant" && lastMsg.content) {
+            fullContent = lastMsg.content.trim();
+          }
+        }
         if (!fullContent) {
-          setMessages((curr) => {
-            const lastMsg = curr[curr.length - 1];
-            if (lastMsg && lastMsg.role === "assistant") {
-              fullContent = lastMsg.content;
-            }
-            return curr;
-          });
+          fullContent = "I've analyzed your question. How can I help you further with your studies?";
         }
 
         const isSaveNoteIntent = /(?:save|add|put|store|write).*(?:note|notes|notebook|page)/i.test(questionText);
@@ -3112,8 +3321,11 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           ...nextUserMessages,
           { role: "assistant", content: fullContent },
         ];
-        setMessages(finalMessages);
-        saveCurrentSession(finalMessages);
+        if (activeChatSessionIdRef.current === currentSessionId) {
+          setMessages(finalMessages);
+          messagesRef.current = finalMessages;
+        }
+        flushSessionToStorage(currentSessionId, finalMessages);
       }
     } catch (e) {
       console.warn("AI fallback notice:", e);
@@ -3121,8 +3333,11 @@ You can save notes and flashcards. When asked to save to notes or create flashca
         ...nextUserMessages,
         { role: "assistant", content: "⚠️ **Dream It AI**: An unexpected error occurred. Please try again." },
       ];
-      setMessages(errorMessages);
-      saveCurrentSession(errorMessages);
+      if (activeChatSessionIdRef.current === currentSessionId) {
+        setMessages(errorMessages);
+        messagesRef.current = errorMessages;
+      }
+      flushSessionToStorage(currentSessionId, errorMessages);
     } finally {
       setIsAsking(false);
     }
@@ -3230,70 +3445,61 @@ You can save notes and flashcards. When asked to save to notes or create flashca
   };
 
   const handleNewChat = useCallback(() => {
-    const curId = activeChatSessionIdRef.current || activeChatSessionId;
-    if (curId && messages.some((m) => m.role === "user")) {
-      saveCurrentSession(messages);
+    // 1. If current session has user messages, save it without modifying its timestamp
+    const curId = activeChatSessionIdRef.current;
+    const curMsgs = messagesRef.current;
+    if (curId && curMsgs.some((m) => m.role === "user")) {
+      flushSessionToStorage(curId, curMsgs, false);
     }
 
+    // 2. Start fresh session on screen WITHOUT creating an empty placeholder in sidebar
     const newId = "session_" + Date.now();
-    const newSession: AIChatSession = {
-      id: newId,
-      title: "New Chat",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      subjectId: chatSubjectId,
-      messages: [DEFAULT_WELCOME],
-    };
-
-    setChatSessions((prev) => {
-      const filtered = prev.filter(
-        (s) => s.id !== curId || s.messages.some((m) => m.role === "user")
-      );
-      const next = [newSession, ...filtered];
-      try {
-        localStorage.setItem(`dreamit_ai_sessions_${userId || "default"}`, JSON.stringify(next));
-      } catch {}
-      return next;
-    });
-
     activeChatSessionIdRef.current = newId;
     setActiveChatSessionId(newId);
-    setMessages([DEFAULT_WELCOME]);
+    setMessages([DEFAULT_WELCOME_MESSAGE]);
+    messagesRef.current = [DEFAULT_WELCOME_MESSAGE];
     setShowPastChatsDrawer(false);
     setEditingMessageIdx(null);
     setChatDraft("");
     setChatFile(null);
     showToast("Started new chat ✨", "info");
-  }, [activeChatSessionId, chatSubjectId, userId, DEFAULT_WELCOME, showToast, messages, saveCurrentSession]);
+  }, [showToast, flushSessionToStorage]);
 
-  const handleSelectSession = (sessionId: string) => {
-    const curId = activeChatSessionIdRef.current || activeChatSessionId;
-    if (curId && curId !== sessionId && messages.some((m) => m.role === "user")) {
-      saveCurrentSession(messages);
+  const handleSelectSession = useCallback((sessionId: string) => {
+    const curId = activeChatSessionIdRef.current;
+    if (curId === sessionId) {
+      setShowPastChatsDrawer(false);
+      return;
     }
 
-    let session = chatSessions.find((s) => s.id === sessionId);
+    // 1. Read session from localStorage (ground truth)
+    const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
+    let session: AIChatSession | undefined;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed: AIChatSession[] = JSON.parse(raw);
+        session = parsed.find((s) => s.id === sessionId);
+      }
+    } catch {}
+
     if (!session) {
-      try {
-        const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
-        const raw = localStorage.getItem(storageKey);
-        if (raw) {
-          const parsed: AIChatSession[] = JSON.parse(raw);
-          session = parsed.find((s) => s.id === sessionId);
-        }
-      } catch {}
+      session = chatSessions.find((s) => s.id === sessionId);
     }
     if (!session) return;
 
+    // 2. Switch to selected session - DO NOT TOUCH timestamps or reorder sessions!
+    const targetMsgs = session.messages && session.messages.length > 0 ? session.messages : [DEFAULT_WELCOME_MESSAGE];
     activeChatSessionIdRef.current = session.id;
     setActiveChatSessionId(session.id);
-    setMessages(session.messages && session.messages.length > 0 ? session.messages : [DEFAULT_WELCOME]);
+    setMessages(targetMsgs);
+    messagesRef.current = targetMsgs;
     if (session.subjectId !== undefined) {
       setChatSubjectId(session.subjectId);
     }
     setEditingMessageIdx(null);
     setShowPastChatsDrawer(false);
-  };
+  }, [userId, chatSessions]);
 
   const handleDeleteSession = (sessionId: string, e?: React.MouseEvent) => {
     if (e) {
@@ -3301,41 +3507,40 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       e.preventDefault();
     }
 
-    setChatSessions((prev) => {
-      const next = prev.filter((s) => s.id !== sessionId);
-      try {
-        localStorage.setItem(`dreamit_ai_sessions_${userId || "default"}`, JSON.stringify(next));
-      } catch {}
+    const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
+    let updatedSessions: AIChatSession[] = [];
+    try {
+      const raw = localStorage.getItem(storageKey);
+      const existing: AIChatSession[] = raw ? JSON.parse(raw) : chatSessions;
+      updatedSessions = existing.filter((s) => s.id !== sessionId);
+      safeSaveSessionsToStorage(storageKey, updatedSessions);
+    } catch {
+      updatedSessions = chatSessions.filter((s) => s.id !== sessionId);
+    }
 
-      if (activeChatSessionId === sessionId) {
-        if (next.length > 0) {
-          const nextActive = next[0];
-          setActiveChatSessionId(nextActive.id);
-          setMessages(nextActive.messages?.length ? nextActive.messages : [DEFAULT_WELCOME]);
-          if (nextActive.subjectId !== undefined) {
-            setChatSubjectId(nextActive.subjectId);
-          }
-        } else {
-          const freshId = "session_" + Date.now();
-          const freshSession: AIChatSession = {
-            id: freshId,
-            title: "New Chat",
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-            subjectId: null,
-            messages: [DEFAULT_WELCOME],
-          };
-          setActiveChatSessionId(freshId);
-          setMessages([DEFAULT_WELCOME]);
-          const freshNext = [freshSession];
-          try {
-            localStorage.setItem(`dreamit_ai_sessions_${userId || "default"}`, JSON.stringify(freshNext));
-          } catch {}
-          return freshNext;
+    setChatSessions(updatedSessions);
+
+    const isCurrentActive = (activeChatSessionIdRef.current || activeChatSessionId) === sessionId;
+    if (isCurrentActive) {
+      const validNext = updatedSessions.filter((s) => s.messages && s.messages.some((m) => m.role === "user"));
+      if (validNext.length > 0) {
+        const nextActive = validNext[0];
+        const nextMsgs = nextActive.messages?.length ? nextActive.messages : [DEFAULT_WELCOME_MESSAGE];
+        activeChatSessionIdRef.current = nextActive.id;
+        setActiveChatSessionId(nextActive.id);
+        setMessages(nextMsgs);
+        messagesRef.current = nextMsgs;
+        if (nextActive.subjectId !== undefined) {
+          setChatSubjectId(nextActive.subjectId);
         }
+      } else {
+        const freshId = "session_" + Date.now();
+        activeChatSessionIdRef.current = freshId;
+        setActiveChatSessionId(freshId);
+        setMessages([DEFAULT_WELCOME_MESSAGE]);
+        messagesRef.current = [DEFAULT_WELCOME_MESSAGE];
       }
-      return next;
-    });
+    }
 
     showToast("Chat deleted", "info");
   };
@@ -3347,35 +3552,35 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       const raw = localStorage.getItem(storageKey);
       if (raw) {
         const parsed: AIChatSession[] = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setChatSessions(parsed);
-          const current = parsed[0];
-          setActiveChatSessionId(current.id);
-          activeChatSessionIdRef.current = current.id;
-          setMessages(current.messages && current.messages.length > 0 ? current.messages : [DEFAULT_WELCOME]);
-          if (current.subjectId !== undefined) {
-            setChatSubjectId(current.subjectId);
+        // Only load conversations that have user messages (clean list like ChatGPT / Claude)
+        const valid = Array.isArray(parsed)
+          ? parsed
+              .filter((s) => s.messages && s.messages.some((m) => m.role === "user"))
+              .sort((a, b) => {
+                const timeDiff = (b.updatedAt || b.createdAt || 0) - (a.updatedAt || a.createdAt || 0);
+                if (timeDiff !== 0) return timeDiff;
+                return b.id.localeCompare(a.id);
+              })
+          : [];
+        if (valid.length > 0) {
+          if (valid.length !== parsed.length) {
+            safeSaveSessionsToStorage(storageKey, valid);
           }
-          return;
+          setChatSessions(valid);
         }
       }
     } catch (e) {
       console.warn("Failed loading AI chat sessions from localStorage:", e);
     }
 
-    const initialId = "session_" + Date.now();
-    const initialSession: AIChatSession = {
-      id: initialId,
-      title: "New Chat",
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      subjectId: null,
-      messages: [DEFAULT_WELCOME],
-    };
-    setChatSessions([initialSession]);
-    setActiveChatSessionId(initialId);
-    activeChatSessionIdRef.current = initialId;
-    setMessages([DEFAULT_WELCOME]);
+    // Always start with a fresh new chatbox on page load / reload (past chats stay in history sidebar)
+    const freshId = "session_" + Date.now();
+    setActiveChatSessionId(freshId);
+    activeChatSessionIdRef.current = freshId;
+    setMessages([DEFAULT_WELCOME_MESSAGE]);
+    messagesRef.current = [DEFAULT_WELCOME_MESSAGE];
+    setChatDraft("");
+    setChatFile(null);
   }, [userId]);
 
   // Global Ctrl+N / Cmd+N shortcut for New Chat in Wide Mode
@@ -4706,47 +4911,10 @@ Mathematics:
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {/* Past Chats Button (Requested by User) */}
-                    <button
-                      type="button"
-                      onClick={() => setShowPastChatsDrawer(!showPastChatsDrawer)}
-                      className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-semibold transition hover:scale-105 shadow-xs ${
-                        showPastChatsDrawer ? "ring-1 ring-[var(--m-primary)]" : "minimal-surface"
-                      }`}
-                      style={{
-                        backgroundColor: showPastChatsDrawer ? "var(--m-primary)" : undefined,
-                        color: showPastChatsDrawer ? "var(--m-primary-text)" : "var(--m-primary)",
-                        border: "1px solid var(--m-border)",
-                      }}
-                      title="View Past Chats History"
-                    >
-                      <History size={11} />
-                      <span>Past Chats</span>
-                      {chatSessions.length > 0 && (
-                        <span className={`text-[9px] px-1 rounded-full font-mono font-bold ${
-                          showPastChatsDrawer ? "bg-black/25 text-white" : "bg-black/10 dark:bg-white/10"
-                        }`}>
-                          {chatSessions.length}
-                        </span>
-                      )}
-                    </button>
-
-                    {/* New Chat Button */}
-                    <button
-                      type="button"
-                      onClick={handleNewChat}
-                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-semibold transition hover:scale-105 minimal-surface shadow-xs"
-                      style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
-                      title="Start New Chat"
-                    >
-                      <Plus size={11} />
-                      <span className="hidden sm:inline">New</span>
-                    </button>
-
                     <select
                       value={chatSubjectId || ""}
                       onChange={(e) => setChatSubjectId(e.target.value ? Number(e.target.value) : null)}
-                      className="rounded-lg border px-1.5 py-1 text-[10px] outline-none max-w-[80px]"
+                      className="rounded-lg border px-1.5 py-1 text-[10px] outline-none max-w-[90px]"
                       style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
                       title="Grounded Subject Mode"
                     >
@@ -4798,60 +4966,195 @@ Mathematics:
                       </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-1.5">
-                      {chatSessions.length === 0 ? (
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-2">
+                      {groupedChatSessions.length === 0 ? (
                         <div className="p-8 text-center text-xs opacity-60">
                           <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
                           <p className="font-semibold">No past chats yet</p>
                           <p className="text-[11px] mt-1 opacity-75">Send a message and it will be saved here automatically.</p>
                         </div>
                       ) : (
-                        chatSessions.map((session) => {
-                          const isActive = session.id === activeChatSessionId;
-                          return (
-                            <div
-                              key={session.id}
-                              onClick={() => handleSelectSession(session.id)}
-                              className={`group flex items-center justify-between w-full p-2.5 rounded-xl text-xs transition cursor-pointer text-left ${
-                                isActive
-                                  ? "font-semibold shadow-xs"
-                                  : "opacity-85 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5"
-                              }`}
-                              style={{
-                                backgroundColor: isActive ? "var(--m-surface-alt, rgba(255,255,255,0.08))" : "transparent",
-                                color: isActive ? "var(--m-text-heading, #ffffff)" : "var(--m-text, #e2e8f0)",
-                                border: isActive ? "1px solid var(--m-border, rgba(255,255,255,0.12))" : "1px solid var(--m-border-light)",
-                              }}
-                            >
-                              <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
-                                <span
-                                  className={`size-2 rounded-full shrink-0 ${
-                                    isActive
-                                      ? "bg-[var(--m-primary)] ring-2 ring-[var(--m-primary)]/30"
-                                      : "bg-zinc-400/40 group-hover:bg-zinc-400"
-                                  }`}
-                                />
-                                <div className="truncate flex-1">
-                                  <p className="truncate text-xs font-medium">{session.title || "New Chat"}</p>
-                                  <div className="flex items-center gap-2 mt-0.5 text-[10px] opacity-60 font-mono">
-                                    <span>{formatSessionTime(session.updatedAt)}</span>
-                                    <span>•</span>
-                                    <span>{session.messages?.length || 0} msgs</span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteSession(session.id, e)}
-                                className="opacity-70 group-hover:opacity-100 p-1.5 rounded-lg transition hover:bg-rose-500/20 hover:text-rose-400 shrink-0"
-                                title="Delete chat"
-                              >
-                                <Trash2 size={13} />
-                              </button>
+                        groupedChatSessions.map((group) => (
+                          <div key={group.section} className="space-y-1">
+                            <div className="px-2 pt-1 pb-0.5 text-[10px] font-bold uppercase tracking-wider opacity-60 font-mono" style={{ color: "var(--m-text-sub)" }}>
+                              {group.section}
                             </div>
-                          );
-                        })
+                            {group.items.map((session) => {
+                              const isActive = session.id === activeChatSessionId;
+                              const isRenaming = renamingSessionId === session.id;
+                              const isMenuOpen = openMenuSessionId === session.id;
+                              return (
+                                <div
+                                  key={session.id}
+                                  onClick={() => !isRenaming && handleSelectSession(session.id)}
+                                  className={`group relative flex items-center justify-between w-full p-2.5 rounded-xl text-xs transition cursor-pointer text-left ${
+                                    isMenuOpen ? "z-30" : "z-0"
+                                  } ${
+                                    isActive
+                                      ? "font-semibold shadow-xs"
+                                      : "opacity-85 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5"
+                                  }`}
+                                  style={{
+                                    backgroundColor: isActive ? "var(--m-surface-alt, rgba(255,255,255,0.08))" : "transparent",
+                                    color: isActive ? "var(--m-text-heading, #ffffff)" : "var(--m-text, #e2e8f0)",
+                                    border: isActive ? "1px solid var(--m-border, rgba(255,255,255,0.12))" : "1px solid var(--m-border-light)",
+                                  }}
+                                >
+                                  {isRenaming ? (
+                                    <div className="flex items-center gap-1.5 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="text"
+                                        value={renamingTitleDraft}
+                                        onChange={(e) => setRenamingTitleDraft(e.target.value)}
+                                        onKeyDown={(e) => {
+                                          if (e.key === "Enter") handleSaveRenameSession(session.id, e);
+                                          if (e.key === "Escape") handleCancelRenameSession(e);
+                                        }}
+                                        autoFocus
+                                        className="flex-1 bg-black/20 dark:bg-white/10 rounded-lg px-2 py-1 text-xs outline-none border border-[var(--m-primary)] text-[var(--m-text-heading)]"
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleSaveRenameSession(session.id, e)}
+                                        className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400 transition"
+                                        title="Save name"
+                                      >
+                                        <Check size={13} />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={handleCancelRenameSession}
+                                        className="p-1.5 rounded-lg hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition"
+                                        title="Cancel"
+                                      >
+                                        <X size={13} />
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                                        <span
+                                          className={`size-2 rounded-full shrink-0 ${
+                                            isActive
+                                              ? "bg-[var(--m-primary)] ring-2 ring-[var(--m-primary)]/30"
+                                              : "bg-zinc-400/40 group-hover:bg-zinc-400"
+                                          }`}
+                                        />
+                                        <div className="truncate flex-1">
+                                          <p className="truncate text-xs font-medium">{session.title || "New Chat"}</p>
+                                          <div className="flex items-center gap-2 mt-0.5 text-[10px] opacity-60 font-mono">
+                                            <span>{formatSessionTime(session.updatedAt)}</span>
+                                            <span>•</span>
+                                            <span>{session.messages?.length || 0} msgs</span>
+                                          </div>
+                                        </div>
+                                      </div>
+
+                                      {/* Right Action Icons: Pin Indicator + 3 Horizontal Dots */}
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {/* Pinned Indicator (visible when pinned) */}
+                                        {session.isPinned && (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleTogglePinSession(session.id, e)}
+                                            className="p-1 rounded-md text-[var(--m-primary)] hover:opacity-80 transition"
+                                            title="Pinned chat (click to unpin)"
+                                            aria-label="Pinned"
+                                          >
+                                            <Pin size={13} className="-rotate-45" />
+                                          </button>
+                                        )}
+
+                                        {/* 3 Horizontal Dots Button */}
+                                        <button
+                                          data-chat-menu-trigger
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            setOpenMenuSessionId(isMenuOpen ? null : session.id);
+                                          }}
+                                          className={`p-1 rounded-md transition ${
+                                            isMenuOpen
+                                              ? "opacity-100 bg-black/15 dark:bg-white/15 text-[var(--m-text-heading)]"
+                                              : "opacity-0 group-hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-200"
+                                          }`}
+                                          title="Chat options"
+                                          aria-label="Chat options"
+                                        >
+                                          <MoreHorizontal size={14} />
+                                        </button>
+                                      </div>
+
+                                      {/* 3 Horizontal Dots Dropdown Menu */}
+                                      {isMenuOpen && (
+                                        <div
+                                          data-chat-menu-dropdown
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="absolute right-2 top-full mt-1 z-50 min-w-[145px] rounded-xl shadow-2xl border py-1.5 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md"
+                                          style={{
+                                            backgroundColor: "var(--m-surface-solid, #18181b)",
+                                            borderColor: "var(--m-border, rgba(255,255,255,0.14))",
+                                            boxShadow: "0 12px 30px -4px rgba(0, 0, 0, 0.6), 0 4px 12px -2px rgba(0, 0, 0, 0.4)",
+                                          }}
+                                        >
+                                          {/* Pin / Unpin option */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => handleTogglePinSession(session.id, e)}
+                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium transition text-left hover:bg-black/5 dark:hover:bg-white/10"
+                                            style={{ color: "var(--m-text, #e2e8f0)" }}
+                                          >
+                                            {session.isPinned ? (
+                                              <>
+                                                <PinOff size={13} className="opacity-70" />
+                                                <span>Unpin chat</span>
+                                              </>
+                                            ) : (
+                                              <>
+                                                <Pin size={13} className="opacity-70 -rotate-45" />
+                                                <span>Pin chat</span>
+                                              </>
+                                            )}
+                                          </button>
+
+                                          {/* Rename option */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              setOpenMenuSessionId(null);
+                                              handleStartRenameSession(session.id, session.title || "New Chat", e);
+                                            }}
+                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium transition text-left hover:bg-black/5 dark:hover:bg-white/10"
+                                            style={{ color: "var(--m-text, #e2e8f0)" }}
+                                          >
+                                            <Pencil size={13} className="opacity-70" />
+                                            <span>Rename</span>
+                                          </button>
+
+                                          <div className="my-1 border-t" style={{ borderColor: "var(--m-border-light, rgba(255,255,255,0.08))" }} />
+
+                                          {/* Delete option */}
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              setOpenMenuSessionId(null);
+                                              handleDeleteSession(session.id, e);
+                                            }}
+                                            className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium transition text-left text-rose-400 hover:bg-rose-500/10"
+                                          >
+                                            <Trash2 size={13} />
+                                            <span>Delete</span>
+                                          </button>
+                                        </div>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ))
                       )}
                     </div>
 
@@ -6558,69 +6861,195 @@ Mathematics:
                   </button>
                 </div>
 
-                {/* Section Header */}
-                <div className="flex items-center justify-between px-3.5 pt-3 pb-1 text-[11px] font-bold tracking-wider uppercase opacity-65" style={{ color: "var(--m-text-sub)" }}>
-                  <span>Chats and tasks</span>
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--m-surface-alt)" }}>
-                    {chatSessions.length}
-                  </span>
-                </div>
-
-                {/* Chat Sessions List */}
-                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
-                  {chatSessions.length === 0 ? (
+                {/* Chat Sessions List — Grouped chronologically like ChatGPT & Claude */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-3">
+                  {groupedChatSessions.length === 0 ? (
                     <div className="p-6 text-center text-xs opacity-60">
                       <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
                       <p className="font-semibold">No saved chats yet</p>
-                      <p className="text-[11px] mt-1 opacity-75">Send a message to automatically start recording your study conversations.</p>
+                      <p className="text-[11px] mt-1 opacity-75">Send a message to automatically record your conversations.</p>
                     </div>
                   ) : (
-                    chatSessions.map((session) => {
-                      const isActive = session.id === activeChatSessionId;
-                      return (
+                    groupedChatSessions.map((group) => (
+                      <div key={group.section} className="space-y-0.5">
                         <div
-                          key={session.id}
-                          onClick={() => handleSelectSession(session.id)}
-                          className={`group relative flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-xs transition cursor-pointer text-left ${
-                            isActive
-                              ? "font-semibold shadow-xs"
-                              : "opacity-80 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5"
-                          }`}
-                          style={{
-                            backgroundColor: isActive ? "var(--m-surface-alt, rgba(255,255,255,0.08))" : "transparent",
-                            color: isActive ? "var(--m-text-heading, #ffffff)" : "var(--m-text, #e2e8f0)",
-                            border: isActive ? "1px solid var(--m-border, rgba(255,255,255,0.12))" : "1px solid transparent",
-                          }}
-                          title={session.title}
+                          className="px-3 pt-2 pb-1 text-[11px] font-semibold tracking-wider opacity-60 uppercase font-mono"
+                          style={{ color: "var(--m-text-sub)" }}
                         >
-                          <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-1">
-                            <span
-                              className={`size-2 rounded-full shrink-0 transition ${
-                                isActive
-                                  ? "bg-[var(--m-primary)] ring-4 ring-[var(--m-primary)]/20"
-                                  : "bg-zinc-400/40 group-hover:bg-zinc-400"
-                              }`}
-                            />
-                            <div className="truncate flex-1">
-                              <p className="truncate text-xs font-medium leading-snug">{session.title || "New Chat"}</p>
-                              <span className="text-[10px] opacity-60 block font-mono mt-0.5">
-                                {formatSessionTime(session.updatedAt)}
-                              </span>
-                            </div>
-                          </div>
-
-                          <button
-                            type="button"
-                            onClick={(e) => handleDeleteSession(session.id, e)}
-                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition hover:bg-rose-500/20 hover:text-rose-400 shrink-0"
-                            title="Delete chat"
-                            aria-label="Delete chat"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                          {group.section}
                         </div>
-                      );
-                    })
+                        {group.items.map((session) => {
+                          const isActive = session.id === activeChatSessionId;
+                          const isRenaming = renamingSessionId === session.id;
+                          const isMenuOpen = openMenuSessionId === session.id;
+                          return (
+                            <div
+                              key={session.id}
+                              onClick={() => !isRenaming && handleSelectSession(session.id)}
+                              className={`group relative flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs transition cursor-pointer text-left ${
+                                isMenuOpen ? "z-30" : "z-0"
+                              } ${
+                                isActive
+                                  ? "font-semibold shadow-xs"
+                                  : "opacity-80 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5"
+                              }`}
+                              style={{
+                                backgroundColor: isActive ? "var(--m-surface-alt, rgba(255,255,255,0.08))" : "transparent",
+                                color: isActive ? "var(--m-text-heading, #ffffff)" : "var(--m-text, #e2e8f0)",
+                                border: isActive ? "1px solid var(--m-border, rgba(255,255,255,0.12))" : "1px solid transparent",
+                              }}
+                              title={session.title}
+                            >
+                              {isRenaming ? (
+                                <div className="flex items-center gap-1.5 flex-1 min-w-0" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="text"
+                                    value={renamingTitleDraft}
+                                    onChange={(e) => setRenamingTitleDraft(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === "Enter") handleSaveRenameSession(session.id, e);
+                                      if (e.key === "Escape") handleCancelRenameSession(e);
+                                    }}
+                                    autoFocus
+                                    className="flex-1 bg-black/20 dark:bg-white/10 rounded-lg px-2 py-1 text-xs outline-none border border-[var(--m-primary)] text-[var(--m-text-heading)]"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={(e) => handleSaveRenameSession(session.id, e)}
+                                    className="p-1.5 rounded-lg hover:bg-emerald-500/20 text-emerald-400 transition"
+                                    title="Save name"
+                                  >
+                                    <Check size={13} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelRenameSession}
+                                    className="p-1.5 rounded-lg hover:bg-rose-500/20 text-zinc-400 hover:text-rose-400 transition"
+                                    title="Cancel"
+                                  >
+                                    <X size={13} />
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-1">
+                                    <span
+                                      className={`size-1.5 rounded-full shrink-0 transition ${
+                                        isActive
+                                          ? "bg-[var(--m-primary)] ring-4 ring-[var(--m-primary)]/20"
+                                          : "bg-transparent group-hover:bg-zinc-400/40"
+                                      }`}
+                                    />
+                                    <div className="truncate flex-1">
+                                      <p className="truncate text-xs leading-snug">{session.title || "New Chat"}</p>
+                                    </div>
+                                  </div>
+
+                                  {/* Right Action Icons: Pin Indicator + 3 Horizontal Dots */}
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    {/* Pinned Indicator (visible when pinned) */}
+                                    {session.isPinned && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleTogglePinSession(session.id, e)}
+                                        className="p-1 rounded-md text-[var(--m-primary)] hover:opacity-80 transition"
+                                        title="Pinned chat (click to unpin)"
+                                        aria-label="Pinned"
+                                      >
+                                        <Pin size={13} className="-rotate-45" />
+                                      </button>
+                                    )}
+
+                                    {/* 3 Horizontal Dots Button */}
+                                    <button
+                                      data-chat-menu-trigger
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        setOpenMenuSessionId(isMenuOpen ? null : session.id);
+                                      }}
+                                      className={`p-1 rounded-md transition ${
+                                        isMenuOpen
+                                          ? "opacity-100 bg-black/15 dark:bg-white/15 text-[var(--m-text-heading)]"
+                                          : "opacity-0 group-hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10 text-zinc-400 hover:text-zinc-200"
+                                      }`}
+                                      title="Chat options"
+                                      aria-label="Chat options"
+                                    >
+                                      <MoreHorizontal size={14} />
+                                    </button>
+                                  </div>
+
+                                  {/* 3 Horizontal Dots Dropdown Menu */}
+                                  {isMenuOpen && (
+                                    <div
+                                      data-chat-menu-dropdown
+                                      onClick={(e) => e.stopPropagation()}
+                                      className="absolute right-2 top-full mt-1 z-50 min-w-[145px] rounded-xl shadow-2xl border py-1.5 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md"
+                                      style={{
+                                        backgroundColor: "var(--m-surface-solid, #18181b)",
+                                        borderColor: "var(--m-border, rgba(255,255,255,0.14))",
+                                        boxShadow: "0 12px 30px -4px rgba(0, 0, 0, 0.6), 0 4px 12px -2px rgba(0, 0, 0, 0.4)",
+                                      }}
+                                    >
+                                      {/* Pin / Unpin option */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleTogglePinSession(session.id, e)}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium transition text-left hover:bg-black/5 dark:hover:bg-white/10"
+                                        style={{ color: "var(--m-text, #e2e8f0)" }}
+                                      >
+                                        {session.isPinned ? (
+                                          <>
+                                            <PinOff size={13} className="opacity-70" />
+                                            <span>Unpin chat</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Pin size={13} className="opacity-70 -rotate-45" />
+                                            <span>Pin chat</span>
+                                          </>
+                                        )}
+                                      </button>
+
+                                      {/* Rename option */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          setOpenMenuSessionId(null);
+                                          handleStartRenameSession(session.id, session.title || "New Chat", e);
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium transition text-left hover:bg-black/5 dark:hover:bg-white/10"
+                                        style={{ color: "var(--m-text, #e2e8f0)" }}
+                                      >
+                                        <Pencil size={13} className="opacity-70" />
+                                        <span>Rename</span>
+                                      </button>
+
+                                      <div className="my-1 border-t" style={{ borderColor: "var(--m-border-light, rgba(255,255,255,0.08))" }} />
+
+                                      {/* Delete option */}
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          setOpenMenuSessionId(null);
+                                          handleDeleteSession(session.id, e);
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium transition text-left text-rose-400 hover:bg-rose-500/10"
+                                      >
+                                        <Trash2 size={13} />
+                                        <span>Delete</span>
+                                      </button>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))
                   )}
                 </div>
 
