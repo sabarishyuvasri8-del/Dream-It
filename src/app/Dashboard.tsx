@@ -37,6 +37,7 @@ import {
   GraduationCap,
   Heading1,
   Heading2,
+  History,
   Image as ImageIcon,
   Inbox,
   Italic,
@@ -52,6 +53,8 @@ import {
   MoreHorizontal,
   Notebook,
   MessageCircle,
+  MessageSquare,
+  PanelLeft,
   Paperclip,
   Pause,
   Pencil,
@@ -142,6 +145,15 @@ const SnapAndSolveModal = lazy(() => import("./components/SnapAndSolveModal"));
 import CommandPalette from "./components/CommandPalette";
 
 type Message = { role: "user" | "assistant"; content: string };
+
+export interface AIChatSession {
+  id: string;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
+  subjectId: number | null;
+  messages: Message[];
+}
 
 const weekDayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
@@ -359,6 +371,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [activeFocusSeconds, setActiveFocusSeconds] = useState(0);
 
   // ─── AI Chat — Dream It AI ───
+
   const DEFAULT_WELCOME: Message = {
     role: "assistant",
     content: "Welcome! I'm **Dream It AI**, your intelligent study assistant.\n\nAsk me study questions, math problems, code debugging, or attach files — I'm here to help you excel!",
@@ -371,6 +384,12 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatMaxContainerRef = useRef<HTMLDivElement>(null);
+
+  // ─── AI Chat Sessions / History ───
+  const [chatSessions, setChatSessions] = useState<AIChatSession[]>([]);
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
+  const [showPastChatsDrawer, setShowPastChatsDrawer] = useState(false);
+  const [wideSidebarOpen, setWideSidebarOpen] = useState(true);
 
   // ─── AI Chat Message Actions (ChatGPT-style Copy, Share, Edit) ───
   const [copiedMessageIdx, setCopiedMessageIdx] = useState<number | null>(null);
@@ -2772,7 +2791,9 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
       : questionText;
 
     const baseHistory = overrideHistory ?? messages;
-    setMessages([...baseHistory, { role: "user", content: displayMessage }]);
+    const nextUserMessages: Message[] = [...baseHistory, { role: "user", content: displayMessage }];
+    setMessages(nextUserMessages);
+    saveCurrentSession(nextUserMessages);
     if (!customQuery) setChatDraft("");
     setChatFile(null);
     setIsAsking(true);
@@ -2871,6 +2892,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           if (last && last.role === "assistant") {
             last.content = `⚠️ **Dream It AI**: ${response.error}`;
           }
+          saveCurrentSession(updated);
           return updated;
         });
       } else {
@@ -3022,10 +3044,15 @@ You can save notes and flashcards. When asked to save to notes or create flashca
         if (last && last.role === "assistant" && !last.content) {
           last.content = "⚠️ **Dream It AI**: An unexpected error occurred. Please try again.";
         }
+        saveCurrentSession(updated);
         return updated;
       });
     }
 
+    setMessages((curr) => {
+      saveCurrentSession(curr);
+      return curr;
+    });
     setIsAsking(false);
   };
 
@@ -3129,6 +3156,217 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       askCoach(undefined, promptToReask, historyToKeep);
     }
   };
+
+  // ─── AI Chat Session Management (History / Past Chats) ───
+  const generateSessionTitle = (text: string): string => {
+    const cleaned = text
+      .replace(/^!\[.*?\]\(.*?\)\s*/, "")
+      .replace(/^(?:📎|📄)\s*\*\*.*?\*\*.*?\n\n/, "")
+      .replace(/^#+\s*/, "")
+      .trim();
+    if (!cleaned) return "Study Question";
+    const firstLine = cleaned.split("\n")[0].trim();
+    if (firstLine.length <= 36) return firstLine;
+    return firstLine.slice(0, 34).trim() + "…";
+  };
+
+  const formatSessionTime = (timestamp: number): string => {
+    if (!timestamp) return "Recent";
+    const diffMs = Date.now() - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+
+  const saveCurrentSession = useCallback((updatedMessages: Message[], customTitle?: string) => {
+    const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
+    setChatSessions((prevSessions) => {
+      let currentId = activeChatSessionId;
+      const targetIndex = prevSessions.findIndex((s) => s.id === currentId);
+
+      const firstUserMsg = updatedMessages.find((m) => m.role === "user");
+      const generatedTitle = firstUserMsg ? generateSessionTitle(firstUserMsg.content) : "New Chat";
+
+      let next: AIChatSession[];
+      if (targetIndex >= 0) {
+        const existing = prevSessions[targetIndex];
+        const newTitle = customTitle || (existing.title === "New Chat" && firstUserMsg ? generatedTitle : existing.title);
+        const updated: AIChatSession = {
+          ...existing,
+          title: newTitle,
+          updatedAt: Date.now(),
+          subjectId: chatSubjectId,
+          messages: updatedMessages,
+        };
+        next = [...prevSessions];
+        next[targetIndex] = updated;
+      } else {
+        const newId = currentId || ("session_" + Date.now());
+        const newSession: AIChatSession = {
+          id: newId,
+          title: customTitle || generatedTitle,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          subjectId: chatSubjectId,
+          messages: updatedMessages,
+        };
+        next = [newSession, ...prevSessions];
+        setActiveChatSessionId(newId);
+      }
+
+      next.sort((a, b) => b.updatedAt - a.updatedAt);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch (err) {
+        console.warn("Failed writing AI chat sessions to localStorage:", err);
+      }
+      return next;
+    });
+  }, [activeChatSessionId, chatSubjectId, userId]);
+
+  const handleNewChat = useCallback(() => {
+    const newId = "session_" + Date.now();
+    const newSession: AIChatSession = {
+      id: newId,
+      title: "New Chat",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      subjectId: chatSubjectId,
+      messages: [DEFAULT_WELCOME],
+    };
+
+    setChatSessions((prev) => {
+      const filtered = prev.filter(
+        (s) => s.id !== activeChatSessionId || s.messages.some((m) => m.role === "user")
+      );
+      const next = [newSession, ...filtered];
+      try {
+        localStorage.setItem(`dreamit_ai_sessions_${userId || "default"}`, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+
+    setActiveChatSessionId(newId);
+    setMessages([DEFAULT_WELCOME]);
+    setShowPastChatsDrawer(false);
+    setEditingMessageIdx(null);
+    setChatDraft("");
+    setChatFile(null);
+    showToast("Started new chat ✨", "info");
+  }, [activeChatSessionId, chatSubjectId, userId, DEFAULT_WELCOME, showToast]);
+
+  const handleSelectSession = (sessionId: string) => {
+    const session = chatSessions.find((s) => s.id === sessionId);
+    if (!session) return;
+
+    setActiveChatSessionId(session.id);
+    setMessages(session.messages && session.messages.length > 0 ? session.messages : [DEFAULT_WELCOME]);
+    if (session.subjectId !== undefined) {
+      setChatSubjectId(session.subjectId);
+    }
+    setEditingMessageIdx(null);
+    setShowPastChatsDrawer(false);
+  };
+
+  const handleDeleteSession = (sessionId: string, e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+
+    setChatSessions((prev) => {
+      const next = prev.filter((s) => s.id !== sessionId);
+      try {
+        localStorage.setItem(`dreamit_ai_sessions_${userId || "default"}`, JSON.stringify(next));
+      } catch {}
+
+      if (activeChatSessionId === sessionId) {
+        if (next.length > 0) {
+          const nextActive = next[0];
+          setActiveChatSessionId(nextActive.id);
+          setMessages(nextActive.messages?.length ? nextActive.messages : [DEFAULT_WELCOME]);
+          if (nextActive.subjectId !== undefined) {
+            setChatSubjectId(nextActive.subjectId);
+          }
+        } else {
+          const freshId = "session_" + Date.now();
+          const freshSession: AIChatSession = {
+            id: freshId,
+            title: "New Chat",
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            subjectId: null,
+            messages: [DEFAULT_WELCOME],
+          };
+          setActiveChatSessionId(freshId);
+          setMessages([DEFAULT_WELCOME]);
+          const freshNext = [freshSession];
+          try {
+            localStorage.setItem(`dreamit_ai_sessions_${userId || "default"}`, JSON.stringify(freshNext));
+          } catch {}
+          return freshNext;
+        }
+      }
+      return next;
+    });
+
+    showToast("Chat deleted", "info");
+  };
+
+  // Load chat sessions on mount / userId change
+  useEffect(() => {
+    const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) {
+        const parsed: AIChatSession[] = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setChatSessions(parsed);
+          const current = parsed[0];
+          setActiveChatSessionId(current.id);
+          setMessages(current.messages && current.messages.length > 0 ? current.messages : [DEFAULT_WELCOME]);
+          if (current.subjectId !== undefined) {
+            setChatSubjectId(current.subjectId);
+          }
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn("Failed loading AI chat sessions from localStorage:", e);
+    }
+
+    const initialId = "session_" + Date.now();
+    const initialSession: AIChatSession = {
+      id: initialId,
+      title: "New Chat",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      subjectId: null,
+      messages: [DEFAULT_WELCOME],
+    };
+    setChatSessions([initialSession]);
+    setActiveChatSessionId(initialId);
+    setMessages([DEFAULT_WELCOME]);
+  }, [userId]);
+
+  // Global Ctrl+N / Cmd+N shortcut for New Chat in Wide Mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "n" && isChatMaximized) {
+        e.preventDefault();
+        handleNewChat();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isChatMaximized, handleNewChat]);
 
   // ─── Nav Items ───
   const navItems: { label: NavItem; icon: any; displayLabel?: string }[] = [
@@ -4432,47 +4670,184 @@ Mathematics:
                 )}
 
                 {/* Side Panel Header */}
-                <div className="flex items-center justify-between p-3.5 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
-                  <div className="flex items-center gap-2">
-                    <div className="grid size-8 place-items-center rounded-lg" style={{ backgroundColor: chatSubjectId ? "var(--m-warning)" : "var(--m-primary)", color: chatSubjectId ? "var(--m-warning-text)" : "var(--m-primary-text)" }}>
+                <div className="flex items-center justify-between p-3 shrink-0" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="grid size-8 shrink-0 place-items-center rounded-lg" style={{ backgroundColor: chatSubjectId ? "var(--m-warning)" : "var(--m-primary)", color: chatSubjectId ? "var(--m-warning-text)" : "var(--m-primary-text)" }}>
                       <Brain size={16} />
                     </div>
-                    <div>
-                      <p className="text-sm font-medium" style={{ color: "var(--m-text-heading)" }}>{chatSubjectId ? "Grounded Tutor" : "Dream It AI"}</p>
+                    <div className="min-w-0">
+                      <p className="text-xs sm:text-sm font-semibold truncate" style={{ color: "var(--m-text-heading)" }}>{chatSubjectId ? "Grounded Tutor" : "Dream It AI"}</p>
                       <p className="flex items-center gap-1 text-[10px]" style={{ color: "var(--m-text-muted)" }}>
                         <span className="size-1.5 rounded-full" style={{ backgroundColor: "var(--m-success)" }} />
                         {chatSubjectId ? "Sourced Mode" : "Online"}
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {/* Past Chats Button (Requested by User) */}
+                    <button
+                      type="button"
+                      onClick={() => setShowPastChatsDrawer(!showPastChatsDrawer)}
+                      className={`flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-semibold transition hover:scale-105 shadow-xs ${
+                        showPastChatsDrawer ? "ring-1 ring-[var(--m-primary)]" : "minimal-surface"
+                      }`}
+                      style={{
+                        backgroundColor: showPastChatsDrawer ? "var(--m-primary)" : undefined,
+                        color: showPastChatsDrawer ? "var(--m-primary-text)" : "var(--m-primary)",
+                        border: "1px solid var(--m-border)",
+                      }}
+                      title="View Past Chats History"
+                    >
+                      <History size={11} />
+                      <span>Past Chats</span>
+                      {chatSessions.length > 0 && (
+                        <span className={`text-[9px] px-1 rounded-full font-mono font-bold ${
+                          showPastChatsDrawer ? "bg-black/25 text-white" : "bg-black/10 dark:bg-white/10"
+                        }`}>
+                          {chatSessions.length}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* New Chat Button */}
+                    <button
+                      type="button"
+                      onClick={handleNewChat}
+                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-semibold transition hover:scale-105 minimal-surface shadow-xs"
+                      style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
+                      title="Start New Chat"
+                    >
+                      <Plus size={11} />
+                      <span className="hidden sm:inline">New</span>
+                    </button>
+
                     <select
                       value={chatSubjectId || ""}
                       onChange={(e) => setChatSubjectId(e.target.value ? Number(e.target.value) : null)}
-                      className="rounded-lg border px-2 py-1 text-[10px] outline-none max-w-[100px]"
+                      className="rounded-lg border px-1.5 py-1 text-[10px] outline-none max-w-[80px]"
                       style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
                       title="Grounded Subject Mode"
                     >
                       <option value="">General AI</option>
                       {subjects.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name} Tutor</option>
+                        <option key={s.id} value={s.id}>{s.name}</option>
                       ))}
                     </select>
+
                     <button
                       type="button"
                       onClick={() => setIsChatMaximized(true)}
-                      className="flex items-center gap-1 rounded-lg px-2.5 py-1 text-[11px] font-semibold transition hover:scale-105 minimal-surface shadow-xs"
+                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-semibold transition hover:scale-105 minimal-surface shadow-xs"
                       style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
                       title="Open Wide AI Chat"
                     >
-                      <Maximize2 size={12} />
+                      <Maximize2 size={11} />
                       <span>Wide</span>
                     </button>
                   </div>
                 </div>
 
-                {/* Messages Container (Fills middle area perfectly) */}
-                <div ref={chatContainerRef} className="flex-1 space-y-3.5 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
+                {/* Past Chats Slide Drawer (in Normal Mode) */}
+                {showPastChatsDrawer ? (
+                  <div className="flex-1 flex flex-col overflow-hidden bg-[var(--m-surface-solid)] animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between p-3 border-b" style={{ borderColor: "var(--m-border-light)" }}>
+                      <div className="flex items-center gap-2">
+                        <History size={14} style={{ color: "var(--m-primary)" }} />
+                        <h4 className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Past Chats ({chatSessions.length})</h4>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={handleNewChat}
+                          className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-bold shadow-xs transition hover:scale-102"
+                          style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                        >
+                          <Plus size={11} />
+                          <span>New</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setShowPastChatsDrawer(false)}
+                          className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition"
+                          title="Close Past Chats"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2.5 space-y-1.5">
+                      {chatSessions.length === 0 ? (
+                        <div className="p-8 text-center text-xs opacity-60">
+                          <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
+                          <p className="font-semibold">No past chats yet</p>
+                          <p className="text-[11px] mt-1 opacity-75">Send a message and it will be saved here automatically.</p>
+                        </div>
+                      ) : (
+                        chatSessions.map((session) => {
+                          const isActive = session.id === activeChatSessionId;
+                          return (
+                            <div
+                              key={session.id}
+                              onClick={() => handleSelectSession(session.id)}
+                              className={`group flex items-center justify-between w-full p-2.5 rounded-xl text-xs transition cursor-pointer text-left ${
+                                isActive
+                                  ? "font-semibold shadow-xs"
+                                  : "opacity-85 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5"
+                              }`}
+                              style={{
+                                backgroundColor: isActive ? "var(--m-surface-alt, rgba(255,255,255,0.08))" : "transparent",
+                                color: isActive ? "var(--m-text-heading, #ffffff)" : "var(--m-text, #e2e8f0)",
+                                border: isActive ? "1px solid var(--m-border, rgba(255,255,255,0.12))" : "1px solid var(--m-border-light)",
+                              }}
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-2">
+                                <span
+                                  className={`size-2 rounded-full shrink-0 ${
+                                    isActive
+                                      ? "bg-[var(--m-primary)] ring-2 ring-[var(--m-primary)]/30"
+                                      : "bg-zinc-400/40 group-hover:bg-zinc-400"
+                                  }`}
+                                />
+                                <div className="truncate flex-1">
+                                  <p className="truncate text-xs font-medium">{session.title || "New Chat"}</p>
+                                  <div className="flex items-center gap-2 mt-0.5 text-[10px] opacity-60 font-mono">
+                                    <span>{formatSessionTime(session.updatedAt)}</span>
+                                    <span>•</span>
+                                    <span>{session.messages?.length || 0} msgs</span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteSession(session.id, e)}
+                                className="opacity-70 group-hover:opacity-100 p-1.5 rounded-lg transition hover:bg-rose-500/20 hover:text-rose-400 shrink-0"
+                                title="Delete chat"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="p-2 border-t text-center shrink-0" style={{ borderColor: "var(--m-border-light)" }}>
+                      <button
+                        type="button"
+                        onClick={() => setShowPastChatsDrawer(false)}
+                        className="text-[11px] font-semibold opacity-75 hover:opacity-100 transition"
+                        style={{ color: "var(--m-primary)" }}
+                      >
+                        ← Return to current conversation
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Messages Container (Fills middle area perfectly) */}
+                    <div ref={chatContainerRef} className="flex-1 space-y-3.5 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
                   {messages.map((m, idx) => (
                     <div
                       key={idx}
@@ -4678,7 +5053,9 @@ Mathematics:
                     </button>
                   </div>
                 </form>
-              </aside>
+              </>
+            )}
+          </aside>
             </div>
           )}
 
@@ -6081,18 +6458,28 @@ Mathematics:
           )}
 
           {/* Fullscreen Header */}
-          <div className="flex items-center justify-between border-b px-4 sm:px-8 py-3.5 sm:py-4 shrink-0" style={{ borderColor: "var(--m-border)" }}>
+          <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 shrink-0" style={{ borderColor: "var(--m-border)" }}>
             <div className="flex items-center gap-3">
-              <div className="flex size-10 items-center justify-center rounded-2xl shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                <Brain size={22} />
+              <button
+                type="button"
+                onClick={() => setWideSidebarOpen(!wideSidebarOpen)}
+                className="p-2 rounded-xl border transition hover:opacity-80 flex items-center justify-center shadow-xs"
+                style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-surface-alt)", color: "var(--m-text)" }}
+                title={wideSidebarOpen ? "Hide chat history" : "Show chat history"}
+                aria-label="Toggle sidebar"
+              >
+                <PanelLeft size={17} />
+              </button>
+              <div className="flex size-9 items-center justify-center rounded-xl shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                <Brain size={20} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h2 className="font-[Roboto_Slab] text-lg sm:text-xl font-bold" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
-                  <span className="rounded-full px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
+                  <h2 className="font-[Roboto_Slab] text-base sm:text-lg font-bold" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
+                  <span className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
                 </div>
-                <p className="flex items-center gap-1.5 text-xs mt-0.5" style={{ color: "var(--m-text-sub)" }}>
-                  <span className="size-2 rounded-full animate-pulse" style={{ backgroundColor: "var(--m-success)" }} />
+                <p className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--m-text-sub)" }}>
+                  <span className="size-1.5 rounded-full animate-pulse" style={{ backgroundColor: "var(--m-success)" }} />
                   Online &amp; Ready for full-screen study assistance
                 </p>
               </div>
@@ -6100,196 +6487,330 @@ Mathematics:
             <div className="flex items-center gap-2">
               <button
                 type="button"
+                onClick={handleNewChat}
+                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:scale-102 shadow-xs"
+                style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                title="Start a new chat (Ctrl+N)"
+              >
+                <Plus size={14} />
+                <span>New Chat</span>
+              </button>
+              <button
+                type="button"
                 onClick={() => setIsChatMaximized(false)}
-                className="flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs"
+                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs"
                 style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
                 title="Exit Wide View (Esc)"
               >
-                <Minimize2 size={15} />
+                <Minimize2 size={14} />
                 <span>Exit Wide</span>
                 <span className="hidden sm:inline-block text-[10px] opacity-60 font-mono ml-0.5">(Esc)</span>
               </button>
             </div>
           </div>
 
-          {/* Fullscreen Messages Area (Stretches across entire screen) */}
-          <div ref={chatMaxContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar w-full px-4 sm:px-6 md:px-10 py-6 max-w-6xl mx-auto">
-            {messages.map((m, idx) => (
-              <div
-                key={idx}
-                className={`group flex flex-col ${
-                  m.role === "user" ? "items-end ml-auto" : "items-start"
-                } max-w-[90%] md:max-w-[80%]`}
+          {/* Main Body: Left Chat History Sidebar + Right Message Canvas */}
+          <div className="flex-1 flex overflow-hidden w-full relative">
+            {/* Left Sidebar (Chats & Tasks History - matching ChatGPT layout) */}
+            {wideSidebarOpen && (
+              <aside
+                className="w-64 sm:w-72 md:w-80 shrink-0 border-r flex flex-col h-full z-20 animate-in slide-in-from-left-4 duration-150"
+                style={{
+                  borderColor: "var(--m-border)",
+                  backgroundColor: "var(--m-surface-solid)",
+                }}
               >
-                <div
-                  className={`w-full rounded-2xl p-4 md:p-5 leading-relaxed transition contain-chat ${
-                    m.role === "assistant" ? "shadow-xs" : "shadow-sm"
-                  }`}
-                  style={
-                    m.role === "assistant"
-                      ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
-                      : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
-                  }
-                >
-                  {editingMessageIdx === idx ? (
-                    <div className="space-y-3 py-1">
-                      <textarea
-                        value={editingMessageDraft}
-                        onChange={(e) => setEditingMessageDraft(e.target.value)}
-                        rows={Math.max(2, Math.min(8, editingMessageDraft.split("\n").length))}
-                        className="w-full resize-none rounded-xl p-3 text-xs sm:text-sm leading-relaxed outline-none border transition focus:ring-2 focus:ring-white/30"
-                        style={{
-                          backgroundColor: "rgba(0, 0, 0, 0.25)",
-                          color: "inherit",
-                          borderColor: "rgba(255, 255, 255, 0.2)",
-                        }}
-                        autoFocus
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSaveAndSubmitEdit(idx);
-                          } else if (e.key === "Escape") {
-                            handleCancelEditMessage();
-                          }
-                        }}
-                      />
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCancelEditMessage}
-                          className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:bg-white/10"
-                          style={{ border: "1px solid rgba(255,255,255,0.2)", color: "inherit" }}
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!editingMessageDraft.trim() || isAsking}
-                          onClick={() => handleSaveAndSubmitEdit(idx)}
-                          className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-bold transition hover:scale-102 disabled:opacity-40 shadow-xs"
-                          style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text, #ffffff)" }}
-                        >
-                          <span>Send</span>
-                        </button>
-                      </div>
+                {/* Top Action */}
+                <div className="p-3 border-b" style={{ borderColor: "var(--m-border-light)" }}>
+                  <button
+                    type="button"
+                    onClick={handleNewChat}
+                    className="flex items-center justify-between w-full rounded-xl px-3.5 py-2.5 text-xs font-bold transition hover:scale-[1.01] shadow-xs active:scale-98"
+                    style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Plus size={15} />
+                      <span>New Chat</span>
+                    </span>
+                    <span className="text-[10px] opacity-75 font-mono px-1.5 py-0.5 rounded bg-black/20">Ctrl+N</span>
+                  </button>
+                </div>
+
+                {/* Section Header */}
+                <div className="flex items-center justify-between px-3.5 pt-3 pb-1 text-[11px] font-bold tracking-wider uppercase opacity-65" style={{ color: "var(--m-text-sub)" }}>
+                  <span>Chats and tasks</span>
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "var(--m-surface-alt)" }}>
+                    {chatSessions.length}
+                  </span>
+                </div>
+
+                {/* Chat Sessions List */}
+                <div className="flex-1 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                  {chatSessions.length === 0 ? (
+                    <div className="p-6 text-center text-xs opacity-60">
+                      <MessageSquare size={24} className="mx-auto mb-2 opacity-40" />
+                      <p className="font-semibold">No saved chats yet</p>
+                      <p className="text-[11px] mt-1 opacity-75">Send a message to automatically start recording your study conversations.</p>
                     </div>
-                  ) : m.content ? (
-                    renderSimpleMarkdown(m.content)
                   ) : (
-                    <AIThinkingStatus size="lg" />
+                    chatSessions.map((session) => {
+                      const isActive = session.id === activeChatSessionId;
+                      return (
+                        <div
+                          key={session.id}
+                          onClick={() => handleSelectSession(session.id)}
+                          className={`group relative flex items-center justify-between w-full px-3 py-2.5 rounded-xl text-xs transition cursor-pointer text-left ${
+                            isActive
+                              ? "font-semibold shadow-xs"
+                              : "opacity-80 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/5"
+                          }`}
+                          style={{
+                            backgroundColor: isActive ? "var(--m-surface-alt, rgba(255,255,255,0.08))" : "transparent",
+                            color: isActive ? "var(--m-text-heading, #ffffff)" : "var(--m-text, #e2e8f0)",
+                            border: isActive ? "1px solid var(--m-border, rgba(255,255,255,0.12))" : "1px solid transparent",
+                          }}
+                          title={session.title}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1 pr-1">
+                            <span
+                              className={`size-2 rounded-full shrink-0 transition ${
+                                isActive
+                                  ? "bg-[var(--m-primary)] ring-4 ring-[var(--m-primary)]/20"
+                                  : "bg-zinc-400/40 group-hover:bg-zinc-400"
+                              }`}
+                            />
+                            <div className="truncate flex-1">
+                              <p className="truncate text-xs font-medium leading-snug">{session.title || "New Chat"}</p>
+                              <span className="text-[10px] opacity-60 block font-mono mt-0.5">
+                                {formatSessionTime(session.updatedAt)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteSession(session.id, e)}
+                            className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition hover:bg-rose-500/20 hover:text-rose-400 shrink-0"
+                            title="Delete chat"
+                            aria-label="Delete chat"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
 
-                {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
-                {m.content && editingMessageIdx !== idx && (
-                  <div
-                    className={`flex items-center gap-1.5 mt-1.5 text-xs opacity-80 hover:opacity-100 transition-opacity ${
-                      m.role === "user" ? "justify-end pr-1" : "justify-start pl-1"
-                    }`}
-                    style={{ color: "var(--m-text-sub)" }}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => handleCopyMessage(m.content, idx)}
-                      className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                      title="Copy message"
-                      aria-label="Copy message"
-                    >
-                      {copiedMessageIdx === idx ? (
-                        <Check size={14} className="text-emerald-400" />
-                      ) : (
-                        <Copy size={14} />
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleShareMessage(m.content)}
-                      className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                      title="Share"
-                      aria-label="Share message"
-                    >
-                      <Share size={14} />
-                    </button>
-                    {m.role === "user" ? (
-                      <button
-                        type="button"
-                        onClick={() => handleStartEditMessage(idx, m.content)}
-                        className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                        title="Edit message"
-                        aria-label="Edit message"
-                      >
-                        <Pencil size={14} />
-                      </button>
+                {/* Bottom User Profile Card */}
+                <div className="p-3 border-t flex items-center justify-between" style={{ borderColor: "var(--m-border-light)" }}>
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    {userImageUrl ? (
+                      <img src={userImageUrl} alt={userNameDisplay} className="size-8 rounded-full object-cover shrink-0" />
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => handleRegenerateResponse(idx)}
-                        className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                        title="Regenerate response"
-                        aria-label="Regenerate response"
-                      >
-                        <RotateCcw size={14} />
-                      </button>
+                      <div className="grid size-8 place-items-center rounded-full text-xs font-bold shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                        {userNameDisplay.charAt(0)}
+                      </div>
                     )}
+                    <div className="truncate">
+                      <p className="text-xs font-bold truncate leading-tight" style={{ color: "var(--m-text-heading)" }}>{userNameDisplay}</p>
+                      <p className="text-[10px] opacity-60 font-mono">Dream It AI Tutor</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleNewChat}
+                    className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition opacity-75 hover:opacity-100"
+                    title="New Chat"
+                  >
+                    <Plus size={15} />
+                  </button>
+                </div>
+              </aside>
+            )}
+
+            {/* Right Side: Conversation Area & Input */}
+            <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
+              {/* Fullscreen Messages Area */}
+              <div ref={chatMaxContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar w-full px-4 sm:px-6 md:px-8 py-6 max-w-5xl mx-auto">
+                {messages.map((m, idx) => (
+                  <div
+                    key={idx}
+                    className={`group flex flex-col ${
+                      m.role === "user" ? "items-end ml-auto" : "items-start"
+                    } max-w-[90%] md:max-w-[80%]`}
+                  >
+                    <div
+                      className={`w-full rounded-2xl p-4 md:p-5 leading-relaxed transition contain-chat ${
+                        m.role === "assistant" ? "shadow-xs" : "shadow-sm"
+                      }`}
+                      style={
+                        m.role === "assistant"
+                          ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
+                          : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
+                      }
+                    >
+                      {editingMessageIdx === idx ? (
+                        <div className="space-y-3 py-1">
+                          <textarea
+                            value={editingMessageDraft}
+                            onChange={(e) => setEditingMessageDraft(e.target.value)}
+                            rows={Math.max(2, Math.min(8, editingMessageDraft.split("\n").length))}
+                            className="w-full resize-none rounded-xl p-3 text-xs sm:text-sm leading-relaxed outline-none border transition focus:ring-2 focus:ring-white/30"
+                            style={{
+                              backgroundColor: "rgba(0, 0, 0, 0.25)",
+                              color: "inherit",
+                              borderColor: "rgba(255, 255, 255, 0.2)",
+                            }}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                handleSaveAndSubmitEdit(idx);
+                              } else if (e.key === "Escape") {
+                                handleCancelEditMessage();
+                              }
+                            }}
+                          />
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={handleCancelEditMessage}
+                              className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:bg-white/10"
+                              style={{ border: "1px solid rgba(255,255,255,0.2)", color: "inherit" }}
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!editingMessageDraft.trim() || isAsking}
+                              onClick={() => handleSaveAndSubmitEdit(idx)}
+                              className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-bold transition hover:scale-102 disabled:opacity-40 shadow-xs"
+                              style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text, #ffffff)" }}
+                            >
+                              <span>Send</span>
+                            </button>
+                          </div>
+                        </div>
+                      ) : m.content ? (
+                        renderSimpleMarkdown(m.content)
+                      ) : (
+                        <AIThinkingStatus size="lg" />
+                      )}
+                    </div>
+
+                    {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
+                    {m.content && editingMessageIdx !== idx && (
+                      <div
+                        className={`flex items-center gap-1.5 mt-1.5 text-xs opacity-80 hover:opacity-100 transition-opacity ${
+                          m.role === "user" ? "justify-end pr-1" : "justify-start pl-1"
+                        }`}
+                        style={{ color: "var(--m-text-sub)" }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleCopyMessage(m.content, idx)}
+                          className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                          title="Copy message"
+                          aria-label="Copy message"
+                        >
+                          {copiedMessageIdx === idx ? (
+                            <Check size={14} className="text-emerald-400" />
+                          ) : (
+                            <Copy size={14} />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleShareMessage(m.content)}
+                          className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                          title="Share"
+                          aria-label="Share message"
+                        >
+                          <Share size={14} />
+                        </button>
+                        {m.role === "user" ? (
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditMessage(idx, m.content)}
+                            className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                            title="Edit message"
+                            aria-label="Edit message"
+                          >
+                            <Pencil size={14} />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => handleRegenerateResponse(idx)}
+                            className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                            title="Regenerate response"
+                            aria-label="Regenerate response"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
+                  <div className="flex w-fit items-center gap-3 rounded-2xl p-3.5 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }}>
+                    <AIThinkingStatus size="lg" />
                   </div>
                 )}
               </div>
-            ))}
-            {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
-              <div className="flex w-fit items-center gap-3 rounded-2xl p-3.5 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }}>
-                <AIThinkingStatus size="lg" />
-              </div>
-            )}
-          </div>
 
-          {/* Fullscreen Input Bar */}
-          <form onSubmit={askCoach} className="w-full max-w-6xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
-            {isExtractingChatFile && (
-              <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
-                <span>Reading &amp; extracting text from document...</span>
-              </div>
-            )}
-            {chatFile && !isExtractingChatFile && (
-              <div className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                <span className="flex items-center gap-2 truncate">
-                  {chatFile.isImage && chatFile.dataUrl ? (
-                    <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
-                  ) : chatFile.isPdf ? (
-                    <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
-                      <FileText size={15} />
-                      <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+              {/* Fullscreen Input Bar */}
+              <form onSubmit={askCoach} className="w-full max-w-5xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
+                {isExtractingChatFile && (
+                  <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                    <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
+                    <span>Reading &amp; extracting text from document...</span>
+                  </div>
+                )}
+                {chatFile && !isExtractingChatFile && (
+                  <div className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                    <span className="flex items-center gap-2 truncate">
+                      {chatFile.isImage && chatFile.dataUrl ? (
+                        <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                      ) : chatFile.isPdf ? (
+                        <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
+                          <FileText size={15} />
+                          <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+                        </span>
+                      ) : (
+                        <Paperclip size={14} />
+                      )}
+                      <span className="truncate">{chatFile.name}</span>
+                      <span className="text-[10px] opacity-75 font-mono">
+                        ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
+                      </span>
                     </span>
-                  ) : (
-                    <Paperclip size={14} />
-                  )}
-                  <span className="truncate">{chatFile.name}</span>
-                  <span className="text-[10px] opacity-75 font-mono">
-                    ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
-                  </span>
-                </span>
-                <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
-              </div>
-            )}
-            <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
-              <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file (PDF / image)">
-                <Paperclip size={18} />
-              </button>
-              <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
-                <Camera size={18} />
-              </button>
-              <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or drag & drop PDFs / images... (Press Enter to send)" />
-              <VoiceInputButton
-                value={chatDraft}
-                onChange={setChatDraft}
-                disabled={isAsking}
-                size={15}
-              />
-              <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:scale-105 disabled:opacity-40 shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                <Send size={15} /><span>Send</span>
-              </button>
+                    <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
+                  </div>
+                )}
+                <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
+                  <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file (PDF / image)">
+                    <Paperclip size={18} />
+                  </button>
+                  <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
+                    <Camera size={18} />
+                  </button>
+                  <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or drag & drop PDFs / images... (Press Enter to send)" />
+                  <VoiceInputButton
+                    value={chatDraft}
+                    onChange={setChatDraft}
+                    disabled={isAsking}
+                    size={15}
+                  />
+                  <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:scale-105 disabled:opacity-40 shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                    <Send size={15} /><span>Send</span>
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
+          </div>
         </div>
       )}
 
