@@ -388,6 +388,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   // ─── AI Chat Sessions / History ───
   const [chatSessions, setChatSessions] = useState<AIChatSession[]>([]);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
+  const activeChatSessionIdRef = useRef<string | null>(null);
+  activeChatSessionIdRef.current = activeChatSessionId;
   const [showPastChatsDrawer, setShowPastChatsDrawer] = useState(false);
   const [wideSidebarOpen, setWideSidebarOpen] = useState(true);
 
@@ -2767,6 +2769,81 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     }
   };
 
+  // ─── AI Chat Session Management (History / Past Chats) ───
+  const generateSessionTitle = (text: string): string => {
+    const cleaned = text
+      .replace(/^!\[.*?\]\(.*?\)\s*/, "")
+      .replace(/^(?:📎|📄)\s*\*\*.*?\*\*.*?\n\n/, "")
+      .replace(/^#+\s*/, "")
+      .trim();
+    if (!cleaned) return "Study Question";
+    const firstLine = cleaned.split("\n")[0].trim();
+    if (firstLine.length <= 36) return firstLine;
+    return firstLine.slice(0, 34).trim() + "…";
+  };
+
+  const formatSessionTime = (timestamp: number): string => {
+    if (!timestamp) return "Recent";
+    const diffMs = Date.now() - timestamp;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return "Just now";
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays === 1) return "Yesterday";
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+
+  const saveCurrentSession = useCallback((updatedMessages: Message[], customTitle?: string) => {
+    const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
+    setChatSessions((prevSessions) => {
+      let currentId = activeChatSessionIdRef.current || activeChatSessionId;
+      const targetIndex = prevSessions.findIndex((s) => s.id === currentId);
+
+      const firstUserMsg = updatedMessages.find((m) => m.role === "user");
+      const generatedTitle = firstUserMsg ? generateSessionTitle(firstUserMsg.content) : "New Chat";
+
+      let next: AIChatSession[];
+      if (targetIndex >= 0) {
+        const existing = prevSessions[targetIndex];
+        const newTitle = customTitle || (existing.title === "New Chat" && firstUserMsg ? generatedTitle : existing.title);
+        const updated: AIChatSession = {
+          ...existing,
+          title: newTitle,
+          updatedAt: Date.now(),
+          subjectId: chatSubjectId,
+          messages: updatedMessages,
+        };
+        next = [...prevSessions];
+        next[targetIndex] = updated;
+      } else {
+        const newId = currentId || ("session_" + Date.now());
+        activeChatSessionIdRef.current = newId;
+        const newSession: AIChatSession = {
+          id: newId,
+          title: customTitle || generatedTitle,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          subjectId: chatSubjectId,
+          messages: updatedMessages,
+        };
+        next = [newSession, ...prevSessions];
+        setActiveChatSessionId(newId);
+      }
+
+      next.sort((a, b) => b.updatedAt - a.updatedAt);
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch (err) {
+        console.warn("Failed writing AI chat sessions to localStorage:", err);
+      }
+      return next;
+    });
+  }, [activeChatSessionId, chatSubjectId, userId]);
+
   // ─── AI Chat — Backend Powered Dream It AI ───
   const askCoach = async (e?: FormEvent, customQuery?: string, overrideHistory?: Message[]) => {
     if (e) e.preventDefault();
@@ -2789,6 +2866,13 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
           ? questionText
           : `[ATTACHED DOCUMENT: ${attachedFileBackup.name} (${attachedFileBackup.pageCount ? `${attachedFileBackup.pageCount} pages, ` : ""}${formatFileSize(attachedFileBackup.size)})]\n--- DOCUMENT CONTENT START ---\n${attachedFileBackup.content.slice(0, 25000)}\n--- DOCUMENT CONTENT END ---\n\nUser Question: ${questionText}`)
       : questionText;
+
+    let currentSessionId = activeChatSessionIdRef.current || activeChatSessionId;
+    if (!currentSessionId) {
+      currentSessionId = "session_" + Date.now();
+      activeChatSessionIdRef.current = currentSessionId;
+      setActiveChatSessionId(currentSessionId);
+    }
 
     const baseHistory = overrideHistory ?? messages;
     const nextUserMessages: Message[] = [...baseHistory, { role: "user", content: displayMessage }];
@@ -2859,7 +2943,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       setMessages((curr) => [...curr, { role: "assistant", content: "" }]);
 
       const response = await fetchAI({
-        model: attachedFileBackup?.isImage ? "gemini-3.1-flash-lite" : "gemini-3.1-flash-lite",
+        model: "gemini-3.6-flash",
         messages: [
           { role: "system", content: systemPrompt },
           ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
@@ -2871,7 +2955,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           base64Data: attachedFileBackup.base64,
           dataUrl: attachedFileBackup.dataUrl,
         } : undefined,
-        max_tokens: 4096,
+        max_tokens: 2048,
         temperature: chatSubjectId ? 0.1 : 0.4,
         onChunk: (chunk: string) => {
           setMessages((curr) => {
@@ -2886,27 +2970,26 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       });
 
       if (response.error) {
-        setMessages((curr) => {
-          const updated = [...curr];
-          const last = updated[updated.length - 1];
-          if (last && last.role === "assistant") {
-            last.content = `⚠️ **Dream It AI**: ${response.error}`;
-          }
-          saveCurrentSession(updated);
-          return updated;
-        });
+        const errorMessages: Message[] = [
+          ...nextUserMessages,
+          { role: "assistant", content: `⚠️ **Dream It AI**: ${response.error}` },
+        ];
+        setMessages(errorMessages);
+        saveCurrentSession(errorMessages);
       } else {
         addXP(2);
 
         // ─── Process AI Executive Actions ───
         let fullContent = response.content || "";
-        setMessages((curr) => {
-          const lastMsg = curr[curr.length - 1];
-          if (!fullContent && lastMsg && lastMsg.role === "assistant") {
-            fullContent = lastMsg.content;
-          }
-          return curr;
-        });
+        if (!fullContent) {
+          setMessages((curr) => {
+            const lastMsg = curr[curr.length - 1];
+            if (lastMsg && lastMsg.role === "assistant") {
+              fullContent = lastMsg.content;
+            }
+            return curr;
+          });
+        }
 
         const isSaveNoteIntent = /(?:save|add|put|store|write).*(?:note|notes|notebook|page)/i.test(questionText);
         const isFlashcardIntent = /(?:flash ?card|flashcard).*(?:save|create|make|add)/i.test(questionText) ||
@@ -3024,36 +3107,25 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           }
         }
 
-        // Update last message with the cleaned content (stripping action blocks)
-        setMessages((curr) => {
-          const updated = [...curr];
-          const last = updated[updated.length - 1];
-          if (last && last.role === "assistant") {
-            last.content = fullContent;
-          }
-          return updated;
-        });
+        // Update messages with the final cleaned content and persist session
+        const finalMessages: Message[] = [
+          ...nextUserMessages,
+          { role: "assistant", content: fullContent },
+        ];
+        setMessages(finalMessages);
+        saveCurrentSession(finalMessages);
       }
-      setIsAsking(false);
-      return;
     } catch (e) {
       console.warn("AI fallback notice:", e);
-      setMessages((curr) => {
-        const updated = [...curr];
-        const last = updated[updated.length - 1];
-        if (last && last.role === "assistant" && !last.content) {
-          last.content = "⚠️ **Dream It AI**: An unexpected error occurred. Please try again.";
-        }
-        saveCurrentSession(updated);
-        return updated;
-      });
+      const errorMessages: Message[] = [
+        ...nextUserMessages,
+        { role: "assistant", content: "⚠️ **Dream It AI**: An unexpected error occurred. Please try again." },
+      ];
+      setMessages(errorMessages);
+      saveCurrentSession(errorMessages);
+    } finally {
+      setIsAsking(false);
     }
-
-    setMessages((curr) => {
-      saveCurrentSession(curr);
-      return curr;
-    });
-    setIsAsking(false);
   };
 
   // ─── AI Message Action Handlers (Copy, Share, Edit, Regenerate) ───
@@ -3157,81 +3229,12 @@ You can save notes and flashcards. When asked to save to notes or create flashca
     }
   };
 
-  // ─── AI Chat Session Management (History / Past Chats) ───
-  const generateSessionTitle = (text: string): string => {
-    const cleaned = text
-      .replace(/^!\[.*?\]\(.*?\)\s*/, "")
-      .replace(/^(?:📎|📄)\s*\*\*.*?\*\*.*?\n\n/, "")
-      .replace(/^#+\s*/, "")
-      .trim();
-    if (!cleaned) return "Study Question";
-    const firstLine = cleaned.split("\n")[0].trim();
-    if (firstLine.length <= 36) return firstLine;
-    return firstLine.slice(0, 34).trim() + "…";
-  };
-
-  const formatSessionTime = (timestamp: number): string => {
-    if (!timestamp) return "Recent";
-    const diffMs = Date.now() - timestamp;
-    const diffMins = Math.floor(diffMs / 60000);
-    const diffHours = Math.floor(diffMs / 3600000);
-    const diffDays = Math.floor(diffMs / 86400000);
-
-    if (diffMins < 1) return "Just now";
-    if (diffMins < 60) return `${diffMins}m ago`;
-    if (diffHours < 24) return `${diffHours}h ago`;
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays}d ago`;
-    return new Date(timestamp).toLocaleDateString("en-US", { month: "short", day: "numeric" });
-  };
-
-  const saveCurrentSession = useCallback((updatedMessages: Message[], customTitle?: string) => {
-    const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
-    setChatSessions((prevSessions) => {
-      let currentId = activeChatSessionId;
-      const targetIndex = prevSessions.findIndex((s) => s.id === currentId);
-
-      const firstUserMsg = updatedMessages.find((m) => m.role === "user");
-      const generatedTitle = firstUserMsg ? generateSessionTitle(firstUserMsg.content) : "New Chat";
-
-      let next: AIChatSession[];
-      if (targetIndex >= 0) {
-        const existing = prevSessions[targetIndex];
-        const newTitle = customTitle || (existing.title === "New Chat" && firstUserMsg ? generatedTitle : existing.title);
-        const updated: AIChatSession = {
-          ...existing,
-          title: newTitle,
-          updatedAt: Date.now(),
-          subjectId: chatSubjectId,
-          messages: updatedMessages,
-        };
-        next = [...prevSessions];
-        next[targetIndex] = updated;
-      } else {
-        const newId = currentId || ("session_" + Date.now());
-        const newSession: AIChatSession = {
-          id: newId,
-          title: customTitle || generatedTitle,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
-          subjectId: chatSubjectId,
-          messages: updatedMessages,
-        };
-        next = [newSession, ...prevSessions];
-        setActiveChatSessionId(newId);
-      }
-
-      next.sort((a, b) => b.updatedAt - a.updatedAt);
-      try {
-        localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch (err) {
-        console.warn("Failed writing AI chat sessions to localStorage:", err);
-      }
-      return next;
-    });
-  }, [activeChatSessionId, chatSubjectId, userId]);
-
   const handleNewChat = useCallback(() => {
+    const curId = activeChatSessionIdRef.current || activeChatSessionId;
+    if (curId && messages.some((m) => m.role === "user")) {
+      saveCurrentSession(messages);
+    }
+
     const newId = "session_" + Date.now();
     const newSession: AIChatSession = {
       id: newId,
@@ -3244,7 +3247,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
 
     setChatSessions((prev) => {
       const filtered = prev.filter(
-        (s) => s.id !== activeChatSessionId || s.messages.some((m) => m.role === "user")
+        (s) => s.id !== curId || s.messages.some((m) => m.role === "user")
       );
       const next = [newSession, ...filtered];
       try {
@@ -3253,6 +3256,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       return next;
     });
 
+    activeChatSessionIdRef.current = newId;
     setActiveChatSessionId(newId);
     setMessages([DEFAULT_WELCOME]);
     setShowPastChatsDrawer(false);
@@ -3260,12 +3264,28 @@ You can save notes and flashcards. When asked to save to notes or create flashca
     setChatDraft("");
     setChatFile(null);
     showToast("Started new chat ✨", "info");
-  }, [activeChatSessionId, chatSubjectId, userId, DEFAULT_WELCOME, showToast]);
+  }, [activeChatSessionId, chatSubjectId, userId, DEFAULT_WELCOME, showToast, messages, saveCurrentSession]);
 
   const handleSelectSession = (sessionId: string) => {
-    const session = chatSessions.find((s) => s.id === sessionId);
+    const curId = activeChatSessionIdRef.current || activeChatSessionId;
+    if (curId && curId !== sessionId && messages.some((m) => m.role === "user")) {
+      saveCurrentSession(messages);
+    }
+
+    let session = chatSessions.find((s) => s.id === sessionId);
+    if (!session) {
+      try {
+        const storageKey = `dreamit_ai_sessions_${userId || "default"}`;
+        const raw = localStorage.getItem(storageKey);
+        if (raw) {
+          const parsed: AIChatSession[] = JSON.parse(raw);
+          session = parsed.find((s) => s.id === sessionId);
+        }
+      } catch {}
+    }
     if (!session) return;
 
+    activeChatSessionIdRef.current = session.id;
     setActiveChatSessionId(session.id);
     setMessages(session.messages && session.messages.length > 0 ? session.messages : [DEFAULT_WELCOME]);
     if (session.subjectId !== undefined) {
@@ -3331,6 +3351,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           setChatSessions(parsed);
           const current = parsed[0];
           setActiveChatSessionId(current.id);
+          activeChatSessionIdRef.current = current.id;
           setMessages(current.messages && current.messages.length > 0 ? current.messages : [DEFAULT_WELCOME]);
           if (current.subjectId !== undefined) {
             setChatSubjectId(current.subjectId);
@@ -3353,6 +3374,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
     };
     setChatSessions([initialSession]);
     setActiveChatSessionId(initialId);
+    activeChatSessionIdRef.current = initialId;
     setMessages([DEFAULT_WELCOME]);
   }, [userId]);
 

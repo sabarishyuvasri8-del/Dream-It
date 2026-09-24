@@ -46,11 +46,12 @@ function normalizeModelName(m?: string): string {
     !m ||
     m === "gemma-4-31b-it" ||
     m === "gemini-3.1-flash-lite" ||
+    m === "gemini-3.5-flash-lite" ||
     m === "gemini-2.5-flash" ||
     m === "gemini-2.0-flash" ||
     m === "gemini-2.5-flash-lite"
   ) {
-    return "gemini-3.5-flash-lite";
+    return "gemini-3.6-flash";
   }
   return m;
 }
@@ -78,7 +79,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     hasImage: !!params.image,
   });
 
-  const defaultTimeout = params.image ? 45000 : (params.max_tokens && params.max_tokens > 1500 ? 50000 : 25000);
+  const defaultTimeout = params.image ? 30000 : 9000;
   const timeoutDuration = params.timeoutMs ?? defaultTimeout;
 
   // 2. Primary Route: /api/ai-chat serverless endpoint
@@ -185,9 +186,12 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         contents,
         generationConfig: {
           temperature: typeof params.temperature === "number" ? params.temperature : 0.2,
-          maxOutputTokens: typeof params.max_tokens === "number" ? params.max_tokens : 8192,
+          maxOutputTokens: typeof params.max_tokens === "number" ? Math.min(4096, Math.max(512, params.max_tokens)) : 2048,
           ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
           topP: params.top_p,
+          thinking_config: {
+            thinking_budget: 0,
+          },
         },
       };
 
@@ -202,9 +206,9 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         body: JSON.stringify(requestBody),
       });
 
-      // If requested model returned 404, retry once with gemini-3.5-flash-lite
-      if (!res.ok && res.status === 404 && activeModel !== "gemini-3.5-flash-lite") {
-        activeModel = "gemini-3.5-flash-lite";
+      // If requested model returned 404, retry once with gemini-3.6-flash
+      if (!res.ok && res.status === 404 && activeModel !== "gemini-3.6-flash") {
+        activeModel = "gemini-3.6-flash";
         googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${localEnvKey.trim()}`;
         res = await fetch(googleUrl, {
           method: "POST",

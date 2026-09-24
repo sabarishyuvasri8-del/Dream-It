@@ -115,15 +115,16 @@ export default async function handler(req: any, res?: any) {
       }
     }
 
-    let requestedModel = model || "gemini-3.5-flash-lite";
+    let requestedModel = model || "gemini-3.6-flash";
     if (
       requestedModel === "gemma-4-31b-it" ||
       requestedModel === "gemini-3.1-flash-lite" ||
+      requestedModel === "gemini-3.5-flash-lite" ||
       requestedModel === "gemini-2.0-flash" ||
       requestedModel === "gemini-2.5-flash" ||
       requestedModel === "gemini-2.5-flash-lite"
     ) {
-      requestedModel = "gemini-3.5-flash-lite";
+      requestedModel = "gemini-3.6-flash";
     }
 
     let googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${apiKey.trim()}`;
@@ -133,9 +134,12 @@ export default async function handler(req: any, res?: any) {
       contents,
       generationConfig: {
         temperature: typeof temperature === "number" ? temperature : 0.2,
-        maxOutputTokens: typeof max_tokens === "number" ? Math.min(8192, Math.max(512, max_tokens)) : 8192,
+        maxOutputTokens: typeof max_tokens === "number" ? Math.min(4096, Math.max(512, max_tokens)) : 2048,
         ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
         topP: top_p,
+        thinking_config: {
+          thinking_budget: 0,
+        },
       },
     };
 
@@ -143,15 +147,15 @@ export default async function handler(req: any, res?: any) {
       requestBody.system_instruction = { parts: systemParts };
     }
 
-    // 4. Dispatch request to Gemini (with auto-fallback to gemini-3.5-flash-lite on 404)
+    // 4. Dispatch request to Gemini (with auto-fallback to gemini-3.6-flash on 404)
     let googleRes = await fetch(googleUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(requestBody),
     });
 
-    if (!googleRes.ok && googleRes.status === 404 && requestedModel !== "gemini-3.5-flash-lite") {
-      requestedModel = "gemini-3.5-flash-lite";
+    if (!googleRes.ok && googleRes.status === 404 && requestedModel !== "gemini-3.6-flash") {
+      requestedModel = "gemini-3.6-flash";
       googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${apiKey.trim()}`;
       googleRes = await fetch(googleUrl, {
         method: "POST",
