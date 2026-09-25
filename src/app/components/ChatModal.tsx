@@ -13,6 +13,9 @@ import {
   fetchUserProfiles,
   UserProfileData
 } from "../../lib/supabase";
+import ChatMessageContent from "./ChatMessageContent";
+import LinkPreviewCard from "./LinkPreviewCard";
+import { extractUrls } from "../utils/linkPreview";
 
 interface ChatModalProps {
   userId: string;
@@ -30,6 +33,7 @@ export default function ChatModal({
   const [activeFriend, setActiveFriend] = useState<Friendship | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [draft, setDraft] = useState("");
+  const [dismissedDraftUrl, setDismissedDraftUrl] = useState<string | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, UserProfileData>>({});
   const [isWide, setIsWide] = useState(false);
@@ -196,6 +200,7 @@ export default function ChatModal({
     }
 
     setDraft(""); // Optimistic clear
+    setDismissedDraftUrl(null);
     setSelectedFile(null);
 
     const newMsg = await sendDirectMessage(userId, friendId, content, fileMeta);
@@ -433,7 +438,13 @@ export default function ChatModal({
                             </a>
                           )
                         )}
-                        {msg.content && <span>{msg.content}</span>}
+                        {msg.content && (
+                          <ChatMessageContent
+                            content={msg.content}
+                            isMe={isMe}
+                            createdAt={msg.created_at}
+                          />
+                        )}
                       </div>
                       
                       {!isMe && (
@@ -486,6 +497,23 @@ export default function ChatModal({
                   </button>
                 </div>
               )}
+              
+              {(() => {
+                const draftUrls = extractUrls(draft);
+                const activeDraftUrl = draftUrls[0] && draftUrls[0] !== dismissedDraftUrl ? draftUrls[0] : null;
+                return activeDraftUrl ? (
+                  <div className="w-full max-w-sm mb-1">
+                    <div className="text-[10px] font-bold opacity-60 mb-1 flex items-center justify-between tracking-wide uppercase">
+                      <span>Link Preview</span>
+                    </div>
+                    <LinkPreviewCard
+                      url={activeDraftUrl}
+                      compact={true}
+                      onDismiss={() => setDismissedDraftUrl(activeDraftUrl)}
+                    />
+                  </div>
+                ) : null;
+              })()}
               
               <form onSubmit={handleSend} className="flex gap-2 w-full min-w-0">
                 <input 

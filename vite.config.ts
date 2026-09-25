@@ -123,6 +123,135 @@ function localAiProxyPlugin(env: Record<string, string>) {
               res.end(JSON.stringify({ error: err?.message || 'Local AI proxy error' }));
             }
           });
+        } else if (req.url?.startsWith('/api/link-preview')) {
+          try {
+            const urlObj = new URL(req.url, 'http://localhost');
+            const targetUrl = urlObj.searchParams.get('url');
+            if (!targetUrl) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ error: 'Missing url parameter' }));
+              return;
+            }
+
+            const parsedTarget = new URL(targetUrl);
+            const hostname = parsedTarget.hostname.replace(/^www\./, '');
+            const ytMatch = targetUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/);
+            const youtubeId = ytMatch ? ytMatch[1] : undefined;
+
+            if (youtubeId) {
+              try {
+                const oembedRes = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(targetUrl)}&format=json`);
+                if (oembedRes.ok) {
+                  const oembed = await oembedRes.json();
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({
+                    url: targetUrl,
+                    title: oembed.title || 'YouTube Video',
+                    description: oembed.author_name
+                      ? `Watch on YouTube • Channel: ${oembed.author_name}`
+                      : 'Enjoy the videos and music you love, upload original content, and share it all with friends, family, and the world on YouTube.',
+                    image: `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`,
+                    siteName: oembed.provider_name || 'YouTube',
+                    hostname,
+                    favicon: 'https://www.youtube.com/s/desktop/f7129524/img/favicon.ico',
+                    youtubeId,
+                    mediaType: 'video',
+                  }));
+                  return;
+                }
+              } catch {}
+            }
+
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 4500);
+
+            const fetchRes = await fetch(targetUrl, {
+              signal: controller.signal,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/*,*/*;q=0.8',
+              },
+              redirect: 'follow',
+            });
+            clearTimeout(timeoutId);
+
+            const contentType = fetchRes.headers.get('content-type') || '';
+            const favicon = `https://www.google.com/s2/favicons?domain=${hostname}&sz=64`;
+
+            if (contentType.startsWith('image/')) {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({
+                url: targetUrl,
+                title: parsedTarget.pathname.split('/').pop() || 'Image Preview',
+                description: `Image on ${hostname}`,
+                image: targetUrl,
+                siteName: hostname,
+                hostname,
+                favicon,
+                mediaType: 'image',
+              }));
+              return;
+            }
+
+            const html = (await fetchRes.text()).slice(0, 250000);
+            const getMeta = (prop: string): string | null => {
+              const r1 = new RegExp(`<meta[^>]*(?:property|name)=["']${prop}["'][^>]*content=["']([^"']+)["']`, 'i');
+              const r2 = new RegExp(`<meta[^>]*content=["']([^"']+)["'][^>]*(?:property|name)=["']${prop}["']`, 'i');
+              const m = html.match(r1) || html.match(r2);
+              return m ? m[1].trim() : null;
+            };
+
+            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            const rawTitle = getMeta('og:title') || getMeta('twitter:title') || (titleMatch ? titleMatch[1].trim() : '') || hostname;
+            const rawDesc = getMeta('og:description') || getMeta('twitter:description') || getMeta('description') || '';
+            let rawImage = getMeta('og:image') || getMeta('twitter:image') || '';
+
+            if (youtubeId && (!rawImage || rawImage.includes('hqdefault'))) {
+              rawImage = `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg`;
+            }
+
+            if (rawImage && !rawImage.startsWith('http')) {
+              try { rawImage = new URL(rawImage, targetUrl).href; } catch {}
+            }
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+              url: targetUrl,
+              title: rawTitle,
+              description: rawDesc,
+              image: rawImage || undefined,
+              siteName: getMeta('og:site_name') || hostname,
+              hostname,
+              favicon,
+              youtubeId,
+              mediaType: youtubeId ? 'video' : undefined,
+            }));
+          } catch {
+            const parsedTarget = new URL(req.url, 'http://localhost');
+            const targetUrl = parsedTarget.searchParams.get('url') || '';
+            let hostname = '';
+            try { hostname = new URL(targetUrl).hostname.replace(/^www\./, ''); } catch {}
+            const ytMatch = targetUrl.match(/(?:youtu\.be\/|youtube\.com\/(?:embed\/|v\/|watch\?v=|watch\?.+&v=|shorts\/))([\w-]{11})/);
+            const youtubeId = ytMatch ? ytMatch[1] : undefined;
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({
+              url: targetUrl,
+              title: hostname || targetUrl,
+              description: targetUrl,
+              image: youtubeId ? `https://img.youtube.com/vi/${youtubeId}/maxresdefault.jpg` : undefined,
+              hostname: hostname || 'link',
+              siteName: hostname || 'link',
+              favicon: hostname ? `https://www.google.com/s2/favicons?domain=${hostname}&sz=64` : undefined,
+              youtubeId,
+              mediaType: youtubeId ? 'video' : undefined,
+            }));
+          }
         } else {
           next();
         }
