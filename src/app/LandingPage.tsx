@@ -33,17 +33,6 @@ import ParticleField from "./components/ParticleField";
 import ThemeSelector from "./components/ThemeSelector";
 
 /* ─── HOOKS ─── */
-const useParallax = (speed: number) => {
-  const [offset, setOffset] = useState(0);
-  useEffect(() => {
-    const handleScroll = () => {
-      setOffset(window.scrollY * speed);
-    };
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, [speed]);
-  return offset;
-};
 
 const usePrefersReducedMotion = () => {
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
@@ -259,13 +248,19 @@ export default function LandingPage({
   onGetStarted?: () => void;
 }) {
   const prefersReducedMotion = usePrefersReducedMotion();
-  const parallaxOffset = useParallax(0.3);
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isThemeSelectorOpen, setIsThemeSelectorOpen] = useState(false);
 
   useEffect(() => {
-    const handleScroll = () => setScrolled(window.scrollY > 100);
+    let wasScrolled = window.scrollY > 100;
+    const handleScroll = () => {
+      const isScrolled = window.scrollY > 100;
+      if (isScrolled !== wasScrolled) {
+        wasScrolled = isScrolled;
+        setScrolled(isScrolled);
+      }
+    };
     window.addEventListener("scroll", handleScroll, { passive: true });
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
@@ -477,7 +472,7 @@ export default function LandingPage({
             className="mb-12 relative inline-block"
           >
             <TypewriterHero reducedMotion={prefersReducedMotion} />
-            
+
             <motion.p
               initial={prefersReducedMotion ? false : { opacity: 0, x: -10 }}
               animate={prefersReducedMotion ? false : { opacity: 1, x: 0 }}
@@ -540,23 +535,23 @@ export default function LandingPage({
               Get Started
             </button>
           </motion.div>
-          
+
           <motion.div
-             initial={prefersReducedMotion ? false : { opacity: 0 }}
-             animate={prefersReducedMotion ? false : { opacity: 1 }}
-             transition={{ duration: 0.5, delay: prefersReducedMotion ? 0 : 1.8 }}
-             className="mt-12 flex flex-wrap justify-center gap-6 md:gap-10 text-sm font-medium"
-             style={{ color: "var(--m-text-muted)" }}
+            initial={prefersReducedMotion ? false : { opacity: 0 }}
+            animate={prefersReducedMotion ? false : { opacity: 1 }}
+            transition={{ duration: 0.5, delay: prefersReducedMotion ? 0 : 1.8 }}
+            className="mt-12 flex flex-wrap justify-center gap-6 md:gap-10 text-sm font-medium"
+            style={{ color: "var(--m-text-muted)" }}
           >
-             <div className="flex items-center gap-2">
-                <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>No credit card required</span>
-             </div>
-             <div className="flex items-center gap-2">
-                <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>Setup in 30 seconds</span>
-             </div>
-             <div className="flex items-center gap-2">
-                <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>Free forever plan</span>
-             </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>No credit card required</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>Setup in 30 seconds</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <CheckCircle2 size={16} style={{ color: "var(--m-primary)" }} /> <span>Free forever plan</span>
+            </div>
           </motion.div>
         </div>
 
@@ -565,26 +560,25 @@ export default function LandingPage({
           initial={prefersReducedMotion ? false : { opacity: 0, y: 30 }}
           animate={prefersReducedMotion ? false : { opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: prefersReducedMotion ? 0 : 1.8 }}
-          className="mt-32 md:mt-40 max-w-7xl w-full px-6 relative z-0"
-          style={{ transform: prefersReducedMotion ? "none" : `translateY(${parallaxOffset}px)` }}
+          className="mt-12 md:mt-16 max-w-7xl w-full px-6 relative z-0"
         >
           <div className="text-center mb-12 relative">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium mb-6" 
-                 style={{ backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)", color: "var(--m-primary)" }}>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium mb-6"
+              style={{ backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)", color: "var(--m-primary)" }}>
               <Sparkles size={14} />
               <span>Productivity Reimagined</span>
             </div>
-            
-            <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6" 
-                style={{ 
-                  background: "linear-gradient(135deg, var(--m-text-heading) 0%, var(--m-primary) 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  color: "var(--m-text-heading)"
-                }}>
+
+            <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-6"
+              style={{
+                background: "linear-gradient(135deg, var(--m-text-heading) 0%, var(--m-primary) 100%)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                color: "var(--m-text-heading)"
+              }}>
               Awesome Task Management
             </h2>
-            
+
             <p className="text-xl max-w-3xl mx-auto mb-10 leading-relaxed" style={{ color: "var(--m-text-muted)" }}>
               Organize your study schedule, track your daily streak, and let our AI prioritize your assignments so you can focus on learning.
             </p>
@@ -833,7 +827,7 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── WORKSPACE MODULES ─── */}
-      <AnimatedSection id="workspace" className="py-16 md:py-24 px-6" style={{ backgroundColor: "var(--m-surface-solid)" }}>
+      <AnimatedSection id="workspace" className="py-16 md:py-24 px-6 section-contain">
         <div className="max-w-6xl mx-auto">
           <AnimatedItem className="mb-16">
             <h2
@@ -892,7 +886,7 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── CADENCE ─── */}
-      <AnimatedSection id="cadence" className="py-16 md:py-24 px-6">
+      <AnimatedSection id="cadence" className="py-16 md:py-24 px-6 section-contain">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
           <div>
             <AnimatedItem>
@@ -951,9 +945,9 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── FINANCE COACH ─── */}
-      <AnimatedSection id="finance" className="py-16 md:py-24 px-6" style={{ backgroundColor: "var(--m-surface-solid)" }}>
+      <AnimatedSection id="finance" className="py-16 md:py-24 px-6 section-contain">
         <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-16 items-center">
-          <AnimatedItem delay={0.2} className="order-2 md:order-1 relative h-[300px] rounded-2xl p-6 flex items-end justify-between" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border)" }}>
+          <AnimatedItem delay={0.2} className="order-2 md:order-1 relative h-[300px] rounded-2xl p-6 flex items-end justify-between" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
             {/* Abstract Chart */}
             {[40, 60, 45, 80, 65, 95].map((h, i) => (
               <AnimatedItem key={i} delay={i * 0.1} className="w-[12%] rounded-t-md" style={{ backgroundColor: "var(--m-primary)", height: `${h}%`, opacity: 0.8 }} />
@@ -994,7 +988,7 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── FREE FOREVER ─── */}
-      <AnimatedSection className="py-32 px-6 relative overflow-hidden text-center">
+      <AnimatedSection className="py-32 px-6 relative overflow-hidden text-center section-contain">
         <motion.div
           className="absolute inset-0 pointer-events-none"
           animate={prefersReducedMotion ? {} : { opacity: [0, 0.05, 0] }}
@@ -1015,30 +1009,30 @@ export default function LandingPage({
               How? Because Dream It utilizes the open-weight Gemma 4 model under Apache 2.0. Free is a permanent property of the product, not a promotion.
             </p>
           </AnimatedItem>
-          
+
           <AnimatedItem delay={0.4} className="mt-12 grid grid-cols-2 md:grid-cols-4 gap-4 text-left max-w-4xl mx-auto">
-             <div className="p-5 rounded-xl border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
-                <h4 className="font-bold text-lg mb-1" style={{ color: "var(--m-text-heading)" }}>8 Core Modules</h4>
-                <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-muted)" }}>Planner, Projects, Focus, Notes, Finance, and more.</p>
-             </div>
-             <div className="p-5 rounded-xl border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
-                <h4 className="font-bold text-lg mb-1" style={{ color: "var(--m-text-heading)" }}>3 Agent Stages</h4>
-                <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-muted)" }}>Extract, Plan, and Execute directly into your workspace.</p>
-             </div>
-             <div className="p-5 rounded-xl border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
-                <h4 className="font-bold text-lg mb-1" style={{ color: "var(--m-text-heading)" }}>35 Clinical Passages</h4>
-                <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-muted)" }}>Standardized speech screening modules for edge analysis.</p>
-             </div>
-             <div className="p-5 rounded-xl border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
-                <h4 className="font-bold text-lg mb-1" style={{ color: "var(--m-text-heading)" }}>5 Premium Themes</h4>
-                <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-muted)" }}>Switch UI aesthetics instantly without unlocking a paywall.</p>
-             </div>
+            <div className="p-5 rounded-xl border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
+              <h4 className="font-bold text-lg mb-1" style={{ color: "var(--m-text-heading)" }}>8 Core Modules</h4>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-muted)" }}>Planner, Projects, Focus, Notes, Finance, and more.</p>
+            </div>
+            <div className="p-5 rounded-xl border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
+              <h4 className="font-bold text-lg mb-1" style={{ color: "var(--m-text-heading)" }}>3 Agent Stages</h4>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-muted)" }}>Extract, Plan, and Execute directly into your workspace.</p>
+            </div>
+            <div className="p-5 rounded-xl border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
+              <h4 className="font-bold text-lg mb-1" style={{ color: "var(--m-text-heading)" }}>35 Clinical Passages</h4>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-muted)" }}>Standardized speech screening modules for edge analysis.</p>
+            </div>
+            <div className="p-5 rounded-xl border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border-light)" }}>
+              <h4 className="font-bold text-lg mb-1" style={{ color: "var(--m-text-heading)" }}>5 Premium Themes</h4>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--m-text-muted)" }}>Switch UI aesthetics instantly without unlocking a paywall.</p>
+            </div>
           </AnimatedItem>
         </div>
       </AnimatedSection>
 
       {/* ─── WHO IT'S FOR ─── */}
-      <AnimatedSection className="py-16 md:py-24 px-6" style={{ backgroundColor: "var(--m-surface-solid)" }}>
+      <AnimatedSection className="py-16 md:py-24 px-6 section-contain">
         <div className="max-w-6xl mx-auto">
           <AnimatedItem className="text-center mb-16">
             <h2
@@ -1073,7 +1067,7 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── TECH STACK ─── */}
-      <AnimatedSection className="py-16 md:py-24 px-6">
+      <AnimatedSection className="py-16 md:py-24 px-6 section-contain">
         <div className="max-w-6xl mx-auto text-center">
           <AnimatedItem>
             <h2
@@ -1101,15 +1095,15 @@ export default function LandingPage({
           </div>
 
           <AnimatedItem delay={0.5} className="flex flex-col md:flex-row justify-center gap-6">
-            <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
+            <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
               gemini-3.6-flash
               <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Study Coach & Autopilot</span>
             </div>
-            <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
+            <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
               gemma-4-31b-it
               <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Speech Coach</span>
             </div>
-            <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
+            <div className="px-6 py-4 rounded-xl font-mono text-sm relative overflow-hidden" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)", color: "var(--m-text-heading)" }}>
               gemini-3.1-flash-lite
               <span className="block text-xs mt-1 font-[DM_Sans]" style={{ color: "var(--m-text-muted)" }}>Finance Coach</span>
             </div>
@@ -1125,7 +1119,7 @@ export default function LandingPage({
                 The AI doesn't just chat; it autonomously extracts tasks, structures study plans, and executes calendar events on your behalf.
               </p>
             </div>
-            
+
             <div className="p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border-light)" }}>
               <div className="size-10 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border)" }}>
                 <Mic size={20} style={{ color: "var(--m-primary)" }} />
@@ -1135,7 +1129,7 @@ export default function LandingPage({
                 Voice notes in the Cadence module are transcribed and analyzed entirely on the edge. No audio files are ever stored on our servers.
               </p>
             </div>
-            
+
             <div className="p-6 rounded-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-lg" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border-light)" }}>
               <div className="size-10 rounded-lg flex items-center justify-center mb-4" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border)" }}>
                 <FileText size={20} style={{ color: "var(--m-primary)" }} />
@@ -1150,7 +1144,7 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── PRIVACY & DATA ─── */}
-      <AnimatedSection className="py-16 md:py-24 px-6" style={{ backgroundColor: "var(--m-surface-solid)" }}>
+      <AnimatedSection className="py-16 md:py-24 px-6 section-contain">
         <div className="max-w-4xl mx-auto text-center">
           <AnimatedItem className="flex justify-center mb-6">
             <motion.div
@@ -1179,19 +1173,19 @@ export default function LandingPage({
           </AnimatedItem>
 
           <div className="flex flex-col md:flex-row items-center justify-center gap-4 text-sm font-medium mb-16">
-            <AnimatedItem delay={0.2} className="px-6 py-3 rounded-lg border" style={{ backgroundColor: "var(--m-bg)", borderColor: "var(--m-border)" }}>Clerk (Auth)</AnimatedItem>
+            <AnimatedItem delay={0.2} className="px-6 py-3 rounded-lg border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>Clerk (Auth)</AnimatedItem>
             <AnimatedItem delay={0.3} className="hidden md:block" style={{ color: "var(--m-border)" }}><ArrowRight size={20} /></AnimatedItem>
-            <AnimatedItem delay={0.4} className="px-6 py-3 rounded-lg border" style={{ backgroundColor: "var(--m-bg)", borderColor: "var(--m-border)" }}>Supabase (Database)</AnimatedItem>
+            <AnimatedItem delay={0.4} className="px-6 py-3 rounded-lg border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>Supabase (Database)</AnimatedItem>
             <AnimatedItem delay={0.5} className="hidden md:block" style={{ color: "var(--m-border)" }}><ArrowRight size={20} /></AnimatedItem>
-            <AnimatedItem delay={0.6} className="px-6 py-3 rounded-lg border" style={{ backgroundColor: "var(--m-bg)", borderColor: "var(--m-primary)", color: "var(--m-primary)" }}>Discarded Audio</AnimatedItem>
+            <AnimatedItem delay={0.6} className="px-6 py-3 rounded-lg border" style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-primary)", color: "var(--m-primary)" }}>Discarded Audio</AnimatedItem>
           </div>
 
           <div className="grid md:grid-cols-2 gap-6 text-left max-w-3xl mx-auto">
-            <AnimatedItem delay={0.7} className="p-6 rounded-2xl" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border-light)" }}>
+            <AnimatedItem delay={0.7} className="p-6 rounded-2xl" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border-light)" }}>
               <h3 className="font-bold mb-2 flex items-center gap-2" style={{ color: "var(--m-text-heading)" }}><ShieldCheck size={18} style={{ color: "var(--m-primary)" }} /> Data Ownership</h3>
               <p className="text-sm leading-relaxed" style={{ color: "var(--m-text-muted)" }}>You own your data completely. Export your notes, projects, and flashcards at any time with a single click.</p>
             </AnimatedItem>
-            <AnimatedItem delay={0.8} className="p-6 rounded-2xl" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border-light)" }}>
+            <AnimatedItem delay={0.8} className="p-6 rounded-2xl" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border-light)" }}>
               <h3 className="font-bold mb-2 flex items-center gap-2" style={{ color: "var(--m-text-heading)" }}><X size={18} style={{ color: "var(--m-primary)" }} /> Zero Tracking</h3>
               <p className="text-sm leading-relaxed" style={{ color: "var(--m-text-muted)" }}>No third-party trackers, no hidden analytics, and no advertising profiles. What you study is entirely your business.</p>
             </AnimatedItem>
@@ -1200,7 +1194,7 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── FAQ ─── */}
-      <AnimatedSection id="faq" className="py-16 md:py-24 px-6">
+      <AnimatedSection id="faq" className="py-16 md:py-24 px-6 section-contain">
         <div className="max-w-3xl mx-auto">
           <AnimatedItem className="mb-12 text-center">
             <h2
@@ -1241,7 +1235,7 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── CTA ─── */}
-      <AnimatedSection className="py-32 px-6 flex justify-center text-center">
+      <AnimatedSection className="py-32 px-6 flex justify-center text-center section-contain">
         <div className="max-w-2xl">
           <AnimatedItem>
             <h2 className="font-[Roboto_Slab] text-[2.5rem] md:text-[4rem] font-bold mb-4 leading-tight tracking-tight" style={{ color: "var(--m-text-heading)" }}>
@@ -1289,7 +1283,7 @@ export default function LandingPage({
       </AnimatedSection>
 
       {/* ─── FOOTER ─── */}
-      <footer className="py-12 px-6 border-t" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-surface-solid)" }}>
+      <footer className="py-12 px-6 border-t" style={{ borderColor: "var(--m-border)" }}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-2">
             <Layout size={18} style={{ color: "var(--m-primary)" }} />

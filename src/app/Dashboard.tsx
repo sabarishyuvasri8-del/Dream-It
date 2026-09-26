@@ -145,8 +145,27 @@ const UserProfileModal = lazy(() => import("./components/UserProfileModal"));
 const NotesTab = lazy(() => import("./components/tabs/NotesTab"));
 const SnapAndSolveModal = lazy(() => import("./components/SnapAndSolveModal"));
 import CommandPalette from "./components/CommandPalette";
+import { PluginDrawer } from "./components/PluginDrawer";
+import {
+  getSavedPlugins,
+  executeActivePlugins,
+  DreamPlugin,
+  PluginResult,
+} from "../lib/plugins";
+import type { WebSearchResult } from "../lib/web-search";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = {
+  role: "user" | "assistant";
+  content: string;
+  sources?: WebSearchResult[];
+  pluginResults?: Array<{
+    pluginId: string;
+    pluginName: string;
+    summary: string;
+    icon: string;
+    badge?: string;
+  }>;
+};
 
 export interface AIChatSession {
   id: string;
@@ -502,6 +521,10 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
 
   // Chronologically grouped sessions (Today, Yesterday, Previous 7 Days, Previous 30 Days, Older) — ChatGPT & Claude style
   const groupedChatSessions = useMemo(() => groupSessionsByDate(chatSessions), [chatSessions]);
+
+  // ─── Dream It Plugins & MCP Integrations ───
+  const [isPluginDrawerOpen, setIsPluginDrawerOpen] = useState(false);
+  const [activePlugins, setActivePlugins] = useState<DreamPlugin[]>(() => getSavedPlugins());
 
 
   // ─── AI File Attachment & Drag-and-Drop ───
@@ -3135,6 +3158,26 @@ WORKSPACE EXECUTIVE POWERS:
 You can save notes and flashcards. When asked to save to notes or create flashcards, append the action command blocks at the very end.`;
     }
 
+    // ─── Phase 1 & 2: Execute Active Plugins & Grounding Context ───
+    const currentPlugins = activePlugins;
+    const isWebSearchEnabled = currentPlugins.some((p) => p.id === "web-search" && p.enabled);
+    let pluginExecutionResults: PluginResult[] = [];
+    try {
+      pluginExecutionResults = await executeActivePlugins(questionText, currentPlugins, {
+        notes,
+        subjects,
+      });
+    } catch (pluginErr) {
+      console.warn("[Dashboard] Plugin execution error:", pluginErr);
+    }
+
+    if (pluginExecutionResults.length > 0) {
+      const pluginPromptContext = pluginExecutionResults
+        .map((r) => `--- [ACTIVE PLUGIN DATA: ${r.pluginName}] ---\n${r.contextText}\n--- END PLUGIN DATA ---`)
+        .join("\n\n");
+      systemPrompt = `${systemPrompt}\n\n${pluginPromptContext}`;
+    }
+
     let accumulatedStreamedText = "";
     try {
       // Create empty message for streaming
@@ -3145,7 +3188,9 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       });
 
       const response = await fetchAI({
-        model: "gemini-3.6-flash",
+        model: "gemini-3.5-flash-lite",
+        enableWebSearch: isWebSearchEnabled,
+        pluginResults: pluginExecutionResults,
         messages: [
           { role: "system", content: systemPrompt },
           ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
@@ -3317,9 +3362,21 @@ You can save notes and flashcards. When asked to save to notes or create flashca
         }
 
         // Update messages with the final cleaned content and persist session
+        const finalAssistantMessage: Message = {
+          role: "assistant",
+          content: fullContent,
+          sources: response.sources || pluginExecutionResults.flatMap((p) => p.sources || []),
+          pluginResults: pluginExecutionResults.map((pr) => ({
+            pluginId: pr.pluginId,
+            pluginName: pr.pluginName,
+            summary: pr.summary,
+            icon: pr.icon,
+            badge: pr.badge,
+          })),
+        };
         const finalMessages: Message[] = [
           ...nextUserMessages,
-          { role: "assistant", content: fullContent },
+          finalAssistantMessage,
         ];
         if (activeChatSessionIdRef.current === currentSessionId) {
           setMessages(finalMessages);
@@ -4904,10 +4961,11 @@ Mathematics:
                     </div>
                     <div className="min-w-0">
                       <p className="text-xs sm:text-sm font-semibold truncate" style={{ color: "var(--m-text-heading)" }}>{chatSubjectId ? "Grounded Tutor" : "Dream It AI"}</p>
-                      <p className="flex items-center gap-1 text-[10px]" style={{ color: "var(--m-text-muted)" }}>
-                        <span className="size-1.5 rounded-full" style={{ backgroundColor: "var(--m-success)" }} />
-                        {chatSubjectId ? "Sourced Mode" : "Online"}
-                      </p>
+                      {chatSubjectId && (
+                        <p className="text-[10px]" style={{ color: "var(--m-text-muted)" }}>
+                          Sourced Mode
+                        </p>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 shrink-0">
@@ -5229,7 +5287,46 @@ Mathematics:
                             </div>
                           </div>
                         ) : m.content ? (
-                          renderSimpleMarkdown(m.content)
+                          <>
+                            {renderSimpleMarkdown(m.content)}
+                            {/* Plugin Execution Badges */}
+                            {m.pluginResults && m.pluginResults.length > 0 && (
+                              <div className="flex flex-wrap gap-1.5 mt-2.5 pt-2 border-t border-white/10">
+                                {m.pluginResults.map((pr, pidx) => (
+                                  <span
+                                    key={pidx}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-white/5 border border-white/10 text-primary-200"
+                                  >
+                                    ⚡ {pr.pluginName}: <span className="opacity-80">{pr.summary}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {/* Grounding Web Sources Badges */}
+                            {m.sources && m.sources.length > 0 && (
+                              <div className="mt-2.5 pt-2 border-t border-white/10 space-y-1.5">
+                                <div className="text-[10px] font-semibold text-muted-foreground flex items-center gap-1.5">
+                                  <Globe className="size-3 text-blue-400" />
+                                  <span>Live Web Sources & Grounding:</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {m.sources.map((src, sidx) => (
+                                    <a
+                                      key={sidx}
+                                      href={src.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/20 transition truncate max-w-[200px]"
+                                      title={src.title}
+                                    >
+                                      <ExternalLink className="size-2.5 shrink-0" />
+                                      <span className="truncate">{src.title}</span>
+                                    </a>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </>
                         ) : (
                           <AIThinkingStatus size="sm" />
                         )}
@@ -5365,6 +5462,21 @@ Mathematics:
                     </button>
                     <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
                       <Camera size={17} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsPluginDrawerOpen(true)}
+                      className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75 relative"
+                      style={{
+                        backgroundColor: activePlugins.some((p) => p.enabled) ? "rgba(99, 102, 241, 0.15)" : "transparent",
+                        color: activePlugins.some((p) => p.enabled) ? "var(--m-primary)" : "var(--m-text-sub)",
+                      }}
+                      title="Manage Plugins & MCP Integrations"
+                    >
+                      <Sparkles size={16} className={activePlugins.some((p) => p.enabled) ? "text-amber-400" : ""} />
+                      {activePlugins.some((p) => p.enabled) && (
+                        <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-emerald-400 ring-2 ring-black"></span>
+                      )}
                     </button>
                     <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything..." />
                     <VoiceInputButton
@@ -6803,9 +6915,8 @@ Mathematics:
                   <h2 className="font-[Roboto_Slab] text-base sm:text-lg font-bold" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
                   <span className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
                 </div>
-                <p className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--m-text-sub)" }}>
-                  <span className="size-1.5 rounded-full animate-pulse" style={{ backgroundColor: "var(--m-success)" }} />
-                  Online &amp; Ready for full-screen study assistance
+                <p className="text-[11px]" style={{ color: "var(--m-text-sub)" }}>
+                  Ready for full-screen study assistance
                 </p>
               </div>
             </div>
@@ -7144,7 +7255,46 @@ Mathematics:
                           </div>
                         </div>
                       ) : m.content ? (
-                        renderSimpleMarkdown(m.content)
+                        <>
+                          {renderSimpleMarkdown(m.content)}
+                          {/* Plugin Execution Badges */}
+                          {m.pluginResults && m.pluginResults.length > 0 && (
+                            <div className="flex flex-wrap gap-1.5 mt-3 pt-2.5 border-t border-white/10">
+                              {m.pluginResults.map((pr, pidx) => (
+                                <span
+                                  key={pidx}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-white/5 border border-white/10 text-primary-200"
+                                >
+                                  ⚡ {pr.pluginName}: <span className="opacity-80">{pr.summary}</span>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {/* Grounding Web Sources Badges */}
+                          {m.sources && m.sources.length > 0 && (
+                            <div className="mt-3 pt-2.5 border-t border-white/10 space-y-1.5">
+                              <div className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                                <Globe className="size-3.5 text-blue-400" />
+                                <span>Live Web Sources & Grounding:</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2">
+                                {m.sources.map((src, sidx) => (
+                                  <a
+                                    key={sidx}
+                                    href={src.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border border-blue-500/20 transition truncate max-w-[280px]"
+                                    title={src.title}
+                                  >
+                                    <ExternalLink className="size-3 shrink-0" />
+                                    <span className="truncate">{src.title}</span>
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </>
                       ) : (
                         <AIThinkingStatus size="lg" />
                       )}
@@ -7248,6 +7398,27 @@ Mathematics:
                   <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
                     <Camera size={18} />
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setIsPluginDrawerOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition shrink-0 hover:scale-105"
+                    style={{
+                      backgroundColor: activePlugins.some((p) => p.enabled)
+                        ? "rgba(99, 102, 241, 0.15)"
+                        : "rgba(255, 255, 255, 0.05)",
+                      color: activePlugins.some((p) => p.enabled)
+                        ? "var(--m-primary, #6366f1)"
+                        : "var(--m-text-sub)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                    }}
+                    title="Manage Plugins & MCP Integrations"
+                  >
+                    <Sparkles size={15} className={activePlugins.some((p) => p.enabled) ? "text-amber-400" : ""} />
+                    <span>Plugins</span>
+                    <span className="px-1.5 py-0.2 rounded-full bg-white/10 text-[10px] font-mono">
+                      {activePlugins.filter((p) => p.enabled).length}
+                    </span>
+                  </button>
                   <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or drag & drop PDFs / images... (Press Enter to send)" />
                   <VoiceInputButton
                     value={chatDraft}
@@ -7265,6 +7436,12 @@ Mathematics:
         </div>
       )}
 
+      {/* Dream It Plugins & MCP Modal Drawer */}
+      <PluginDrawer
+        isOpen={isPluginDrawerOpen}
+        onClose={() => setIsPluginDrawerOpen(false)}
+        onPluginsChange={setActivePlugins}
+      />
     </main>
   );
 }

@@ -115,22 +115,30 @@ export default async function handler(req: any, res?: any) {
       }
     }
 
-    let requestedModel = model || "gemini-3.6-flash";
+    // Dynamic candidate models list for seamless failover if a model is quota-limited (429) or down
+    const FALLBACK_MODELS = [
+      "gemini-3.5-flash-lite",
+      "gemini-3.7-flash",
+      "gemini-3.8-flash",
+      "gemini-flash-lite-latest",
+      "gemini-3.6-flash",
+      "gemma-4-26b-a4b-it",
+    ];
+
+    let userModel = model || "gemini-3.5-flash-lite";
     if (
-      requestedModel === "gemma-4-31b-it" ||
-      requestedModel === "gemini-3.1-flash-lite" ||
-      requestedModel === "gemini-3.5-flash-lite" ||
-      requestedModel === "gemini-2.0-flash" ||
-      requestedModel === "gemini-2.5-flash" ||
-      requestedModel === "gemini-2.5-flash-lite"
+      userModel === "gemini-2.5-flash" ||
+      userModel === "gemini-2.5-flash-lite" ||
+      userModel === "gemini-2.0-flash" ||
+      userModel === "gemini-3.1-flash-lite"
     ) {
-      requestedModel = "gemini-3.6-flash";
+      userModel = "gemini-3.5-flash-lite";
     }
 
-    let googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${apiKey.trim()}`;
+    const candidateModels = Array.from(new Set([userModel, ...FALLBACK_MODELS]));
 
     const chosenMimeType = responseMimeType || response_mime_type;
-    const requestBody: any = {
+    const baseRequestBody: any = {
       contents,
       generationConfig: {
         temperature: typeof temperature === "number" ? temperature : 0.2,
@@ -143,38 +151,63 @@ export default async function handler(req: any, res?: any) {
       },
     };
 
+    if (body.enableWebSearch) {
+      baseRequestBody.tools = [{ googleSearch: {} }];
+    }
+
     if (systemParts.length > 0) {
-      requestBody.system_instruction = { parts: systemParts };
+      baseRequestBody.system_instruction = { parts: systemParts };
     }
 
-    // 4. Dispatch request to Gemini (with auto-fallback to gemini-3.6-flash on 404)
-    let googleRes = await fetch(googleUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(requestBody),
-    });
+    // 4. Dispatch request to Gemini with automatic multi-model failover
+    let finalData: any = null;
+    let lastErrorStatus = 0;
+    let lastErrorMessage = "";
 
-    if (!googleRes.ok && googleRes.status === 404 && requestedModel !== "gemini-3.6-flash") {
-      requestedModel = "gemini-3.6-flash";
-      googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${apiKey.trim()}`;
-      googleRes = await fetch(googleUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
+    for (let i = 0; i < candidateModels.length; i++) {
+      const currentModel = candidateModels[i];
+      const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey.trim()}`;
+      const requestBody = JSON.parse(JSON.stringify(baseRequestBody));
+
+      try {
+        let googleRes = await fetch(googleUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+        });
+
+        // If 429 quota occurred with googleSearch tool, retry current model once without tool
+        if (!googleRes.ok && googleRes.status === 429 && requestBody.tools) {
+          delete requestBody.tools;
+          googleRes = await fetch(googleUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+          });
+        }
+
+        if (googleRes.ok) {
+          finalData = await googleRes.json();
+          break;
+        }
+
+        lastErrorStatus = googleRes.status;
+        const errJson = await googleRes.json().catch(() => ({}));
+        lastErrorMessage = errJson?.error?.message || `Google API error (Status ${lastErrorStatus})`;
+        console.warn(`[api/ai-chat] Model ${currentModel} returned ${lastErrorStatus} (${lastErrorMessage}). Switching to next fallback model...`);
+      } catch (networkErr: any) {
+        lastErrorMessage = networkErr?.message || "Network error";
+        console.warn(`[api/ai-chat] Network error calling ${currentModel}: ${lastErrorMessage}`);
+      }
     }
 
-    if (!googleRes.ok) {
-      const status = googleRes.status;
-      const errorData = await googleRes.json().catch(() => ({}));
-      const errorMessage = errorData?.error?.message || `Google API error (Status ${status})`;
-      console.warn(`[api/ai-chat] Gemini API failed with status ${status}:`, errorMessage);
-
-      if (status === 429) {
+    if (!finalData) {
+      console.error("[api/ai-chat] All candidate models exhausted without success. Last error:", lastErrorMessage);
+      if (lastErrorStatus === 429) {
         const payload = {
           content: "",
           isRateLimited: true,
-          error: "AI rate limit reached. Please wait a few seconds and try again.",
+          error: "AI rate limit reached across all models. Please wait a few seconds and try again.",
         };
         if (res && typeof res.status === "function") {
           return res.status(429).json(payload);
@@ -182,17 +215,30 @@ export default async function handler(req: any, res?: any) {
         return new Response(JSON.stringify(payload), { status: 429, headers });
       }
 
-      const payload = { content: "", error: errorMessage };
+      const payload = { content: "", error: lastErrorMessage || "Unable to generate response from AI models." };
       if (res && typeof res.status === "function") {
-        return res.status(status >= 500 ? 502 : status).json(payload);
+        return res.status(lastErrorStatus >= 500 ? 502 : (lastErrorStatus || 500)).json(payload);
       }
-      return new Response(JSON.stringify(payload), { status: status >= 500 ? 502 : status, headers });
+      return new Response(JSON.stringify(payload), { status: lastErrorStatus >= 500 ? 502 : (lastErrorStatus || 500), headers });
     }
 
-    const data = await googleRes.json();
-    const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    const candidate = finalData.candidates?.[0];
+    const content = candidate?.content?.parts?.[0]?.text || "";
 
-    const successPayload = { content };
+    // Extract Google Search grounding citations if present
+    const sources: Array<{ title: string; url: string; snippet?: string }> = [];
+    if (candidate?.groundingMetadata?.groundingChunks) {
+      for (const chunk of candidate.groundingMetadata.groundingChunks) {
+        if (chunk.web?.uri) {
+          sources.push({
+            title: chunk.web.title || "Web Source",
+            url: chunk.web.uri,
+          });
+        }
+      }
+    }
+
+    const successPayload = { content, sources: sources.length > 0 ? sources : undefined };
     if (res && typeof res.status === "function") {
       return res.status(200).json(successPayload);
     }

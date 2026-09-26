@@ -6,6 +6,8 @@
  */
 
 import { addBreadcrumb, captureException } from "./monitoring";
+import type { WebSearchResult } from "./web-search";
+import type { PluginResult } from "./plugins";
 
 export interface ImageAttachment {
   name: string;
@@ -29,12 +31,16 @@ export interface AIChatRequest {
   top_p?: number;
   timeoutMs?: number;
   onChunk?: (text: string) => void;
+  enableWebSearch?: boolean;
+  pluginResults?: PluginResult[];
 }
 
 export interface AIResponse {
   content: string;
   error?: string;
   isRateLimited?: boolean;
+  sources?: WebSearchResult[];
+  pluginResults?: PluginResult[];
 }
 
 // In-memory cache for 0ms responses on repeated prompts (3 min TTL)
@@ -42,19 +48,26 @@ const aiCache = new Map<string, { content: string; expiry: number }>();
 const CACHE_TTL = 3 * 60 * 1000;
 
 function normalizeModelName(m?: string): string {
+  if (!m) return "gemini-3.5-flash-lite";
   if (
-    !m ||
-    m === "gemma-4-31b-it" ||
-    m === "gemini-3.1-flash-lite" ||
-    m === "gemini-3.5-flash-lite" ||
     m === "gemini-2.5-flash" ||
+    m === "gemini-2.5-flash-lite" ||
     m === "gemini-2.0-flash" ||
-    m === "gemini-2.5-flash-lite"
+    m === "gemini-3.1-flash-lite"
   ) {
-    return "gemini-3.6-flash";
+    return "gemini-3.5-flash-lite";
   }
   return m;
 }
+
+const FALLBACK_MODELS = [
+  "gemini-3.5-flash-lite",
+  "gemini-3.7-flash",
+  "gemini-3.8-flash",
+  "gemini-flash-lite-latest",
+  "gemini-3.6-flash",
+  "gemma-4-26b-a4b-it",
+];
 
 /**
  * Executes an AI chat request.
@@ -99,6 +112,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         max_tokens: params.max_tokens || 8192,
         responseMimeType: params.responseMimeType,
         top_p: params.top_p,
+        enableWebSearch: params.enableWebSearch,
       }),
     });
 
@@ -107,33 +121,30 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     if (res.ok) {
       const data = await res.json();
       const content = data.content || "";
+      const sources = data.sources || params.pluginResults?.flatMap((p) => p.sources || []) || [];
       if (content) {
         aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
         if (params.onChunk) {
           params.onChunk(content);
         }
-        return { content };
+        return {
+          content,
+          sources: sources.length > 0 ? sources : undefined,
+          pluginResults: params.pluginResults,
+        };
       }
-    }
-
-    if (res.status === 429) {
-      return {
-        content: "",
-        isRateLimited: true,
-        error: "AI study rate limit reached. Please wait a few seconds and try again.",
-      };
     }
 
     const errData = await res.json().catch(() => ({}));
     if (errData?.error) {
-      console.warn("[ai-client proxy error]:", errData.error);
+      console.warn("[ai-client proxy error]:", errData.error, "Status:", res.status);
     }
   } catch (proxyErr: any) {
     console.warn("[ai-client proxy network error]:", proxyErr?.message);
     captureException(proxyErr, { context: "AIChatProxy" });
   }
 
-  // 3. Fallback Route: Direct Google Gemini REST API (with CORS support)
+  // 3. Fallback Route: Direct Google Gemini REST API (with CORS support & multi-model failover)
   const clientFallbackKey = typeof atob === "function" ? atob("QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=") : "";
   const localEnvKey =
     (typeof import.meta !== "undefined" && (import.meta as any)?.env?.VITE_GEMINI_API_KEY) ||
@@ -180,8 +191,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         }
       }
 
-      let activeModel = requestedModel;
-      let googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${localEnvKey.trim()}`;
+      const candidateModels = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
       const requestBody: any = {
         contents,
         generationConfig: {
@@ -199,38 +209,55 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         requestBody.system_instruction = { parts: systemParts };
       }
 
-      let res = await fetch(googleUrl, {
-        method: "POST",
-        signal: fallbackController.signal,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-      });
+      for (let i = 0; i < candidateModels.length; i++) {
+        const activeModel = candidateModels[i];
+        const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${localEnvKey.trim()}`;
 
-      // If requested model returned 404, retry once with gemini-3.6-flash
-      if (!res.ok && res.status === 404 && activeModel !== "gemini-3.6-flash") {
-        activeModel = "gemini-3.6-flash";
-        googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${localEnvKey.trim()}`;
-        res = await fetch(googleUrl, {
-          method: "POST",
-          signal: fallbackController.signal,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(requestBody),
-        });
-      }
+        try {
+          const res = await fetch(googleUrl, {
+            method: "POST",
+            signal: fallbackController.signal,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(requestBody),
+          });
 
-      clearTimeout(timeoutId);
-
-      if (res.ok) {
-        const data = await res.json();
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        if (content) {
-          aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
-          if (params.onChunk) {
-            params.onChunk(content);
+          if (res.ok) {
+            clearTimeout(timeoutId);
+            const data = await res.json();
+            const candidate = data.candidates?.[0];
+            const content = candidate?.content?.parts?.[0]?.text || "";
+            const fallbackSources: WebSearchResult[] = [];
+            if (candidate?.groundingMetadata?.groundingChunks) {
+              for (const chunk of candidate.groundingMetadata.groundingChunks) {
+                if (chunk.web?.uri) {
+                  fallbackSources.push({
+                    title: chunk.web.title || "Web Source",
+                    url: chunk.web.uri,
+                    snippet: "",
+                  });
+                }
+              }
+            }
+            const combinedSources = [...fallbackSources, ...(params.pluginResults?.flatMap((p) => p.sources || []) || [])];
+            if (content) {
+              aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
+              if (params.onChunk) {
+                params.onChunk(content);
+              }
+              return {
+                content,
+                sources: combinedSources.length > 0 ? combinedSources : undefined,
+                pluginResults: params.pluginResults,
+              };
+            }
+          } else {
+            console.warn(`[Direct Fallback] Model ${activeModel} failed with status ${res.status}. Trying next model...`);
           }
-          return { content };
+        } catch (fetchErr: any) {
+          console.warn(`[Direct Fallback] Fetch error for ${activeModel}:`, fetchErr?.message);
         }
       }
+      clearTimeout(timeoutId);
     } catch (directErr: any) {
       console.warn("[Direct Fallback Error]:", directErr?.message);
     }
@@ -239,6 +266,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
   // 4. Return user-friendly error response if all paths fail
   return {
     content: "",
-    error: "AI study service is momentarily unavailable. Please check your network connection and retry.",
+    isRateLimited: true,
+    error: "AI study rate limit reached. Please wait a few seconds and try again.",
   };
 }

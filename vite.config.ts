@@ -46,9 +46,26 @@ function localAiProxyPlugin(env: Record<string, string>) {
                 return;
               }
 
-              const requestedModel =
-                parsedBody.model === 'gemma-4-31b-it' ? 'gemini-3.5-flash-lite' : (parsedBody.model || 'gemini-3.5-flash-lite');
-              const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${requestedModel}:generateContent?key=${apiKey.trim()}`;
+              const FALLBACK_MODELS = [
+                'gemini-3.5-flash-lite',
+                'gemini-3.7-flash',
+                'gemini-3.8-flash',
+                'gemini-flash-lite-latest',
+                'gemini-3.6-flash',
+                'gemma-4-26b-a4b-it',
+              ];
+
+              let requestedModel = parsedBody.model || 'gemini-3.5-flash-lite';
+              if (
+                requestedModel === 'gemini-2.5-flash' ||
+                requestedModel === 'gemini-2.5-flash-lite' ||
+                requestedModel === 'gemini-2.0-flash' ||
+                requestedModel === 'gemini-3.1-flash-lite'
+              ) {
+                requestedModel = 'gemini-3.5-flash-lite';
+              }
+
+              const candidateModels = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
 
               const systemParts: Array<{ text: string }> = [];
               const contents: Array<{ role: 'user' | 'model'; parts: Array<any> }> = [];
@@ -86,7 +103,7 @@ function localAiProxyPlugin(env: Record<string, string>) {
                 }
               }
 
-              const requestBody: any = {
+              const baseRequestBody: any = {
                 contents,
                 generationConfig: {
                   temperature: typeof parsedBody.temperature === 'number' ? parsedBody.temperature : 0.2,
@@ -95,28 +112,78 @@ function localAiProxyPlugin(env: Record<string, string>) {
                 },
               };
 
-              if (systemParts.length > 0) {
-                requestBody.system_instruction = { parts: systemParts };
+              if (parsedBody.enableWebSearch) {
+                baseRequestBody.tools = [{ googleSearch: {} }];
               }
 
-              const googleRes = await fetch(googleUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody),
-              });
+              if (systemParts.length > 0) {
+                baseRequestBody.system_instruction = { parts: systemParts };
+              }
 
-              const data = await googleRes.json();
-              if (!googleRes.ok) {
-                res.statusCode = googleRes.status;
+              let data: any = null;
+              let lastStatus = 0;
+              let lastErrMsg = '';
+
+              for (let i = 0; i < candidateModels.length; i++) {
+                const activeModel = candidateModels[i];
+                const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey.trim()}`;
+                const requestBody = JSON.parse(JSON.stringify(baseRequestBody));
+
+                try {
+                  let googleRes = await fetch(googleUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(requestBody),
+                  });
+
+                  if (!googleRes.ok && googleRes.status === 429 && requestBody.tools) {
+                    delete requestBody.tools;
+                    googleRes = await fetch(googleUrl, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(requestBody),
+                    });
+                  }
+
+                  if (googleRes.ok) {
+                    data = await googleRes.json();
+                    break;
+                  }
+
+                  lastStatus = googleRes.status;
+                  const errJson = await googleRes.json().catch(() => ({}));
+                  lastErrMsg = errJson?.error?.message || `Google API error (Status ${lastStatus})`;
+                  console.warn(`[local-ai-proxy] Model ${activeModel} failed with ${lastStatus}: ${lastErrMsg}. Switching to next model...`);
+                } catch (netErr: any) {
+                  lastErrMsg = netErr?.message || 'Network error';
+                  console.warn(`[local-ai-proxy] Network error with ${activeModel}: ${lastErrMsg}`);
+                }
+              }
+
+              if (!data) {
+                res.statusCode = lastStatus || 500;
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ content: '', error: data?.error?.message || 'Google API error' }));
+                res.end(JSON.stringify({ content: '', error: lastErrMsg || 'All AI models exhausted' }));
                 return;
               }
 
-              const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+              const candidate = data.candidates?.[0];
+              const content = candidate?.content?.parts?.[0]?.text || '';
+              const sources: Array<{ title: string; url: string }> = [];
+              if (candidate?.groundingMetadata?.groundingChunks) {
+                for (const chunk of candidate.groundingMetadata.groundingChunks) {
+                  if (chunk.web?.uri) {
+                    sources.push({
+                      title: chunk.web.title || 'Web Source',
+                      url: chunk.web.uri,
+                    });
+                  }
+                }
+              }
+
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ content }));
+              res.end(JSON.stringify({ content, sources: sources.length > 0 ? sources : undefined }));
             } catch (err: any) {
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
@@ -297,6 +364,7 @@ export default defineConfig(({ mode }) => {
             'markdown-vendor': ['react-markdown', 'remark-gfm'],
             'katex-vendor': ['katex', 'rehype-katex', 'remark-math'],
             'pdf-vendor': ['pdfjs-dist'],
+            'sentry-vendor': ['@sentry/react'],
           }
         }
       }

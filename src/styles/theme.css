@@ -976,6 +976,11 @@
   contain-intrinsic-size: auto 60px;
 }
 
+.section-contain {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 650px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .anti-gravity {
     animation: none !important;
