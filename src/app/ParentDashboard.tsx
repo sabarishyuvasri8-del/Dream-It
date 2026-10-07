@@ -387,7 +387,7 @@ export default function ParentDashboard({
 
             {/* Danger Icon Badge */}
             <div 
-              className="size-14 rounded-2xl flex items-center justify-center mb-4 shadow-sm"
+              className="size-14 rounded-2xl flex items-center justify-center mb-4"
               style={{ 
                 backgroundColor: "color-mix(in srgb, var(--m-danger) 12%, transparent)",
                 color: "var(--m-danger)",
@@ -427,10 +427,9 @@ export default function ParentDashboard({
                   setShowSignOutConfirm(false);
                   handleSignOut();
                 }}
-                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white shadow-md transition hover:opacity-90 active:scale-95 flex items-center justify-center gap-1.5"
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-white transition hover:opacity-90 active:scale-95 flex items-center justify-center gap-1.5"
                 style={{ 
-                  backgroundColor: "var(--m-danger)",
-                  boxShadow: "0 4px 14px color-mix(in srgb, var(--m-danger) 40%, transparent)"
+                  backgroundColor: "var(--m-danger)"
                 }}
               >
                 <LogOut size={13} />
