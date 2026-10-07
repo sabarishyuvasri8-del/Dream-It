@@ -144,6 +144,7 @@ const UserProfileModal = lazy(() => import("./components/UserProfileModal"));
 const NotesTab = lazy(() => import("./components/tabs/NotesTab"));
 const SnapAndSolveModal = lazy(() => import("./components/SnapAndSolveModal"));
 import CommandPalette from "./components/CommandPalette";
+import { extractFilesFromClipboard } from "./utils/clipboardHelper";
 type Message = { role: "user" | "assistant"; content: string };
 
 export interface AIChatSession {
@@ -2839,39 +2840,43 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
   };
 
   // ─── AI Chat Clipboard Paste (Ctrl+V / Cmd+V for images & files) ───
-  const handleChatPaste = async (e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData;
-    if (!clipboardData) return;
-
-    let files: File[] = [];
-    if (clipboardData.files && clipboardData.files.length > 0) {
-      for (let i = 0; i < clipboardData.files.length; i++) {
-        const f = clipboardData.files[i];
-        if (f) files.push(f);
+  const handleChatPaste = async (e: React.ClipboardEvent | ClipboardEvent) => {
+    try {
+      const result = await extractFilesFromClipboard(e);
+      if (result.files.length > 0) {
+        e.preventDefault();
+        const fileToAttach = result.files.find((f) => f.type.startsWith("image/")) || result.files[0];
+        await processAndAttachChatFile(fileToAttach);
+      } else if (result.isLocalFinderFile) {
+        e.preventDefault();
+        showToast(`Finder file "${result.localFileName}" detected: Please drag & drop or click 📎 to attach from Finder.`, "info");
       }
-    } else if (clipboardData.items && clipboardData.items.length > 0) {
-      for (let i = 0; i < clipboardData.items.length; i++) {
-        const item = clipboardData.items[i];
-        if (item.kind === "file") {
-          const f = item.getAsFile();
-          if (f) files.push(f);
-        }
-      }
-    }
-
-    if (files.length > 0) {
-      e.preventDefault();
-      // Prioritize image files if available, otherwise take the first file
-      const fileToAttach = files.find((f) => f.type.startsWith("image/")) || files[0];
-      let finalFile = fileToAttach;
-      if (!finalFile.name || finalFile.name === "image.png" || finalFile.name === "blob") {
-        const ext = finalFile.type ? finalFile.type.split("/")[1]?.replace("+xml", "") || "png" : "png";
-        const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        finalFile = new File([fileToAttach], `pasted-${dateStr}.${ext}`, { type: fileToAttach.type || "image/png" });
-      }
-      await processAndAttachChatFile(finalFile);
+    } catch (err) {
+      console.warn("[Dashboard] Chat paste error:", err);
     }
   };
+
+  // Window-level paste listener when wide AI chat is open
+  useEffect(() => {
+    if (!isChatMaximized) return;
+
+    const handleWindowPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target && target.tagName === "INPUT" && target.getAttribute("placeholder")?.includes("Dream It AI")) {
+        // Handled by input onPaste
+        return;
+      }
+      if (target && target.tagName === "TEXTAREA") {
+        return;
+      }
+      handleChatPaste(e);
+    };
+
+    window.addEventListener("paste", handleWindowPaste);
+    return () => {
+      window.removeEventListener("paste", handleWindowPaste);
+    };
+  }, [isChatMaximized]);
 
   const handleChatDragEnter = (e: React.DragEvent) => {
     e.preventDefault();

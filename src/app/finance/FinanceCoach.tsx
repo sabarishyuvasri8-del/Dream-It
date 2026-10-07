@@ -18,6 +18,7 @@ import { useUser } from "@clerk/clerk-react";
 import VoiceInputButton from "../components/VoiceInputButton";
 import { fetchAI } from "../../lib/ai-client";
 import MarkdownRenderer from "../components/MarkdownRenderer";
+import { extractFilesFromClipboard } from "../utils/clipboardHelper";
 
 function formatFileSize(bytes: number): string {
   if (!bytes || bytes <= 0) return "0 B";
@@ -324,36 +325,16 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
     }
   };
 
-  const handlePaste = async (e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData;
-    if (!clipboardData) return;
-
-    let files: File[] = [];
-    if (clipboardData.files && clipboardData.files.length > 0) {
-      for (let i = 0; i < clipboardData.files.length; i++) {
-        const f = clipboardData.files[i];
-        if (f) files.push(f);
+  const handlePaste = async (e: React.ClipboardEvent | ClipboardEvent) => {
+    try {
+      const result = await extractFilesFromClipboard(e);
+      if (result.files.length > 0) {
+        e.preventDefault();
+        const fileToAttach = result.files.find((f) => f.type.startsWith("image/")) || result.files[0];
+        await processAndAttachFile(fileToAttach);
       }
-    } else if (clipboardData.items && clipboardData.items.length > 0) {
-      for (let i = 0; i < clipboardData.items.length; i++) {
-        const item = clipboardData.items[i];
-        if (item.kind === "file") {
-          const f = item.getAsFile();
-          if (f) files.push(f);
-        }
-      }
-    }
-
-    if (files.length > 0) {
-      e.preventDefault();
-      const fileToAttach = files.find((f) => f.type.startsWith("image/")) || files[0];
-      let finalFile = fileToAttach;
-      if (!finalFile.name || finalFile.name === "image.png" || finalFile.name === "blob") {
-        const ext = finalFile.type ? finalFile.type.split("/")[1]?.replace("+xml", "") || "png" : "png";
-        const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        finalFile = new File([fileToAttach], `pasted-${dateStr}.${ext}`, { type: fileToAttach.type || "image/png" });
-      }
-      await processAndAttachFile(finalFile);
+    } catch (err) {
+      console.warn("[FinanceCoach] Paste error:", err);
     }
   };
 

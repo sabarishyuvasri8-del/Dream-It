@@ -16,6 +16,7 @@ import {
 import ChatMessageContent from "./ChatMessageContent";
 import LinkPreviewCard from "./LinkPreviewCard";
 import { extractUrls } from "../utils/linkPreview";
+import { extractFilesFromClipboard } from "../utils/clipboardHelper";
 
 interface ChatModalProps {
   userId: string;
@@ -41,6 +42,8 @@ export default function ChatModal({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const [finderNotice, setFinderNotice] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const dragCounterRef = useRef(0);
 
@@ -75,7 +78,13 @@ export default function ChatModal({
     dragCounterRef.current = 0;
     setIsDragging(false);
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      setSelectedFile(e.dataTransfer.files[0]);
+      const file = e.dataTransfer.files[0];
+      if (file.size > 25 * 1024 * 1024) {
+        alert("File size must be strictly under 25MB.");
+        return;
+      }
+      setSelectedFile(file);
+      setFinderNotice(null);
     }
   };
 
@@ -225,42 +234,52 @@ export default function ChatModal({
   };
 
   // ─── Clipboard Paste Handler (Ctrl+V / Cmd+V for images & files) ───
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const clipboardData = e.clipboardData;
-    if (!clipboardData) return;
-
-    let files: File[] = [];
-    if (clipboardData.files && clipboardData.files.length > 0) {
-      for (let i = 0; i < clipboardData.files.length; i++) {
-        const f = clipboardData.files[i];
-        if (f) files.push(f);
-      }
-    } else if (clipboardData.items && clipboardData.items.length > 0) {
-      for (let i = 0; i < clipboardData.items.length; i++) {
-        const item = clipboardData.items[i];
-        if (item.kind === "file") {
-          const f = item.getAsFile();
-          if (f) files.push(f);
+  const processPaste = async (e: React.ClipboardEvent | ClipboardEvent) => {
+    try {
+      const result = await extractFilesFromClipboard(e);
+      if (result.files.length > 0) {
+        e.preventDefault();
+        const fileToAttach = result.files.find((f) => f.type.startsWith("image/")) || result.files[0];
+        if (fileToAttach.size > 25 * 1024 * 1024) {
+          alert("File size must be strictly under 25MB.");
+          return;
         }
+        setSelectedFile(fileToAttach);
+        setFinderNotice(null);
+      } else if (result.isLocalFinderFile) {
+        e.preventDefault();
+        setFinderNotice(result.localFileName || "file");
       }
-    }
-
-    if (files.length > 0) {
-      e.preventDefault();
-      const fileToAttach = files.find((f) => f.type.startsWith("image/")) || files[0];
-      if (fileToAttach.size > 25 * 1024 * 1024) {
-        alert("File size must be strictly under 25MB.");
-        return;
-      }
-      let finalFile = fileToAttach;
-      if (!finalFile.name || finalFile.name === "image.png" || finalFile.name === "blob") {
-        const ext = finalFile.type ? finalFile.type.split("/")[1]?.replace("+xml", "") || "png" : "png";
-        const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        finalFile = new File([fileToAttach], `pasted-${dateStr}.${ext}`, { type: fileToAttach.type || "image/png" });
-      }
-      setSelectedFile(finalFile);
+    } catch (err) {
+      console.warn("[ChatModal] Paste extraction error:", err);
     }
   };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    processPaste(e);
+  };
+
+  // Global window paste listener: paste images/files from anywhere while chatting
+  useEffect(() => {
+    if (!activeFriend) return;
+
+    const handleWindowPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement;
+      // Do not intercept if user is typing in another input (e.g. friend search)
+      if (target && target.tagName === "INPUT" && target !== chatInputRef.current) {
+        return;
+      }
+      if (target && target.tagName === "TEXTAREA") {
+        return;
+      }
+      processPaste(e);
+    };
+
+    window.addEventListener("paste", handleWindowPaste);
+    return () => {
+      window.removeEventListener("paste", handleWindowPaste);
+    };
+  }, [activeFriend]);
 
   const selectedFilePreviewUrl = React.useMemo(() => {
     if (selectedFile && selectedFile.type.startsWith("image/")) {
@@ -584,6 +603,37 @@ export default function ChatModal({
                 ) : null;
               })()}
               
+              {finderNotice && (
+                <div className="flex items-center justify-between gap-2 p-2.5 mb-2 rounded-2xl text-xs border border-amber-500/30 bg-amber-500/10 text-amber-300 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2 truncate">
+                    <span className="shrink-0 text-base">⚠️</span>
+                    <span className="truncate">
+                      Finder file <strong>"{finderNotice}"</strong> detected. macOS blocks direct clipboard file pasting.
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFinderNotice(null);
+                        fileInputRef.current?.click();
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-[11px] transition shadow-xs"
+                    >
+                      Browse File
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFinderNotice(null)}
+                      className="p-1 rounded-lg hover:bg-white/10 opacity-70 hover:opacity-100 transition"
+                      title="Dismiss"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <form onSubmit={handleSend} onPaste={handlePaste} className="flex gap-2 w-full min-w-0">
                 <input 
                   type="file" 
@@ -601,6 +651,7 @@ export default function ChatModal({
                   <Paperclip size={18} />
                 </button>
                 <input
+                  ref={chatInputRef}
                   type="text"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
