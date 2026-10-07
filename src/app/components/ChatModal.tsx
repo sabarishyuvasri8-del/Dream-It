@@ -147,7 +147,13 @@ export default function ChatModal({
   useEffect(() => {
     if (!userId) return;
     fetchFriendsConversationMeta(userId).then(setConvoMeta);
-  }, [userId]);
+
+    const interval = setInterval(() => {
+      fetchFriendsConversationMeta(userId).then(setConvoMeta);
+    }, 4000);
+
+    return () => clearInterval(interval);
+  }, [userId, friends]);
 
   const getFriendName = React.useCallback((f: Friendship) => {
     return f.requester_id === userId
@@ -465,30 +471,46 @@ export default function ChatModal({
                         <p className={`text-sm truncate ${unreadCount > 0 ? "font-black" : "font-bold"}`} style={{ color: "var(--m-text)" }}>
                           {friendName}
                         </p>
-                        {meta?.lastMessageAt && (
-                          <span 
-                            className={`text-[10px] font-mono shrink-0 transition-colors ${unreadCount > 0 ? "font-bold" : "opacity-50"}`}
-                            style={{ color: unreadCount > 0 ? "var(--m-primary)" : "inherit" }}
-                          >
+                        {unreadCount === 0 && meta?.lastMessageAt && (
+                          <span className="text-[10px] font-mono shrink-0 opacity-50">
                             {formatChatTime(meta.lastMessageAt)}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center justify-between gap-2 mt-0.5">
-                        <p 
-                          className={`text-xs truncate ${unreadCount > 0 ? "font-semibold opacity-90" : "opacity-60"}`}
-                          style={{ color: "var(--m-text)" }}
-                        >
-                          {meta?.lastMessageText || "No messages yet"}
-                        </p>
-                        {unreadCount > 0 && (
-                          <span
-                            className="min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-black flex items-center justify-center shrink-0 shadow-xs animate-in zoom-in-75 duration-150"
-                            style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
-                            title={`${unreadCount} unread message${unreadCount > 1 ? "s" : ""}`}
+                        {unreadCount > 0 ? (
+                          <p 
+                            className="text-xs font-bold truncate flex items-center gap-1.5"
+                            style={{ color: "#3b82f6" }}
                           >
-                            {unreadCount > 99 ? "99+" : unreadCount}
-                          </span>
+                            <span>{unreadCount} {unreadCount === 1 ? "new message" : "new messages"}</span>
+                            {meta?.lastMessageAt && (
+                              <span className="opacity-80 font-normal text-[11px]">· {formatChatTime(meta.lastMessageAt)}</span>
+                            )}
+                          </p>
+                        ) : (
+                          <p 
+                            className="text-xs truncate opacity-60"
+                            style={{ color: "var(--m-text)" }}
+                          >
+                            {meta?.lastMessageText || "No messages yet"}
+                          </p>
+                        )}
+
+                        {unreadCount > 0 && (
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <span
+                              className="min-w-[19px] h-4 px-1.5 rounded-full text-[10px] font-black flex items-center justify-center shadow-xs"
+                              style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                              title={`${unreadCount} unread message${unreadCount > 1 ? "s" : ""}`}
+                            >
+                              {unreadCount > 99 ? "99+" : unreadCount}
+                            </span>
+                            <span 
+                              className="size-2 rounded-full shadow-sm animate-pulse"
+                              style={{ backgroundColor: "#3b82f6", boxShadow: "0 0 8px #3b82f6" }}
+                            />
+                          </div>
                         )}
                       </div>
                     </div>

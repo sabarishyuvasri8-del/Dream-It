@@ -837,46 +837,69 @@ export async function fetchFriendsConversationMeta(
 ): Promise<Record<string, FriendConversationMeta>> {
   if (!userId) return {};
   try {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    const { data, error } = await supabase
-      .from('direct_messages')
-      .select('id, sender_id, receiver_id, created_at, is_read, content, file_name, file_url, deleted_by_sender, deleted_by_receiver')
-      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
-      .gte('created_at', twentyFourHoursAgo)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error("Error fetching conversation meta:", error);
-      return {};
-    }
-
     const metaByFriendId: Record<string, FriendConversationMeta> = {};
 
-    for (const msg of data || []) {
-      // Filter out messages hidden by current user
-      if (msg.sender_id === userId && msg.deleted_by_sender) continue;
-      if (msg.receiver_id === userId && msg.deleted_by_receiver) continue;
+    // 1. Fetch ALL unread messages received by this user (identical filter to fetchUnreadMessageCount)
+    const { data: unreadData, error: unreadError } = await supabase
+      .from('direct_messages')
+      .select('*')
+      .eq('receiver_id', userId)
+      .eq('is_read', false)
+      .order('created_at', { ascending: false });
 
-      const friendId = msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
-      if (!friendId) continue;
-
-      if (!metaByFriendId[friendId]) {
-        metaByFriendId[friendId] = {
-          lastMessageAt: msg.created_at,
-          lastMessageText: msg.content || (msg.file_name ? `📎 ${msg.file_name}` : msg.file_url ? "📎 File attachment" : ""),
-          unreadCount: 0,
-        };
-      }
-
-      // If friend sent this to current user and it hasn't been read yet, increment unread count
-      if (msg.sender_id === friendId && msg.receiver_id === userId && !msg.is_read) {
+    if (unreadError) {
+      console.error("Error fetching unread messages in fetchFriendsConversationMeta:", unreadError);
+    } else {
+      for (const msg of unreadData || []) {
+        const friendId = msg.sender_id;
+        if (!friendId) continue;
+        if (!metaByFriendId[friendId]) {
+          metaByFriendId[friendId] = {
+            lastMessageAt: msg.created_at,
+            lastMessageText: msg.content || (msg.file_name ? `📎 ${msg.file_name}` : msg.file_url ? "📎 File attachment" : ""),
+            unreadCount: 0,
+          };
+        }
         metaByFriendId[friendId].unreadCount += 1;
+      }
+    }
+
+    // 2. Fetch recent conversation messages to populate previews & timestamps for all active friends
+    const { data: recentData, error: recentError } = await supabase
+      .from('direct_messages')
+      .select('*')
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    if (recentError) {
+      console.error("Error fetching recent messages in fetchFriendsConversationMeta:", recentError);
+    } else {
+      for (const msg of recentData || []) {
+        const friendId = msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
+        if (!friendId) continue;
+
+        if (!metaByFriendId[friendId]) {
+          metaByFriendId[friendId] = {
+            lastMessageAt: msg.created_at,
+            lastMessageText: msg.content || (msg.file_name ? `📎 ${msg.file_name}` : msg.file_url ? "📎 File attachment" : ""),
+            unreadCount: 0,
+          };
+        } else {
+          // If this message is newer than what was registered from unreadData (e.g. user replied last)
+          const curTime = metaByFriendId[friendId].lastMessageAt ? new Date(metaByFriendId[friendId].lastMessageAt!).getTime() : 0;
+          const msgTime = new Date(msg.created_at).getTime();
+          if (msgTime > curTime) {
+            metaByFriendId[friendId].lastMessageAt = msg.created_at;
+            metaByFriendId[friendId].lastMessageText = msg.content || (msg.file_name ? `📎 ${msg.file_name}` : msg.file_url ? "📎 File attachment" : "");
+          }
+        }
       }
     }
 
     return metaByFriendId;
   } catch (err) {
-    console.error("Exception fetching conversation meta:", err);
+    console.error("Exception in fetchFriendsConversationMeta:", err);
     return {};
   }
 }
