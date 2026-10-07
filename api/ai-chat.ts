@@ -151,10 +151,6 @@ export default async function handler(req: any, res?: any) {
       },
     };
 
-    if (body.enableWebSearch) {
-      baseRequestBody.tools = [{ googleSearch: {} }];
-    }
-
     if (systemParts.length > 0) {
       baseRequestBody.system_instruction = { parts: systemParts };
     }
@@ -225,20 +221,7 @@ export default async function handler(req: any, res?: any) {
     const candidate = finalData.candidates?.[0];
     const content = candidate?.content?.parts?.[0]?.text || "";
 
-    // Extract Google Search grounding citations if present
-    const sources: Array<{ title: string; url: string; snippet?: string }> = [];
-    if (candidate?.groundingMetadata?.groundingChunks) {
-      for (const chunk of candidate.groundingMetadata.groundingChunks) {
-        if (chunk.web?.uri) {
-          sources.push({
-            title: chunk.web.title || "Web Source",
-            url: chunk.web.uri,
-          });
-        }
-      }
-    }
-
-    const successPayload = { content, sources: sources.length > 0 ? sources : undefined };
+    const successPayload = { content };
     if (res && typeof res.status === "function") {
       return res.status(200).json(successPayload);
     }

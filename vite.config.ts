@@ -112,10 +112,6 @@ function localAiProxyPlugin(env: Record<string, string>) {
                 },
               };
 
-              if (parsedBody.enableWebSearch) {
-                baseRequestBody.tools = [{ googleSearch: {} }];
-              }
-
               if (systemParts.length > 0) {
                 baseRequestBody.system_instruction = { parts: systemParts };
               }
@@ -135,15 +131,6 @@ function localAiProxyPlugin(env: Record<string, string>) {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(requestBody),
                   });
-
-                  if (!googleRes.ok && googleRes.status === 429 && requestBody.tools) {
-                    delete requestBody.tools;
-                    googleRes = await fetch(googleUrl, {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify(requestBody),
-                    });
-                  }
 
                   if (googleRes.ok) {
                     data = await googleRes.json();
@@ -169,21 +156,10 @@ function localAiProxyPlugin(env: Record<string, string>) {
 
               const candidate = data.candidates?.[0];
               const content = candidate?.content?.parts?.[0]?.text || '';
-              const sources: Array<{ title: string; url: string }> = [];
-              if (candidate?.groundingMetadata?.groundingChunks) {
-                for (const chunk of candidate.groundingMetadata.groundingChunks) {
-                  if (chunk.web?.uri) {
-                    sources.push({
-                      title: chunk.web.title || 'Web Source',
-                      url: chunk.web.uri,
-                    });
-                  }
-                }
-              }
 
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ content, sources: sources.length > 0 ? sources : undefined }));
+              res.end(JSON.stringify({ content }));
             } catch (err: any) {
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');

@@ -6,8 +6,6 @@
  */
 
 import { addBreadcrumb, captureException } from "./monitoring";
-import type { WebSearchResult } from "./web-search";
-import type { PluginResult } from "./plugins";
 
 export interface ImageAttachment {
   name: string;
@@ -31,16 +29,12 @@ export interface AIChatRequest {
   top_p?: number;
   timeoutMs?: number;
   onChunk?: (text: string) => void;
-  enableWebSearch?: boolean;
-  pluginResults?: PluginResult[];
 }
 
 export interface AIResponse {
   content: string;
   error?: string;
   isRateLimited?: boolean;
-  sources?: WebSearchResult[];
-  pluginResults?: PluginResult[];
 }
 
 // In-memory cache for 0ms responses on repeated prompts (3 min TTL)
@@ -112,7 +106,6 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         max_tokens: params.max_tokens || 8192,
         responseMimeType: params.responseMimeType,
         top_p: params.top_p,
-        enableWebSearch: params.enableWebSearch,
       }),
     });
 
@@ -121,17 +114,12 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     if (res.ok) {
       const data = await res.json();
       const content = data.content || "";
-      const sources = data.sources || params.pluginResults?.flatMap((p) => p.sources || []) || [];
       if (content) {
         aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
         if (params.onChunk) {
           params.onChunk(content);
         }
-        return {
-          content,
-          sources: sources.length > 0 ? sources : undefined,
-          pluginResults: params.pluginResults,
-        };
+        return { content };
       }
     }
 
@@ -226,29 +214,12 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
             const data = await res.json();
             const candidate = data.candidates?.[0];
             const content = candidate?.content?.parts?.[0]?.text || "";
-            const fallbackSources: WebSearchResult[] = [];
-            if (candidate?.groundingMetadata?.groundingChunks) {
-              for (const chunk of candidate.groundingMetadata.groundingChunks) {
-                if (chunk.web?.uri) {
-                  fallbackSources.push({
-                    title: chunk.web.title || "Web Source",
-                    url: chunk.web.uri,
-                    snippet: "",
-                  });
-                }
-              }
-            }
-            const combinedSources = [...fallbackSources, ...(params.pluginResults?.flatMap((p) => p.sources || []) || [])];
             if (content) {
               aiCache.set(cacheKey, { content, expiry: Date.now() + CACHE_TTL });
               if (params.onChunk) {
                 params.onChunk(content);
               }
-              return {
-                content,
-                sources: combinedSources.length > 0 ? combinedSources : undefined,
-                pluginResults: params.pluginResults,
-              };
+              return { content };
             }
           } else {
             console.warn(`[Direct Fallback] Model ${activeModel} failed with status ${res.status}. Trying next model...`);
