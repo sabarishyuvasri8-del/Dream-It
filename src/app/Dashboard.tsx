@@ -5339,37 +5339,6 @@ Mathematics:
                   )}
                 </div>
 
-                {/* Quick Prompts */}
-                <div className="shrink-0 px-3 py-2" style={{ borderTop: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => setSnapModalOpen(true)}
-                      className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-bold transition hover:scale-102 shadow-xs"
-                      style={{
-                        backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)",
-                        color: "var(--m-primary)",
-                        border: "1px solid color-mix(in srgb, var(--m-primary) 35%, transparent)",
-                      }}
-                    >
-                      📸 Snap & Solve
-                    </button>
-                    {[
-                      { emoji: "📐", text: "Solve 2x - 1 = 0", prompt: "Solve 2x - 1 = 0 step by step" },
-                      { emoji: "💡", text: "Study plan", prompt: "Help me create an effective daily study plan" },
-                      { emoji: "🎴", text: "Make flashcards", prompt: "Generate 5 active recall flashcards for my hardest subject" },
-                    ].map(({ emoji, text, prompt }) => (
-                      <button
-                        key={text}
-                        onClick={() => askCoach(undefined, prompt)}
-                        className="flex items-center gap-1 rounded-lg px-2 py-1 text-[10.5px] font-medium transition hover:scale-102 minimal-surface"
-                        style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
-                      >
-                        {emoji} {text}
-                      </button>
-                    ))}
-                  </div>
-                </div>
 
                 {/* Chat Input (Positioned cleanly at bottom) */}
                 <form onSubmit={askCoach} onPaste={handleChatPaste} className="shrink-0 p-3" style={{ borderTop: "1px solid var(--m-border-light)" }}>
