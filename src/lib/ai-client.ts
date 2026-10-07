@@ -56,11 +56,12 @@ function normalizeModelName(m?: string): string {
 
 const FALLBACK_MODELS = [
   "gemini-3.5-flash-lite",
+  "gemini-flash-lite-latest",
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
   "gemini-3.7-flash",
   "gemini-3.8-flash",
-  "gemini-flash-lite-latest",
-  "gemini-3.6-flash",
-  "gemma-4-26b-a4b-it",
 ];
 
 /**
@@ -187,9 +188,6 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
           maxOutputTokens: typeof params.max_tokens === "number" ? Math.min(4096, Math.max(512, params.max_tokens)) : 2048,
           ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
           topP: params.top_p,
-          thinking_config: {
-            thinking_budget: 0,
-          },
         },
       };
 
@@ -200,14 +198,17 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
       for (let i = 0; i < candidateModels.length; i++) {
         const activeModel = candidateModels[i];
         const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${localEnvKey.trim()}`;
+        const modelCtrl = new AbortController();
+        const modelTimer = setTimeout(() => modelCtrl.abort(), 6500);
 
         try {
           const res = await fetch(googleUrl, {
             method: "POST",
-            signal: fallbackController.signal,
+            signal: modelCtrl.signal,
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(requestBody),
           });
+          clearTimeout(modelTimer);
 
           if (res.ok) {
             clearTimeout(timeoutId);
