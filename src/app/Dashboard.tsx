@@ -6630,6 +6630,12 @@ Mathematics:
           userNameDisplay={userNameDisplay}
           friends={friends}
           onClose={() => setChatModalOpen(false)}
+          onRefreshUnreadCount={async () => {
+            if (userId) {
+              const count = await fetchUnreadMessageCount(userId);
+              setUnreadMessageCount(count);
+            }
+          }}
         />
       )}
 

@@ -11,18 +11,38 @@ import {
   deleteDirectMessage,
   hideDirectMessage,
   fetchUserProfiles,
-  UserProfileData
+  UserProfileData,
+  fetchFriendsConversationMeta,
+  FriendConversationMeta
 } from "../../lib/supabase";
 import ChatMessageContent from "./ChatMessageContent";
 import LinkPreviewCard from "./LinkPreviewCard";
 import { extractUrls } from "../utils/linkPreview";
 import { extractFilesFromClipboard } from "../utils/clipboardHelper";
 
+function formatChatTime(isoString?: string | null): string {
+  if (!isoString) return "";
+  const date = new Date(isoString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins}m`;
+  if (diffHours < 24 && date.getDate() === now.getDate()) {
+    return date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  }
+  if (diffHours < 48) return "Yesterday";
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
 interface ChatModalProps {
   userId: string;
   userNameDisplay: string;
   friends: Friendship[];
   onClose: () => void;
+  onRefreshUnreadCount?: () => void;
 }
 
 export default function ChatModal({
@@ -30,6 +50,7 @@ export default function ChatModal({
   userNameDisplay,
   friends,
   onClose,
+  onRefreshUnreadCount,
 }: ChatModalProps) {
   const [activeFriend, setActiveFriend] = useState<Friendship | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
@@ -37,6 +58,7 @@ export default function ChatModal({
   const [dismissedDraftUrl, setDismissedDraftUrl] = useState<string | null>(null);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [profiles, setProfiles] = useState<Record<string, UserProfileData>>({});
+  const [convoMeta, setConvoMeta] = useState<Record<string, FriendConversationMeta>>({});
   const [isWide, setIsWide] = useState(false);
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -121,6 +143,57 @@ export default function ChatModal({
     }
   }, [friends, userId]);
 
+  // Load conversation metadata (latest message timestamp, unread counts)
+  useEffect(() => {
+    if (!userId) return;
+    fetchFriendsConversationMeta(userId).then(setConvoMeta);
+  }, [userId]);
+
+  const getFriendName = React.useCallback((f: Friendship) => {
+    return f.requester_id === userId
+      ? f.target_actual_identifier || f.target_identifier
+      : f.requester_identifier;
+  }, [userId]);
+
+  // Sort friends so that friends with the most recent messages appear at the very top
+  const sortedFriends = React.useMemo(() => {
+    return [...friends].sort((a, b) => {
+      const friendIdA = a.requester_id === userId ? a.target_id : a.requester_id;
+      const friendIdB = b.requester_id === userId ? b.target_id : b.requester_id;
+
+      const timeA = friendIdA && convoMeta[friendIdA]?.lastMessageAt ? new Date(convoMeta[friendIdA].lastMessageAt!).getTime() : 0;
+      const timeB = friendIdB && convoMeta[friendIdB]?.lastMessageAt ? new Date(convoMeta[friendIdB].lastMessageAt!).getTime() : 0;
+
+      if (timeA !== timeB) {
+        return timeB - timeA; // Newest conversation always jumps to the top
+      }
+
+      const nameA = getFriendName(a) || "";
+      const nameB = getFriendName(b) || "";
+      return nameA.localeCompare(nameB);
+    });
+  }, [friends, convoMeta, userId, getFriendName]);
+
+  const handleSelectFriend = async (friend: Friendship) => {
+    setActiveFriend(friend);
+    const friendId = friend.requester_id === userId ? friend.target_id : friend.requester_id;
+    if (friendId) {
+      // Clear unread count locally immediately for instant responsiveness
+      setConvoMeta((prev) => {
+        if (!prev[friendId] || prev[friendId].unreadCount === 0) return prev;
+        return {
+          ...prev,
+          [friendId]: {
+            ...prev[friendId],
+            unreadCount: 0,
+          },
+        };
+      });
+      await markMessagesAsRead(userId, friendId);
+      onRefreshUnreadCount?.();
+    }
+  };
+
   // Load messages when active friend changes
   useEffect(() => {
     if (!activeFriend) return;
@@ -137,45 +210,68 @@ export default function ChatModal({
       
       // Mark as read when we open the chat
       await markMessagesAsRead(userId, friendId);
+      onRefreshUnreadCount?.();
     };
     
     loadMessages();
-  }, [activeFriend, userId]);
+  }, [activeFriend, userId, onRefreshUnreadCount]);
 
-  // Subscribe to real-time messages
+  // Subscribe to real-time messages across ALL friends
   useEffect(() => {
-    const unsubscribe = subscribeToDirectMessages(userId, 
+    const unsubscribe = subscribeToDirectMessages(
+      userId,
       (newMsg) => {
-        // Check if this message belongs to the current active chat
-        if (!activeFriend) return;
-        
-        const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
-        
-        if (
-          (newMsg.sender_id === userId && newMsg.receiver_id === friendId) ||
-          (newMsg.sender_id === friendId && newMsg.receiver_id === userId)
-        ) {
+        const otherUserId = newMsg.sender_id === userId ? newMsg.receiver_id : newMsg.sender_id;
+        if (!otherUserId) return;
+
+        const currentActiveFriendId = activeFriend
+          ? activeFriend.requester_id === userId
+            ? activeFriend.target_id
+            : activeFriend.requester_id
+          : null;
+
+        const isCurrentChatActive = currentActiveFriendId === otherUserId;
+        const isIncoming = newMsg.sender_id === otherUserId && newMsg.receiver_id === userId;
+
+        // 1. Update conversation metadata (this causes friend to reorder to top immediately & tracks unread counts)
+        setConvoMeta((prev) => {
+          const prevMeta = prev[otherUserId] || { lastMessageAt: null, lastMessageText: null, unreadCount: 0 };
+          const shouldCountUnread = isIncoming && !isCurrentChatActive;
+
+          return {
+            ...prev,
+            [otherUserId]: {
+              lastMessageAt: newMsg.created_at,
+              lastMessageText: newMsg.content || (newMsg.file_name ? `📎 ${newMsg.file_name}` : "Attachment"),
+              unreadCount: shouldCountUnread ? (prevMeta.unreadCount || 0) + 1 : (isCurrentChatActive ? 0 : prevMeta.unreadCount || 0),
+            },
+          };
+        });
+
+        // 2. If it belongs to currently open chat, append to messages and mark as read
+        if (isCurrentChatActive) {
           setMessages((prev) => {
-            if (prev.find(m => m.id === newMsg.id)) return prev;
+            if (prev.find((m) => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
-          
-          // If we received a message from them while chatting, mark it as read immediately
-          if (newMsg.sender_id === friendId && newMsg.receiver_id === userId) {
-            markMessagesAsRead(userId, friendId);
+          if (isIncoming) {
+            markMessagesAsRead(userId, otherUserId);
+            onRefreshUnreadCount?.();
           }
+        } else if (isIncoming) {
+          onRefreshUnreadCount?.();
         }
       },
       (deletedMsgId) => {
-        setMessages(prev => prev.filter(m => m.id !== deletedMsgId));
+        setMessages((prev) => prev.filter((m) => m.id !== deletedMsgId));
       },
       (hiddenMsg) => {
         // Check if it's hidden for the current user
         if (hiddenMsg.sender_id === userId && hiddenMsg.deleted_by_sender) {
-          setMessages(prev => prev.filter(m => m.id !== hiddenMsg.id));
+          setMessages((prev) => prev.filter((m) => m.id !== hiddenMsg.id));
         }
         if (hiddenMsg.receiver_id === userId && hiddenMsg.deleted_by_receiver) {
-          setMessages(prev => prev.filter(m => m.id !== hiddenMsg.id));
+          setMessages((prev) => prev.filter((m) => m.id !== hiddenMsg.id));
         }
       }
     );
@@ -183,7 +279,7 @@ export default function ChatModal({
     return () => {
       unsubscribe();
     };
-  }, [userId, activeFriend]);
+  }, [userId, activeFriend, onRefreshUnreadCount]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -215,9 +311,18 @@ export default function ChatModal({
     const newMsg = await sendDirectMessage(userId, friendId, content, fileMeta);
     if (newMsg) {
       setMessages((prev) => {
-        if (prev.find(m => m.id === newMsg.id)) return prev;
+        if (prev.find((m) => m.id === newMsg.id)) return prev;
         return [...prev, newMsg];
       });
+      // Move this friend to the top with latest snippet
+      setConvoMeta((prev) => ({
+        ...prev,
+        [friendId]: {
+          lastMessageAt: newMsg.created_at,
+          lastMessageText: newMsg.content || (newMsg.file_name ? `📎 ${newMsg.file_name}` : "Attachment"),
+          unreadCount: 0,
+        },
+      }));
       scrollToBottom();
     }
   };
@@ -296,12 +401,6 @@ export default function ChatModal({
     };
   }, [selectedFilePreviewUrl]);
 
-  const getFriendName = (f: Friendship) => {
-    return f.requester_id === userId
-      ? f.target_actual_identifier || f.target_identifier
-      : f.requester_identifier;
-  };
-
   const activeFriendName = activeFriend ? getFriendName(activeFriend) : "";
 
   return (
@@ -322,39 +421,79 @@ export default function ChatModal({
           <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
             <h4 className="text-[10px] font-bold uppercase tracking-wider opacity-60 px-2 mb-3">Messages</h4>
             
-            {friends.length === 0 ? (
+            {sortedFriends.length === 0 ? (
               <p className="text-xs opacity-60 px-2 text-center mt-6">No friends yet. Add some from the Dashboard!</p>
             ) : (
-              friends.map(f => {
+              sortedFriends.map(f => {
                 const friendId = f.requester_id === userId ? f.target_id : f.requester_id;
                 const friendProfile = friendId ? profiles[friendId] : null;
                 const friendName = getFriendName(f);
                 const isActive = activeFriend?.id === f.id;
+                const meta = friendId ? convoMeta[friendId] : null;
+                const unreadCount = meta?.unreadCount || 0;
               
                 return (
                   <button
                     key={f.id}
-                    onClick={() => setActiveFriend(f)}
-                    className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all ${
-                      isActive ? "shadow-md" : "hover:bg-black/5"
+                    onClick={() => handleSelectFriend(f)}
+                    className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all relative text-left group ${
+                      isActive ? "shadow-md" : "hover:bg-black/5 dark:hover:bg-white/5"
                     }`}
                     style={{
                       backgroundColor: isActive ? "var(--m-surface-alt)" : "transparent",
                     }}
                   >
-                    {friendProfile?.image_url ? (
-                      <img src={friendProfile.image_url} alt={friendName || ""} className="size-10 rounded-full object-cover shadow-inner shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
-                    ) : (
-                      <div className="size-10 rounded-full flex items-center justify-center text-lg font-bold shadow-inner shrink-0" 
-                        style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
-                        {friendName?.charAt(0).toUpperCase()}
+                    <div className="relative shrink-0">
+                      {friendProfile?.image_url ? (
+                        <img src={friendProfile.image_url} alt={friendName || ""} className="size-11 rounded-full object-cover shadow-inner shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
+                      ) : (
+                        <div className="size-11 rounded-full flex items-center justify-center text-lg font-bold shadow-inner shrink-0" 
+                          style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)", border: "1px solid var(--m-border-light)" }}>
+                          {friendName?.charAt(0).toUpperCase()}
+                        </div>
+                      )}
+                      {unreadCount > 0 && !isActive && (
+                        <span 
+                          className="absolute -top-0.5 -right-0.5 size-3 rounded-full border-2" 
+                          style={{ backgroundColor: "var(--m-primary)", borderColor: "var(--m-surface)" }} 
+                        />
+                      )}
+                    </div>
+
+                    <div className="text-left flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className={`text-sm truncate ${unreadCount > 0 ? "font-black" : "font-bold"}`} style={{ color: "var(--m-text)" }}>
+                          {friendName}
+                        </p>
+                        {meta?.lastMessageAt && (
+                          <span 
+                            className={`text-[10px] font-mono shrink-0 transition-colors ${unreadCount > 0 ? "font-bold" : "opacity-50"}`}
+                            style={{ color: unreadCount > 0 ? "var(--m-primary)" : "inherit" }}
+                          >
+                            {formatChatTime(meta.lastMessageAt)}
+                          </span>
+                        )}
                       </div>
-                    )}
-                    <div className="text-left flex-1 overflow-hidden">
-                      <p className="text-sm font-bold truncate">{friendName}</p>
+                      <div className="flex items-center justify-between gap-2 mt-0.5">
+                        <p 
+                          className={`text-xs truncate ${unreadCount > 0 ? "font-semibold opacity-90" : "opacity-60"}`}
+                          style={{ color: "var(--m-text)" }}
+                        >
+                          {meta?.lastMessageText || "No messages yet"}
+                        </p>
+                        {unreadCount > 0 && (
+                          <span
+                            className="min-w-[20px] h-5 px-1.5 rounded-full text-[10.5px] font-black flex items-center justify-center shrink-0 shadow-xs animate-in zoom-in-75 duration-150"
+                            style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                            title={`${unreadCount} unread message${unreadCount > 1 ? "s" : ""}`}
+                          >
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </button>
-                )
+                );
               })
             )}
           </div>

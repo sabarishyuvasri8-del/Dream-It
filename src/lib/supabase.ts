@@ -826,6 +826,61 @@ export async function fetchUnreadMessageCount(userId: string): Promise<number> {
   }
 }
 
+export interface FriendConversationMeta {
+  lastMessageAt: string | null;
+  lastMessageText: string | null;
+  unreadCount: number;
+}
+
+export async function fetchFriendsConversationMeta(
+  userId: string
+): Promise<Record<string, FriendConversationMeta>> {
+  if (!userId) return {};
+  try {
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const { data, error } = await supabase
+      .from('direct_messages')
+      .select('id, sender_id, receiver_id, created_at, is_read, content, file_name, file_url, deleted_by_sender, deleted_by_receiver')
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+      .gte('created_at', twentyFourHoursAgo)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error("Error fetching conversation meta:", error);
+      return {};
+    }
+
+    const metaByFriendId: Record<string, FriendConversationMeta> = {};
+
+    for (const msg of data || []) {
+      // Filter out messages hidden by current user
+      if (msg.sender_id === userId && msg.deleted_by_sender) continue;
+      if (msg.receiver_id === userId && msg.deleted_by_receiver) continue;
+
+      const friendId = msg.sender_id === userId ? msg.receiver_id : msg.sender_id;
+      if (!friendId) continue;
+
+      if (!metaByFriendId[friendId]) {
+        metaByFriendId[friendId] = {
+          lastMessageAt: msg.created_at,
+          lastMessageText: msg.content || (msg.file_name ? `📎 ${msg.file_name}` : msg.file_url ? "📎 File attachment" : ""),
+          unreadCount: 0,
+        };
+      }
+
+      // If friend sent this to current user and it hasn't been read yet, increment unread count
+      if (msg.sender_id === friendId && msg.receiver_id === userId && !msg.is_read) {
+        metaByFriendId[friendId].unreadCount += 1;
+      }
+    }
+
+    return metaByFriendId;
+  } catch (err) {
+    console.error("Exception fetching conversation meta:", err);
+    return {};
+  }
+}
+
 export async function markMessagesAsRead(userId: string, friendId: string): Promise<void> {
   try {
     await supabase
