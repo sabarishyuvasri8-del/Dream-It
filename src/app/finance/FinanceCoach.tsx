@@ -324,6 +324,39 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
     }
   };
 
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    let files: File[] = [];
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      for (let i = 0; i < clipboardData.files.length; i++) {
+        const f = clipboardData.files[i];
+        if (f) files.push(f);
+      }
+    } else if (clipboardData.items && clipboardData.items.length > 0) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.kind === "file") {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      const fileToAttach = files.find((f) => f.type.startsWith("image/")) || files[0];
+      let finalFile = fileToAttach;
+      if (!finalFile.name || finalFile.name === "image.png" || finalFile.name === "blob") {
+        const ext = finalFile.type ? finalFile.type.split("/")[1]?.replace("+xml", "") || "png" : "png";
+        const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        finalFile = new File([fileToAttach], `pasted-${dateStr}.${ext}`, { type: fileToAttach.type || "image/png" });
+      }
+      await processAndAttachFile(finalFile);
+    }
+  };
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -420,6 +453,7 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
 
   return (
     <div
+      onPaste={handlePaste}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -649,12 +683,13 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
         >
           <Paperclip size={16} />
         </button>
-        <form onSubmit={sendMessage} className="flex-1 flex items-center gap-2">
+        <form onSubmit={sendMessage} onPaste={handlePaste} className="flex-1 flex items-center gap-2">
           <input
             type="text"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
-            placeholder="Ask about finances or drop receipt/statement..."
+            onPaste={handlePaste}
+            placeholder="Ask about finances or paste/drop receipt or statement..."
             disabled={isAsking}
             className="flex-1 bg-transparent px-2 py-2 text-sm outline-none"
             style={{ color: "var(--m-text-heading)" }}

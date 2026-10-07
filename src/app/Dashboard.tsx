@@ -2838,6 +2838,41 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     }
   };
 
+  // ─── AI Chat Clipboard Paste (Ctrl+V / Cmd+V for images & files) ───
+  const handleChatPaste = async (e: React.ClipboardEvent) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    let files: File[] = [];
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      for (let i = 0; i < clipboardData.files.length; i++) {
+        const f = clipboardData.files[i];
+        if (f) files.push(f);
+      }
+    } else if (clipboardData.items && clipboardData.items.length > 0) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.kind === "file") {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      // Prioritize image files if available, otherwise take the first file
+      const fileToAttach = files.find((f) => f.type.startsWith("image/")) || files[0];
+      let finalFile = fileToAttach;
+      if (!finalFile.name || finalFile.name === "image.png" || finalFile.name === "blob") {
+        const ext = finalFile.type ? finalFile.type.split("/")[1]?.replace("+xml", "") || "png" : "png";
+        const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        finalFile = new File([fileToAttach], `pasted-${dateStr}.${ext}`, { type: fileToAttach.type || "image/png" });
+      }
+      await processAndAttachChatFile(finalFile);
+    }
+  };
+
   const handleChatDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -4879,6 +4914,7 @@ Mathematics:
                 onDragOver={handleChatDragOver}
                 onDragLeave={handleChatDragLeave}
                 onDrop={handleChatDrop}
+                onPaste={handleChatPaste}
                 className="hidden xl:flex flex-col overflow-hidden rounded-2xl w-full minimal-surface h-[calc(100vh-120px)] min-h-[520px] sticky top-4 shadow-sm feature-zoom relative"
                 style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)" }}
               >
@@ -5330,7 +5366,7 @@ Mathematics:
                 </div>
 
                 {/* Chat Input (Positioned cleanly at bottom) */}
-                <form onSubmit={askCoach} className="shrink-0 p-3" style={{ borderTop: "1px solid var(--m-border-light)" }}>
+                <form onSubmit={askCoach} onPaste={handleChatPaste} className="shrink-0 p-3" style={{ borderTop: "1px solid var(--m-border-light)" }}>
                   <input ref={chatFileInputRef} type="file" onChange={handleChatFileSelect} className="hidden" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.docx,.doc,.txt,.py,.js,.ts,.tsx,.jsx,.json,.csv,.html,.css,.cpp,.c,.java,.sql,.md" />
                   {isExtractingChatFile && (
                     <div className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium mb-2 animate-pulse" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
@@ -5367,7 +5403,7 @@ Mathematics:
                       <Camera size={17} />
                     </button>
 
-                    <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything..." />
+                    <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or paste image/file..." />
                     <VoiceInputButton
                       value={chatDraft}
                       onChange={setChatDraft}
@@ -6765,6 +6801,7 @@ Mathematics:
           onDragOver={handleChatDragOver}
           onDragLeave={handleChatDragLeave}
           onDrop={handleChatDrop}
+          onPaste={handleChatPaste}
           className="fixed inset-0 z-50 flex flex-col w-full h-full p-0 m-0 overflow-hidden minimal-surface animate-in fade-in duration-200"
           style={{ backgroundColor: "var(--m-surface-solid)", color: "var(--m-text)" }}
         >
@@ -7213,7 +7250,7 @@ Mathematics:
               </div>
 
               {/* Fullscreen Input Bar */}
-              <form onSubmit={askCoach} className="w-full max-w-5xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
+              <form onSubmit={askCoach} onPaste={handleChatPaste} className="w-full max-w-5xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
                 {isExtractingChatFile && (
                   <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
                     <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
@@ -7249,7 +7286,7 @@ Mathematics:
                     <Camera size={18} />
                   </button>
 
-                  <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or drag & drop PDFs / images... (Press Enter to send)" />
+                  <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or paste / drag & drop PDFs / images... (Press Enter to send)" />
                   <VoiceInputButton
                     value={chatDraft}
                     onChange={setChatDraft}

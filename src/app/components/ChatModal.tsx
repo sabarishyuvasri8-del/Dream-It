@@ -224,6 +224,59 @@ export default function ChatModal({
     e.target.value = ''; // reset
   };
 
+  // ─── Clipboard Paste Handler (Ctrl+V / Cmd+V for images & files) ───
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const clipboardData = e.clipboardData;
+    if (!clipboardData) return;
+
+    let files: File[] = [];
+    if (clipboardData.files && clipboardData.files.length > 0) {
+      for (let i = 0; i < clipboardData.files.length; i++) {
+        const f = clipboardData.files[i];
+        if (f) files.push(f);
+      }
+    } else if (clipboardData.items && clipboardData.items.length > 0) {
+      for (let i = 0; i < clipboardData.items.length; i++) {
+        const item = clipboardData.items[i];
+        if (item.kind === "file") {
+          const f = item.getAsFile();
+          if (f) files.push(f);
+        }
+      }
+    }
+
+    if (files.length > 0) {
+      e.preventDefault();
+      const fileToAttach = files.find((f) => f.type.startsWith("image/")) || files[0];
+      if (fileToAttach.size > 25 * 1024 * 1024) {
+        alert("File size must be strictly under 25MB.");
+        return;
+      }
+      let finalFile = fileToAttach;
+      if (!finalFile.name || finalFile.name === "image.png" || finalFile.name === "blob") {
+        const ext = finalFile.type ? finalFile.type.split("/")[1]?.replace("+xml", "") || "png" : "png";
+        const dateStr = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        finalFile = new File([fileToAttach], `pasted-${dateStr}.${ext}`, { type: fileToAttach.type || "image/png" });
+      }
+      setSelectedFile(finalFile);
+    }
+  };
+
+  const selectedFilePreviewUrl = React.useMemo(() => {
+    if (selectedFile && selectedFile.type.startsWith("image/")) {
+      return URL.createObjectURL(selectedFile);
+    }
+    return null;
+  }, [selectedFile]);
+
+  React.useEffect(() => {
+    return () => {
+      if (selectedFilePreviewUrl) {
+        URL.revokeObjectURL(selectedFilePreviewUrl);
+      }
+    };
+  }, [selectedFilePreviewUrl]);
+
   const getFriendName = (f: Friendship) => {
     return f.requester_id === userId
       ? f.target_actual_identifier || f.target_identifier
@@ -290,6 +343,7 @@ export default function ChatModal({
 
         {/* Right Area: Chat History */}
         <div
+          onPaste={handlePaste}
           onDragEnter={handleDragEnter}
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
@@ -486,14 +540,29 @@ export default function ChatModal({
           {activeFriend && (
             <div className="p-3 sm:p-4 bg-inherit border-t flex flex-col gap-2 w-full" style={{ borderColor: "var(--m-border)" }}>
               {selectedFile && (
-                <div className="flex items-center justify-between p-2 rounded-xl text-xs font-bold w-full" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text)" }}>
-                  <div className="flex items-center gap-2 overflow-hidden">
-                    <File size={14} />
-                    <span className="truncate">{selectedFile.name}</span>
-                    <span className="opacity-50">({(selectedFile.size / 1024 / 1024).toFixed(1)}MB)</span>
+                <div className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold w-full border animate-in fade-in zoom-in-95 duration-200" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text)", borderColor: "var(--m-border)" }}>
+                  <div className="flex items-center gap-2.5 overflow-hidden">
+                    {selectedFilePreviewUrl ? (
+                      <img 
+                        src={selectedFilePreviewUrl} 
+                        alt="Preview" 
+                        className="size-11 rounded-xl object-cover border shrink-0 shadow-xs" 
+                        style={{ borderColor: "var(--m-border)" }}
+                      />
+                    ) : (
+                      <div className="size-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                        <File size={18} />
+                      </div>
+                    )}
+                    <div className="flex flex-col truncate">
+                      <span className="truncate text-xs font-bold">{selectedFile.name}</span>
+                      <span className="text-[10px] opacity-60">
+                        {(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {selectedFile.type.startsWith("image/") ? "Image ready to send" : "Document ready to send"}
+                      </span>
+                    </div>
                   </div>
-                  <button onClick={() => setSelectedFile(null)} className="p-1 rounded-full hover:bg-black/10 transition">
-                    <X size={14} />
+                  <button type="button" onClick={() => setSelectedFile(null)} className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition shrink-0" title="Remove attachment">
+                    <X size={16} />
                   </button>
                 </div>
               )}
@@ -515,7 +584,7 @@ export default function ChatModal({
                 ) : null;
               })()}
               
-              <form onSubmit={handleSend} className="flex gap-2 w-full min-w-0">
+              <form onSubmit={handleSend} onPaste={handlePaste} className="flex gap-2 w-full min-w-0">
                 <input 
                   type="file" 
                   ref={fileInputRef} 
@@ -535,7 +604,8 @@ export default function ChatModal({
                   type="text"
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  placeholder="Message..."
+                  onPaste={handlePaste}
+                  placeholder={selectedFile ? "Add a message or press Send..." : "Message or paste image/file (Ctrl+V / Cmd+V)..."}
                   className="flex-1 min-w-0 rounded-full px-4 sm:px-5 py-3 text-sm focus:outline-none focus:ring-2 bg-transparent border"
                   style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
                 />
