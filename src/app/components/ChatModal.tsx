@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
 import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud } from "lucide-react";
 import {
   Friendship,
@@ -126,15 +126,54 @@ export default function ChatModal({
   };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isInitialLoadRef = useRef(true);
 
-  // Auto-scroll to bottom when messages change
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  // Instant or smooth scroll to bottom
+  const scrollToBottom = (smooth = false) => {
+    if (messagesContainerRef.current) {
+      if (smooth) {
+        messagesContainerRef.current.scrollTo({
+          top: messagesContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
+      } else {
+        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      }
+    } else if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: smooth ? "smooth" : "auto" });
+    }
   };
-  
+
+  // Reset initial load flag when switching friends to force instant positioning at latest messages
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    isInitialLoadRef.current = true;
+  }, [activeFriend]);
+
+  // Instantly position at recent chats before browser paint (eliminating top-to-bottom scroll animations)
+  useLayoutEffect(() => {
+    if (!messagesContainerRef.current) return;
+
+    if (isInitialLoadRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      const raf = requestAnimationFrame(() => {
+        if (messagesContainerRef.current) {
+          messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+        }
+      });
+      if (!loadingMessages && messages.length > 0) {
+        isInitialLoadRef.current = false;
+      }
+      return () => cancelAnimationFrame(raf);
+    } else {
+      // Keep view pinned to bottom if user is already near bottom
+      const container = messagesContainerRef.current;
+      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
+      if (isNearBottom) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  }, [messages, activeFriend, loadingMessages]);
 
   useEffect(() => {
     if (friends.length > 0) {
@@ -181,8 +220,20 @@ export default function ChatModal({
   }, [friends, convoMeta, userId, getFriendName]);
 
   const handleSelectFriend = async (friend: Friendship) => {
-    setActiveFriend(friend);
     const friendId = friend.requester_id === userId ? friend.target_id : friend.requester_id;
+    const currentFriendId = activeFriend
+      ? activeFriend.requester_id === userId
+        ? activeFriend.target_id
+        : activeFriend.requester_id
+      : null;
+
+    if (friendId !== currentFriendId) {
+      setMessages([]);
+      setLoadingMessages(true);
+      isInitialLoadRef.current = true;
+    }
+
+    setActiveFriend(friend);
     if (friendId) {
       // Clear unread count locally immediately for instant responsiveness
       setConvoMeta((prev) => {
@@ -212,7 +263,7 @@ export default function ChatModal({
       const msgs = await fetchDirectMessages(userId, friendId);
       setMessages(msgs);
       setLoadingMessages(false);
-      scrollToBottom();
+      scrollToBottom(false);
       
       // Mark as read when we open the chat
       await markMessagesAsRead(userId, friendId);
@@ -579,7 +630,10 @@ export default function ChatModal({
           </div>
 
           {/* Chat Messages */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4 min-h-0 relative">
+          <div 
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4 min-h-0 relative"
+          >
             <div className="text-center w-full py-1">
               <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest">
                 Chats are securely auto-deleted every 24 hours.
@@ -656,7 +710,16 @@ export default function ChatModal({
                         {msg.file_url && (
                           msg.file_type?.startsWith('image/') ? (
                             <a href={msg.file_url} target="_blank" rel="noreferrer">
-                              <img src={msg.file_url} alt="Attachment" className="max-w-full rounded-xl object-contain max-h-64 cursor-pointer" />
+                              <img 
+                                src={msg.file_url} 
+                                alt="Attachment" 
+                                className="max-w-full rounded-xl object-contain max-h-64 cursor-pointer"
+                                onLoad={() => {
+                                  if (isInitialLoadRef.current && messagesContainerRef.current) {
+                                    messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+                                  }
+                                }} 
+                              />
                             </a>
                           ) : (
                             <a 
