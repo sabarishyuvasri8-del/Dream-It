@@ -560,6 +560,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [isAddingFriend, setIsAddingFriend] = useState(false);
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   // ─── Grades State ───
   const [gradeForm, setGradeForm] = useState({ subjectId: 0, name: "", score: "", total: "", weight: "" });
@@ -3866,7 +3867,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
             </span>
           </button>
 
-          <button onClick={onSignOut} className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip ${isExpanded ? "w-full px-3 py-2 justify-center" : "w-10 h-10 justify-center"}`} style={{ color: "var(--m-danger)" }} title={!isExpanded ? "Sign Out" : undefined}>
+          <button onClick={() => setShowSignOutConfirm(true)} className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip ${isExpanded ? "w-full px-3 py-2 justify-center" : "w-10 h-10 justify-center"}`} style={{ color: "var(--m-danger)" }} title={!isExpanded ? "Sign Out" : undefined}>
             <LogOut size={14} className="shrink-0" />
             <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[100px] opacity-100 ml-2" : "max-w-0 opacity-0 ml-0"}`}>Sign out</span>
           </button>
@@ -6643,6 +6644,86 @@ Mathematics:
       <Suspense fallback={null}>
         <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       </Suspense>
+
+      {/* ─── Sign Out Confirmation Modal ─── */}
+      {showSignOutConfirm && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setShowSignOutConfirm(false)}
+        >
+          <div 
+            className="relative w-full max-w-sm rounded-3xl p-6 sm:p-7 shadow-2xl border flex flex-col items-center text-center animate-in zoom-in-95 duration-200"
+            style={{ 
+              backgroundColor: "var(--m-surface)", 
+              borderColor: "var(--m-border)",
+              color: "var(--m-text)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setShowSignOutConfirm(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition opacity-50 hover:opacity-100"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+
+            {/* Danger Icon Badge */}
+            <div 
+              className="size-14 rounded-2xl flex items-center justify-center mb-4 shadow-sm"
+              style={{ 
+                backgroundColor: "color-mix(in srgb, var(--m-danger) 12%, transparent)",
+                color: "var(--m-danger)",
+                border: "1px solid color-mix(in srgb, var(--m-danger) 25%, transparent)"
+              }}
+            >
+              <LogOut size={24} className="translate-x-0.5" />
+            </div>
+
+            {/* Heading */}
+            <h3 className="text-lg font-bold font-[Roboto_Slab] mb-1.5" style={{ color: "var(--m-text-heading)" }}>
+              Do you want to sign out?
+            </h3>
+
+            {/* Description */}
+            <p className="text-xs opacity-70 mb-6 leading-relaxed max-w-[270px]">
+              Are you sure you want to end your session? You can sign back in anytime to continue your study sessions.
+            </p>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 w-full">
+              <button
+                type="button"
+                onClick={() => setShowSignOutConfirm(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold border transition hover:opacity-80 active:scale-95"
+                style={{ 
+                  backgroundColor: "var(--m-surface-alt)", 
+                  borderColor: "var(--m-border)", 
+                  color: "var(--m-text)" 
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSignOutConfirm(false);
+                  onSignOut();
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white shadow-md transition hover:opacity-90 active:scale-95 flex items-center justify-center gap-1.5"
+                style={{ 
+                  backgroundColor: "var(--m-danger)",
+                  boxShadow: "0 4px 14px color-mix(in srgb, var(--m-danger) 40%, transparent)"
+                }}
+              >
+                <LogOut size={13} />
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── Floating AI Bot Button for Mobile & Narrow Screens (Bottom Right Corner) ─── */}
       {!isChatMaximized && (

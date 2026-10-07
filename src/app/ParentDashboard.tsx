@@ -88,6 +88,7 @@ export default function ParentDashboard({
   const { signOut } = useClerk();
   const { themeConfig } = useTheme();
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
   const [activeNav, setActiveNav] = useState<ParentNav>("Overview");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -256,7 +257,7 @@ export default function ParentDashboard({
             {themeConfig.name}
           </button>
           <button
-            onClick={handleSignOut}
+            onClick={() => setShowSignOutConfirm(true)}
             className="w-full flex items-center gap-2 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:opacity-80 text-red-500"
           >
             <LogOut size={14} />
@@ -359,6 +360,86 @@ export default function ParentDashboard({
       </div>
 
       <ThemeSelector isOpen={themeSelectorOpen} onClose={() => setThemeSelectorOpen(false)} />
+
+      {/* ─── Sign Out Confirmation Modal ─── */}
+      {showSignOutConfirm && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={() => setShowSignOutConfirm(false)}
+        >
+          <div 
+            className="relative w-full max-w-sm rounded-3xl p-6 sm:p-7 shadow-2xl border flex flex-col items-center text-center animate-in zoom-in-95 duration-200"
+            style={{ 
+              backgroundColor: "var(--m-surface)", 
+              borderColor: "var(--m-border)",
+              color: "var(--m-text)"
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setShowSignOutConfirm(false)}
+              className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition opacity-50 hover:opacity-100"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
+
+            {/* Danger Icon Badge */}
+            <div 
+              className="size-14 rounded-2xl flex items-center justify-center mb-4 shadow-sm"
+              style={{ 
+                backgroundColor: "color-mix(in srgb, var(--m-danger) 12%, transparent)",
+                color: "var(--m-danger)",
+                border: "1px solid color-mix(in srgb, var(--m-danger) 25%, transparent)"
+              }}
+            >
+              <LogOut size={24} className="translate-x-0.5" />
+            </div>
+
+            {/* Heading */}
+            <h3 className="text-lg font-bold font-[Roboto_Slab] mb-1.5" style={{ color: "var(--m-text-heading)" }}>
+              Do you want to sign out?
+            </h3>
+
+            {/* Description */}
+            <p className="text-xs opacity-70 mb-6 leading-relaxed max-w-[270px]">
+              Are you sure you want to end your parent session? You will need to sign back in to view child reports.
+            </p>
+
+            {/* Actions */}
+            <div className="flex items-center gap-3 w-full">
+              <button
+                type="button"
+                onClick={() => setShowSignOutConfirm(false)}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold border transition hover:opacity-80 active:scale-95"
+                style={{ 
+                  backgroundColor: "var(--m-surface-alt)", 
+                  borderColor: "var(--m-border)", 
+                  color: "var(--m-text)" 
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowSignOutConfirm(false);
+                  handleSignOut();
+                }}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white shadow-md transition hover:opacity-90 active:scale-95 flex items-center justify-center gap-1.5"
+                style={{ 
+                  backgroundColor: "var(--m-danger)",
+                  boxShadow: "0 4px 14px color-mix(in srgb, var(--m-danger) 40%, transparent)"
+                }}
+              >
+                <LogOut size={13} />
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
