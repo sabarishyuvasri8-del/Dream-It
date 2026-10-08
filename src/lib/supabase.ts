@@ -832,6 +832,27 @@ export interface FriendConversationMeta {
   unreadCount: number;
 }
 
+export function formatMessageSnippet(msg: {
+  content?: string | null;
+  file_name?: string | null;
+  file_type?: string | null;
+  file_url?: string | null;
+}): string {
+  if (msg.content && msg.content.trim()) return msg.content;
+  const isAudio =
+    msg.file_type?.startsWith('audio/') ||
+    msg.file_name?.startsWith('voice_note_') ||
+    msg.file_name?.endsWith('.webm') ||
+    msg.file_name?.endsWith('.m4a') ||
+    msg.file_name?.endsWith('.mp3') ||
+    msg.file_name?.endsWith('.wav') ||
+    msg.file_name?.endsWith('.ogg');
+  if (isAudio) return "🎙️ Voice message";
+  if (msg.file_name) return `📎 ${msg.file_name}`;
+  if (msg.file_url) return "📎 File attachment";
+  return "";
+}
+
 export async function fetchFriendsConversationMeta(
   userId: string
 ): Promise<Record<string, FriendConversationMeta>> {
@@ -856,7 +877,7 @@ export async function fetchFriendsConversationMeta(
         if (!metaByFriendId[friendId]) {
           metaByFriendId[friendId] = {
             lastMessageAt: msg.created_at,
-            lastMessageText: msg.content || (msg.file_name ? `📎 ${msg.file_name}` : msg.file_url ? "📎 File attachment" : ""),
+            lastMessageText: formatMessageSnippet(msg),
             unreadCount: 0,
           };
         }
@@ -882,7 +903,7 @@ export async function fetchFriendsConversationMeta(
         if (!metaByFriendId[friendId]) {
           metaByFriendId[friendId] = {
             lastMessageAt: msg.created_at,
-            lastMessageText: msg.content || (msg.file_name ? `📎 ${msg.file_name}` : msg.file_url ? "📎 File attachment" : ""),
+            lastMessageText: formatMessageSnippet(msg),
             unreadCount: 0,
           };
         } else {
@@ -891,7 +912,7 @@ export async function fetchFriendsConversationMeta(
           const msgTime = new Date(msg.created_at).getTime();
           if (msgTime > curTime) {
             metaByFriendId[friendId].lastMessageAt = msg.created_at;
-            metaByFriendId[friendId].lastMessageText = msg.content || (msg.file_name ? `📎 ${msg.file_name}` : msg.file_url ? "📎 File attachment" : "");
+            metaByFriendId[friendId].lastMessageText = formatMessageSnippet(msg);
           }
         }
       }

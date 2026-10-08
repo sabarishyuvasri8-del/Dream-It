@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud } from "lucide-react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -13,10 +13,12 @@ import {
   fetchUserProfiles,
   UserProfileData,
   fetchFriendsConversationMeta,
-  FriendConversationMeta
+  FriendConversationMeta,
+  formatMessageSnippet
 } from "../../lib/supabase";
 import ChatMessageContent from "./ChatMessageContent";
 import LinkPreviewCard from "./LinkPreviewCard";
+import VoiceMessagePlayer from "./VoiceMessagePlayer";
 import { extractUrls } from "../utils/linkPreview";
 import { extractFilesFromClipboard } from "../utils/clipboardHelper";
 
@@ -299,7 +301,7 @@ export default function ChatModal({
             ...prev,
             [otherUserId]: {
               lastMessageAt: newMsg.created_at,
-              lastMessageText: newMsg.content || (newMsg.file_name ? `📎 ${newMsg.file_name}` : "Attachment"),
+              lastMessageText: formatMessageSnippet(newMsg),
               unreadCount: shouldCountUnread ? (prevMeta.unreadCount || 0) + 1 : (isCurrentChatActive ? 0 : prevMeta.unreadCount || 0),
             },
           };
@@ -337,6 +339,169 @@ export default function ChatModal({
       unsubscribe();
     };
   }, [userId, activeFriend, onRefreshUnreadCount]);
+
+  // ─── Voice Message Recording System ───
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState(0);
+  const [isSendingVoice, setIsSendingVoice] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<any>(null);
+  const audioStreamRef = useRef<MediaStream | null>(null);
+
+  const cleanupRecording = () => {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((track) => track.stop());
+      audioStreamRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    audioChunksRef.current = [];
+    setIsRecordingVoice(false);
+    setRecordingDuration(0);
+  };
+
+  const cancelVoiceRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      try {
+        mediaRecorderRef.current.stop();
+      } catch (e) {
+        // ignore
+      }
+    }
+    cleanupRecording();
+  };
+
+  const startVoiceRecording = async () => {
+    if (isRecordingVoice || isUploading || isSendingVoice) return;
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        alert("Your browser does not support audio recording.");
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+
+      let mimeType = "audio/webm;codecs=opus";
+      if (typeof MediaRecorder !== "undefined") {
+        if (!MediaRecorder.isTypeSupported(mimeType)) {
+          mimeType = "audio/webm";
+          if (!MediaRecorder.isTypeSupported(mimeType)) {
+            mimeType = "audio/mp4";
+            if (!MediaRecorder.isTypeSupported(mimeType)) {
+              mimeType = "";
+            }
+          }
+        }
+      }
+
+      const options = mimeType ? { mimeType } : undefined;
+      const mediaRecorder = new MediaRecorder(stream, options);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.start(100);
+      setIsRecordingVoice(true);
+      setRecordingDuration(0);
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration((prev) => prev + 1);
+      }, 1000);
+    } catch (err: any) {
+      console.error("Failed to access microphone:", err);
+      alert(
+        err.name === "NotAllowedError" || err.name === "PermissionDeniedError"
+          ? "Microphone access was denied. Please allow microphone permissions in your browser to record voice messages."
+          : "Could not access microphone."
+      );
+    }
+  };
+
+  const stopAndSendVoice = async () => {
+    if (!mediaRecorderRef.current || !activeFriend) return;
+    const recorder = mediaRecorderRef.current;
+    const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+    if (!friendId) return;
+
+    setIsSendingVoice(true);
+
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+
+    recorder.onstop = async () => {
+      try {
+        const recordedMime = recorder.mimeType || "audio/webm";
+        const audioBlob = new Blob(audioChunksRef.current, { type: recordedMime });
+
+        if (audioStreamRef.current) {
+          audioStreamRef.current.getTracks().forEach((t) => t.stop());
+          audioStreamRef.current = null;
+        }
+
+        if (audioBlob.size < 500) {
+          cleanupRecording();
+          setIsSendingVoice(false);
+          return;
+        }
+
+        const ext = recordedMime.includes("mp4") ? "m4a" : recordedMime.includes("ogg") ? "ogg" : "webm";
+        const voiceFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, {
+          type: recordedMime,
+        });
+
+        const fileMeta = await uploadChatFile(userId, voiceFile);
+        const newMsg = await sendDirectMessage(userId, friendId, "", fileMeta);
+        if (newMsg) {
+          setMessages((prev) => {
+            if (prev.find((m) => m.id === newMsg.id)) return prev;
+            return [...prev, newMsg];
+          });
+          setConvoMeta((prev) => ({
+            ...prev,
+            [friendId]: {
+              lastMessageAt: newMsg.created_at,
+              lastMessageText: "🎙️ Voice message",
+              unreadCount: 0,
+            },
+          }));
+          scrollToBottom();
+        }
+      } catch (err: any) {
+        console.error("Error sending voice message:", err);
+        alert(err.message || "Failed to send voice message");
+      } finally {
+        cleanupRecording();
+        setIsSendingVoice(false);
+      }
+    };
+
+    try {
+      recorder.stop();
+    } catch (err) {
+      console.warn("Error stopping recorder:", err);
+      cleanupRecording();
+      setIsSendingVoice(false);
+    }
+  };
+
+  // Cancel recording if friend changes
+  useEffect(() => {
+    return () => {
+      cancelVoiceRecording();
+    };
+  }, [activeFriend]);
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -376,7 +541,7 @@ export default function ChatModal({
         ...prev,
         [friendId]: {
           lastMessageAt: newMsg.created_at,
-          lastMessageText: newMsg.content || (newMsg.file_name ? `📎 ${newMsg.file_name}` : "Attachment"),
+          lastMessageText: formatMessageSnippet(newMsg),
           unreadCount: 0,
         },
       }));
@@ -708,32 +873,58 @@ export default function ChatModal({
                         }}
                       >
                         {msg.file_url && (
-                          msg.file_type?.startsWith('image/') ? (
-                            <a href={msg.file_url} target="_blank" rel="noreferrer">
-                              <img 
-                                src={msg.file_url} 
-                                alt="Attachment" 
-                                className="max-w-full rounded-xl object-contain max-h-64 cursor-pointer"
-                                onLoad={() => {
-                                  if (isInitialLoadRef.current && messagesContainerRef.current) {
-                                    messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
-                                  }
-                                }} 
-                              />
-                            </a>
-                          ) : (
-                            <a 
-                              href={msg.file_url} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="flex items-center gap-2 p-2 rounded-lg transition hover:opacity-80"
-                              style={{ backgroundColor: "black", color: "white" }}
-                            >
-                              <File size={16} />
-                              <span className="text-xs font-bold truncate flex-1">{msg.file_name}</span>
-                              <Download size={14} />
-                            </a>
-                          )
+                          (() => {
+                            const isAudio = Boolean(
+                              msg.file_type?.startsWith('audio/') ||
+                              msg.file_name?.startsWith('voice_note_') ||
+                              msg.file_name?.endsWith('.webm') ||
+                              msg.file_name?.endsWith('.ogg') ||
+                              msg.file_name?.endsWith('.mp3') ||
+                              msg.file_name?.endsWith('.wav') ||
+                              msg.file_name?.endsWith('.m4a')
+                            );
+
+                            if (isAudio) {
+                              return (
+                                <VoiceMessagePlayer
+                                  audioUrl={msg.file_url}
+                                  isMe={isMe}
+                                  createdAt={msg.created_at}
+                                />
+                              );
+                            }
+
+                            if (msg.file_type?.startsWith('image/')) {
+                              return (
+                                <a href={msg.file_url} target="_blank" rel="noreferrer">
+                                  <img 
+                                    src={msg.file_url} 
+                                    alt="Attachment" 
+                                    className="max-w-full rounded-xl object-contain max-h-64 cursor-pointer"
+                                    onLoad={() => {
+                                      if (isInitialLoadRef.current && messagesContainerRef.current) {
+                                        messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+                                      }
+                                    }} 
+                                  />
+                                </a>
+                              );
+                            }
+
+                            return (
+                              <a 
+                                href={msg.file_url} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="flex items-center gap-2 p-2 rounded-lg transition hover:opacity-80"
+                                style={{ backgroundColor: "black", color: "white" }}
+                              >
+                                <File size={16} />
+                                <span className="text-xs font-bold truncate flex-1">{msg.file_name}</span>
+                                <Download size={14} />
+                              </a>
+                            );
+                          })()
                         )}
                         {msg.content && (
                           <ChatMessageContent
@@ -858,41 +1049,112 @@ export default function ChatModal({
                 </div>
               )}
 
-              <form onSubmit={handleSend} onPaste={handlePaste} className="flex gap-2 w-full min-w-0">
-                <input 
-                  type="file" 
-                  ref={fileInputRef} 
-                  className="hidden" 
-                  onChange={handleFileSelect} 
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-3 rounded-full transition hover:opacity-80 shadow-sm shrink-0 flex items-center justify-center"
-                  style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text)" }}
-                  title="Attach File (Max 25MB)"
+              {isRecordingVoice ? (
+                <div 
+                  className="flex items-center gap-3 w-full rounded-full px-4 py-2.5 animate-in fade-in duration-200 border"
+                  style={{ 
+                    backgroundColor: "rgba(239, 68, 68, 0.08)", 
+                    borderColor: "rgba(239, 68, 68, 0.3)" 
+                  }}
                 >
-                  <Paperclip size={18} />
-                </button>
-                <input
-                  ref={chatInputRef}
-                  type="text"
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onPaste={handlePaste}
-                  placeholder={selectedFile ? "Add a message..." : "Message..."}
-                  className="flex-1 min-w-0 rounded-full px-4 sm:px-5 py-3 text-sm focus:outline-none focus:ring-2 bg-transparent border"
-                  style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
-                />
-                <button
-                  type="submit"
-                  disabled={(!draft.trim() && !selectedFile) || isUploading}
-                  className="rounded-full px-4 sm:px-5 py-3 text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 shrink-0 min-w-[70px] sm:min-w-[80px]"
-                  style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
-                >
-                  {isUploading ? <Loader2 size={16} className="animate-spin" /> : "Send"}
-                </button>
-              </form>
+                  {/* Red recording pulse indicator & elapsed time */}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="relative flex size-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full size-3 bg-red-500"></span>
+                    </span>
+                    <span className="text-xs font-mono font-bold text-red-500 select-none">
+                      {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, "0")}
+                    </span>
+                  </div>
+
+                  {/* Animated sound waves */}
+                  <div className="flex-1 flex items-center justify-center gap-1 h-5 overflow-hidden px-2 select-none">
+                    {[35, 75, 45, 90, 60, 100, 70, 40, 85, 60, 95, 50, 70, 40, 80].map((h, i) => (
+                      <div
+                        key={i}
+                        className="w-1 bg-red-500 rounded-full transition-all duration-150 animate-pulse"
+                        style={{
+                          height: `${Math.max(25, (h * ((recordingDuration % 3) + 1)) / 3)}%`,
+                          animationDelay: `${(i % 5) * 120}ms`,
+                        }}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Cancel / Trash */}
+                  <button
+                    type="button"
+                    onClick={cancelVoiceRecording}
+                    className="p-2 rounded-full hover:bg-red-500/20 text-red-500 transition shrink-0"
+                    title="Cancel recording"
+                    aria-label="Cancel recording"
+                  >
+                    <Trash2 size={18} />
+                  </button>
+
+                  {/* Send Voice */}
+                  <button
+                    type="button"
+                    onClick={stopAndSendVoice}
+                    disabled={isSendingVoice}
+                    className="size-9 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition shrink-0 shadow-md disabled:opacity-50"
+                    title="Send voice message"
+                    aria-label="Send voice message"
+                  >
+                    {isSendingVoice ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} className="translate-x-0.5" />}
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSend} onPaste={handlePaste} className="flex items-center gap-2 w-full min-w-0">
+                  <input 
+                    type="file" 
+                    ref={fileInputRef} 
+                    className="hidden" 
+                    onChange={handleFileSelect} 
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="p-3 rounded-full transition hover:opacity-80 shadow-sm shrink-0 flex items-center justify-center"
+                    style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text)" }}
+                    title="Attach File (Max 25MB)"
+                  >
+                    <Paperclip size={18} />
+                  </button>
+                  <input
+                    ref={chatInputRef}
+                    type="text"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onPaste={handlePaste}
+                    placeholder={selectedFile ? "Add a message..." : "Message..."}
+                    className="flex-1 min-w-0 rounded-full px-4 sm:px-5 py-3 text-sm focus:outline-none focus:ring-2 bg-transparent border"
+                    style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
+                  />
+
+                  {/* Voice recording button */}
+                  <button
+                    type="button"
+                    onClick={startVoiceRecording}
+                    className="p-3 rounded-full transition hover:opacity-80 shadow-sm shrink-0 flex items-center justify-center"
+                    style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text)" }}
+                    title="Record voice message"
+                    aria-label="Record voice message"
+                  >
+                    <Mic size={18} />
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={(!draft.trim() && !selectedFile) || isUploading}
+                    className="rounded-full px-4 sm:px-5 py-3 text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 shrink-0 min-w-[70px] sm:min-w-[80px]"
+                    style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                  >
+                    {isUploading ? <Loader2 size={16} className="animate-spin" /> : "Send"}
+                  </button>
+                </form>
+              )}
             </div>
           )}
         </div>
