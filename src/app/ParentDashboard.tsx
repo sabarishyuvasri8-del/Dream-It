@@ -189,9 +189,8 @@ export default function ParentDashboard({
     >
       {/* ── Sidebar ── */}
       <aside
-        className={`fixed lg:sticky top-0 left-0 z-30 h-screen w-64 flex flex-col transition-transform duration-300 lg:translate-x-0 ${
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
-        }`}
+        className={`fixed lg:sticky top-0 left-0 z-30 h-screen w-64 flex flex-col transition-transform duration-300 lg:translate-x-0 ${sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          }`}
         style={{
           backgroundColor: "var(--m-surface-solid)",
           borderRight: "1px solid var(--m-border)",
@@ -363,14 +362,14 @@ export default function ParentDashboard({
 
       {/* ─── Sign Out Confirmation Modal ─── */}
       {showSignOutConfirm && (
-        <div 
+        <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md animate-in fade-in duration-200"
           onClick={() => setShowSignOutConfirm(false)}
         >
-          <div 
+          <div
             className="relative w-full max-w-sm rounded-3xl p-6 sm:p-7 shadow-2xl border flex flex-col items-center text-center animate-in zoom-in-95 duration-200"
-            style={{ 
-              backgroundColor: "var(--m-surface)", 
+            style={{
+              backgroundColor: "var(--m-surface)",
               borderColor: "var(--m-border)",
               color: "var(--m-text)"
             }}
@@ -386,9 +385,9 @@ export default function ParentDashboard({
             </button>
 
             {/* Danger Icon Badge */}
-            <div 
+            <div
               className="size-14 rounded-2xl flex items-center justify-center mb-4"
-              style={{ 
+              style={{
                 backgroundColor: "color-mix(in srgb, var(--m-danger) 12%, transparent)",
                 color: "var(--m-danger)",
                 border: "1px solid color-mix(in srgb, var(--m-danger) 25%, transparent)"
@@ -413,10 +412,10 @@ export default function ParentDashboard({
                 type="button"
                 onClick={() => setShowSignOutConfirm(false)}
                 className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold border transition hover:opacity-80 active:scale-95"
-                style={{ 
-                  backgroundColor: "var(--m-surface-alt)", 
-                  borderColor: "var(--m-border)", 
-                  color: "var(--m-text)" 
+                style={{
+                  backgroundColor: "var(--m-surface-alt)",
+                  borderColor: "var(--m-border)",
+                  color: "var(--m-text)"
                 }}
               >
                 Cancel
@@ -428,7 +427,7 @@ export default function ParentDashboard({
                   handleSignOut();
                 }}
                 className="flex-1 py-2.5 px-4 rounded-xl text-xs font-semibold text-white transition hover:opacity-90 active:scale-95 flex items-center justify-center gap-1.5"
-                style={{ 
+                style={{
                   backgroundColor: "var(--m-danger)"
                 }}
               >

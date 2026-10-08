@@ -880,7 +880,7 @@ export default function ChatModal({
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onPaste={handlePaste}
-                  placeholder={selectedFile ? "Add a message or press Send..." : "Message or paste image/file (Ctrl+V / Cmd+V)..."}
+                  placeholder={selectedFile ? "Add a message..." : "Message..."}
                   className="flex-1 min-w-0 rounded-full px-4 sm:px-5 py-3 text-sm focus:outline-none focus:ring-2 bg-transparent border"
                   style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
                 />
