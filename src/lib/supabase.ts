@@ -1078,14 +1078,16 @@ export function subscribeToDirectMessages(
 
 export async function uploadChatFile(
   userId: string,
-  file: File
+  file: File | (Blob & { name?: string })
 ): Promise<{ url: string; name: string; type: string; size: number }> {
   // Enforce Max 25MB
   if (file.size > 25 * 1024 * 1024) {
     throw new Error("File size exceeds the 25MB limit.");
   }
 
-  const fileExt = file.name.split('.').pop();
+  const defaultExt = file.type?.includes('mp4') ? 'm4a' : file.type?.includes('ogg') ? 'ogg' : file.type?.includes('webm') ? 'webm' : 'bin';
+  const rawName = (file as any).name || `file_${Date.now()}.${defaultExt}`;
+  const fileExt = rawName.split('.').pop() || defaultExt;
   const fileName = `${userId}_${Date.now()}.${fileExt}`;
   const filePath = `${userId}/${fileName}`;
 
@@ -1103,8 +1105,8 @@ export async function uploadChatFile(
 
   return {
     url: data.publicUrl,
-    name: file.name,
-    type: file.type,
+    name: rawName,
+    type: file.type || 'application/octet-stream',
     size: file.size,
   };
 }

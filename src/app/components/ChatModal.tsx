@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic } from "lucide-react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File as FileIcon, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -457,9 +457,19 @@ export default function ChatModal({
         }
 
         const ext = recordedMime.includes("mp4") ? "m4a" : recordedMime.includes("ogg") ? "ogg" : "webm";
-        const voiceFile = new File([audioBlob], `voice_note_${Date.now()}.${ext}`, {
-          type: recordedMime,
-        });
+        let voiceFile: any = audioBlob;
+        try {
+          if (typeof window !== "undefined" && typeof window.File === "function") {
+            voiceFile = new window.File([audioBlob], `voice_note_${Date.now()}.${ext}`, {
+              type: recordedMime,
+            });
+          } else {
+            (voiceFile as any).name = `voice_note_${Date.now()}.${ext}`;
+          }
+        } catch {
+          voiceFile = audioBlob;
+          (voiceFile as any).name = `voice_note_${Date.now()}.${ext}`;
+        }
 
         const fileMeta = await uploadChatFile(userId, voiceFile);
         const newMsg = await sendDirectMessage(userId, friendId, "", fileMeta);
@@ -919,7 +929,7 @@ export default function ChatModal({
                                 className="flex items-center gap-2 p-2 rounded-lg transition hover:opacity-80"
                                 style={{ backgroundColor: "black", color: "white" }}
                               >
-                                <File size={16} />
+                                <FileIcon size={16} />
                                 <span className="text-xs font-bold truncate flex-1">{msg.file_name}</span>
                                 <Download size={14} />
                               </a>
@@ -985,7 +995,7 @@ export default function ChatModal({
                       />
                     ) : (
                       <div className="size-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                        <File size={18} />
+                        <FileIcon size={18} />
                       </div>
                     )}
                     <div className="flex flex-col truncate">
