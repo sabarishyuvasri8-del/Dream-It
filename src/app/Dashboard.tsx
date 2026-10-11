@@ -5382,7 +5382,21 @@ Mathematics:
 
 
                 {/* Chat Input (Positioned cleanly at bottom) */}
-                <form onSubmit={askCoach} onPaste={handleChatPaste} className="shrink-0 p-3" style={{ borderTop: "1px solid var(--m-border-light)" }}>
+                <form
+                  onSubmit={askCoach}
+                  onPaste={handleChatPaste}
+                  onWheel={(e) => {
+                    if (chatContainerRef.current) {
+                      const target = e.target as HTMLElement | null;
+                      const isInput = target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT");
+                      if (!isInput) {
+                        chatContainerRef.current.scrollTop += e.deltaY;
+                      }
+                    }
+                  }}
+                  className="shrink-0 p-3"
+                  style={{ borderTop: "1px solid var(--m-border-light)" }}
+                >
                   <input ref={chatFileInputRef} type="file" onChange={handleChatFileSelect} className="hidden" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.docx,.doc,.txt,.py,.js,.ts,.tsx,.jsx,.json,.csv,.html,.css,.cpp,.c,.java,.sql,.md" />
                   {isExtractingChatFile && (
                     <div className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium mb-2 animate-pulse" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
@@ -7219,9 +7233,27 @@ Mathematics:
             )}
 
             {/* Right Side: Conversation Area & Input */}
-            <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
-              {/* Fullscreen Messages Area */}
-              <div ref={chatMaxContainerRef} className="flex-1 space-y-6 overflow-y-auto custom-scrollbar w-full px-4 sm:px-6 md:px-8 py-6 max-w-4xl mx-auto">
+            <div
+              className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative"
+              onWheel={(e) => {
+                // If scrolling occurred on blank space outside the message scroll container (e.g., around bottom form),
+                // forward the wheel delta to the messages container
+                if (chatMaxContainerRef.current) {
+                  const target = e.target as HTMLElement | null;
+                  const isInput = target && (target.tagName === "TEXTAREA" || target.tagName === "INPUT");
+                  if (!isInput && !chatMaxContainerRef.current.contains(target)) {
+                    chatMaxContainerRef.current.scrollTop += e.deltaY;
+                  }
+                }
+              }}
+            >
+              {/* Fullscreen Messages Area - Full width scroll container so scrolling anywhere on the blank space scrolls the chat */}
+              <div
+                ref={chatMaxContainerRef}
+                className="flex-1 overflow-y-auto custom-scrollbar w-full overscroll-contain"
+                style={{ scrollBehavior: "smooth" }}
+              >
+                <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-6 space-y-6">
                 {messages.map((m, idx) => (
                   <div
                     key={idx}
@@ -7360,6 +7392,7 @@ Mathematics:
                   </div>
                 )}
               </div>
+            </div>
 
               {/* Fullscreen Input Bar */}
               <form onSubmit={askCoach} onPaste={handleChatPaste} className="w-full max-w-5xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
