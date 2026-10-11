@@ -991,3 +991,16 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─── AI Chat & Study KaTeX Math Typography ─── */
+.katex-display {
+  margin: 1.25rem 0 !important;
+  padding: 0.35rem 0 !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.katex {
+  font-size: 1.05em;
+  line-height: normal;
+}

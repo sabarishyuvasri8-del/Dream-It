@@ -76,14 +76,14 @@ function MarkdownRendererBase({
 
   return (
     <MarkdownErrorBoundary fallbackText={content}>
-      <div className={`space-y-2 text-xs leading-relaxed font-[DM_Sans] ${className}`}>
+      <div className={`space-y-4 text-sm sm:text-[15px] leading-[1.75] font-[DM_Sans] ${className}`}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins as any}
           rehypePlugins={rehypePlugins as any}
           components={{
             h1: ({ node, ...props }) => (
               <h1
-                className="font-[Roboto_Slab] text-xl font-bold mt-4 mb-2 pb-1 border-b"
+                className="font-[Roboto_Slab] text-xl sm:text-2xl font-bold mt-7 mb-3.5 pb-2 border-b leading-snug"
                 style={{
                   borderColor: "var(--m-border-light)",
                   color: "var(--m-text-heading)",
@@ -93,28 +93,35 @@ function MarkdownRendererBase({
             ),
             h2: ({ node, ...props }) => (
               <h2
-                className="font-[Roboto_Slab] text-lg font-semibold mt-3 mb-1"
+                className="font-[Roboto_Slab] text-lg sm:text-xl font-bold mt-6 mb-3 leading-snug"
                 style={{ color: "var(--m-text-heading)" }}
                 {...props}
               />
             ),
             h3: ({ node, ...props }) => (
               <h3
-                className="font-[Roboto_Slab] text-sm font-bold mt-2"
+                className="font-[Roboto_Slab] text-[15px] sm:text-base font-bold mt-5 mb-2.5 leading-snug"
+                style={{ color: "var(--m-text-heading)" }}
+                {...props}
+              />
+            ),
+            h4: ({ node, ...props }) => (
+              <h4
+                className="font-[Roboto_Slab] text-sm sm:text-[15px] font-bold mt-4 mb-2 leading-snug"
                 style={{ color: "var(--m-text-heading)" }}
                 {...props}
               />
             ),
             ul: ({ node, ...props }) => (
-              <ul className="ml-4 list-disc space-y-1" style={{ color: "var(--m-text)" }} {...props} />
+              <ul className="ml-5 list-disc my-3 space-y-2.5 sm:space-y-3" style={{ color: "var(--m-text)" }} {...props} />
             ),
             ol: ({ node, ...props }) => (
-              <ol className="ml-4 list-decimal space-y-1" style={{ color: "var(--m-text)" }} {...props} />
+              <ol className="ml-5 list-decimal my-3 space-y-2.5 sm:space-y-3" style={{ color: "var(--m-text)" }} {...props} />
             ),
-            li: ({ node, ...props }) => <li className="my-0.5" {...props} />,
+            li: ({ node, ...props }) => <li className="my-1.5 sm:my-2 pl-0.5 leading-[1.7]" {...props} />,
             blockquote: ({ node, ...props }) => (
               <blockquote
-                className="border-l-3 pl-3 italic my-2 py-1.5 rounded-r-lg"
+                className="border-l-4 pl-4 pr-3 py-3 my-4 sm:my-5 rounded-r-xl shadow-xs leading-relaxed"
                 style={{
                   borderColor: "var(--m-primary)",
                   backgroundColor: "var(--m-surface-alt)",
@@ -124,9 +131,9 @@ function MarkdownRendererBase({
               />
             ),
             hr: ({ node, ...props }) => (
-              <hr className="my-4" style={{ borderColor: "var(--m-border-light)" }} {...props} />
+              <hr className="my-6 sm:my-8 border-t" style={{ borderColor: "var(--m-border-light)" }} {...props} />
             ),
-            p: ({ node, ...props }) => <p style={{ color: "var(--m-text)" }} {...props} />,
+            p: ({ node, ...props }) => <p className="my-2.5 sm:my-3 leading-[1.75]" style={{ color: "var(--m-text)" }} {...props} />,
             a: ({ node, ...props }) => (
               <a
                 className="text-blue-500 hover:underline cursor-pointer"

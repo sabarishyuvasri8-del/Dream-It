@@ -7253,7 +7253,7 @@ Mathematics:
                 className="flex-1 overflow-y-auto custom-scrollbar w-full overscroll-contain"
                 style={{ scrollBehavior: "smooth" }}
               >
-                <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-6 space-y-6">
+                <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8 space-y-7 sm:space-y-8">
                 {messages.map((m, idx) => (
                   <div
                     key={idx}
