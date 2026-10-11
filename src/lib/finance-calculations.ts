@@ -17,39 +17,81 @@ export function formatCurrency(paisa: number, currency: string = "INR"): string 
   }).format(rupees);
 }
 
-export function calculateNetWorth(accounts: FinanceAccount[]): number {
-  return accounts.reduce((acc, account) => {
-    // For credit cards, balance is usually what you owe (so we subtract it).
-    // For this simple version, let's assume credit card balances are entered as negative or handled by the user.
-    // If we strictly define credit card balance as positive = owe, we'd subtract. Let's assume balance is raw value.
-    if (account.type === "credit-card") {
-        return acc - Math.abs(account.balance);
-    }
-    return acc + account.balance;
-  }, 0);
+export function calculateAllTimeIncome(transactions: FinanceTransaction[]): number {
+  return (transactions || [])
+    .filter((t) => t.type === "income")
+    .reduce((acc, t) => acc + (t.amount || 0), 0);
 }
 
-export function calculateTotalBalance(accounts: FinanceAccount[]): number {
-    return accounts.reduce((acc, account) => {
-        if (account.type !== "credit-card" && account.type !== "other") {
-            return acc + account.balance;
-        }
-        return acc;
-    }, 0);
+export function calculateAllTimeExpenses(transactions: FinanceTransaction[]): number {
+  return (transactions || [])
+    .filter((t) => t.type === "expense")
+    .reduce((acc, t) => acc + (t.amount || 0), 0);
+}
+
+export function calculateNetWorth(accounts: FinanceAccount[], transactions: FinanceTransaction[] = []): number {
+  const accountSum = (accounts || []).reduce((acc, account) => {
+    if (account.type === "credit-card") {
+      return acc - Math.abs(account.balance || 0);
+    }
+    return acc + (account.balance || 0);
+  }, 0);
+
+  // If user hasn't explicitly entered account balances, use net transaction cashflow
+  if (accountSum === 0 && transactions && transactions.length > 0) {
+    const netTx = calculateAllTimeIncome(transactions) - calculateAllTimeExpenses(transactions);
+    return Math.max(0, netTx);
+  }
+  return accountSum;
+}
+
+export function calculateTotalBalance(accounts: FinanceAccount[], transactions: FinanceTransaction[] = []): number {
+  const accountBalance = (accounts || []).reduce((acc, account) => {
+    if (account.type !== "credit-card" && account.type !== "other") {
+      return acc + (account.balance || 0);
+    }
+    return acc;
+  }, 0);
+
+  if (accountBalance === 0 && transactions && transactions.length > 0) {
+    const netTx = calculateAllTimeIncome(transactions) - calculateAllTimeExpenses(transactions);
+    return Math.max(0, netTx);
+  }
+  return accountBalance;
 }
 
 export function calculateMonthlyIncome(transactions: FinanceTransaction[], month: Date): number {
-  const monthStr = month.toISOString().slice(0, 7); // YYYY-MM
-  return transactions
-    .filter((t) => t.type === "income" && t.date.startsWith(monthStr))
-    .reduce((acc, t) => acc + t.amount, 0);
+  const d = new Date(month.getTime());
+  const year = d.getFullYear();
+  const monthNum = String(d.getMonth() + 1).padStart(2, "0");
+  const monthStr = `${year}-${monthNum}`; // Reliable YYYY-MM
+  return (transactions || [])
+    .filter((t) => t.type === "income" && t.date && t.date.startsWith(monthStr))
+    .reduce((acc, t) => acc + (t.amount || 0), 0);
 }
 
 export function calculateMonthlyExpenses(transactions: FinanceTransaction[], month: Date): number {
-  const monthStr = month.toISOString().slice(0, 7); // YYYY-MM
-  return transactions
-    .filter((t) => t.type === "expense" && t.date.startsWith(monthStr))
-    .reduce((acc, t) => acc + t.amount, 0);
+  const d = new Date(month.getTime());
+  const year = d.getFullYear();
+  const monthNum = String(d.getMonth() + 1).padStart(2, "0");
+  const monthStr = `${year}-${monthNum}`; // Reliable YYYY-MM
+  return (transactions || [])
+    .filter((t) => t.type === "expense" && t.date && t.date.startsWith(monthStr))
+    .reduce((acc, t) => acc + (t.amount || 0), 0);
+}
+
+export function calculatePeriodIncome(transactions: FinanceTransaction[], period: "all" | string): number {
+  if (period === "all") return calculateAllTimeIncome(transactions);
+  return (transactions || [])
+    .filter((t) => t.type === "income" && t.date && t.date.startsWith(period))
+    .reduce((acc, t) => acc + (t.amount || 0), 0);
+}
+
+export function calculatePeriodExpenses(transactions: FinanceTransaction[], period: "all" | string): number {
+  if (period === "all") return calculateAllTimeExpenses(transactions);
+  return (transactions || [])
+    .filter((t) => t.type === "expense" && t.date && t.date.startsWith(period))
+    .reduce((acc, t) => acc + (t.amount || 0), 0);
 }
 
 export function calculateSavingsRate(income: number, expenses: number): number {
@@ -59,13 +101,17 @@ export function calculateSavingsRate(income: number, expenses: number): number {
   return (savings / income) * 100;
 }
 
-export function calculateCategorySpending(transactions: FinanceTransaction[], monthStr: string) {
-    const expenses = transactions.filter((t) => t.type === "expense" && t.date.startsWith(monthStr));
-    const breakdown: Record<string, number> = {};
-    expenses.forEach((t) => {
-        breakdown[t.categoryId] = (breakdown[t.categoryId] || 0) + t.amount;
-    });
-    return breakdown;
+export function calculateCategorySpending(transactions: FinanceTransaction[], monthOrPeriod: string) {
+  const expenses = (transactions || []).filter((t) => {
+    if (t.type !== "expense") return false;
+    if (!monthOrPeriod || monthOrPeriod === "all") return true;
+    return t.date && t.date.startsWith(monthOrPeriod);
+  });
+  const breakdown: Record<string, number> = {};
+  expenses.forEach((t) => {
+    breakdown[t.categoryId] = (breakdown[t.categoryId] || 0) + (t.amount || 0);
+  });
+  return breakdown;
 }
 
 export function calculateBudgetProgress(budget: FinanceBudget, transactions: FinanceTransaction[]) {

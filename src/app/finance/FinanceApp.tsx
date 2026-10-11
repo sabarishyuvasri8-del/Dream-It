@@ -23,10 +23,25 @@ export default function FinanceApp({ financeData, onUpdateFinance }: FinanceAppP
   const { themeConfig } = useTheme();
   const [activeNav, setActiveNav] = useState<FinanceNav>("Overview");
 
-  // Ensure default structure if missing
+  // Ensure default structure and fallback account so balance calculation never breaks
+  const fallbackAccounts = financeData?.accounts && financeData.accounts.length > 0
+    ? financeData.accounts
+    : [
+        {
+          id: "acc_default",
+          name: "Main Cash & Wallet",
+          type: "wallet" as const,
+          balance: 0,
+          currency: "INR",
+          isDefault: true,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ];
+
   const data: FinanceData = {
     profile: financeData?.profile || { mode: "student", currency: "INR", setupComplete: false },
-    accounts: financeData?.accounts || [],
+    accounts: fallbackAccounts,
     transactions: financeData?.transactions || [],
     categories: financeData?.categories || [],
     budgets: financeData?.budgets || [],
@@ -91,7 +106,7 @@ export default function FinanceApp({ financeData, onUpdateFinance }: FinanceAppP
           {activeNav === "Goals" && <FinanceGoals data={data} onUpdate={handleUpdate} />}
           {activeNav === "Accounts" && <FinanceAccounts data={data} onUpdate={handleUpdate} />}
           {activeNav === "Simulator" && <FinanceSimulator data={data} onUpdate={handleUpdate} />}
-          {activeNav === "Coach" && <FinanceCoach data={data} />}
+          {activeNav === "Coach" && <FinanceCoach data={data} onUpdate={handleUpdate} />}
         </div>
       </div>
     </div>

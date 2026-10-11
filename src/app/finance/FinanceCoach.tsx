@@ -207,11 +207,26 @@ Structure EVERY response using this well-organized format:
 
 // ─── Component ──────────────────────────────────────────────────
 
-export default function FinanceCoach({ data }: { data: FinanceData }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export default function FinanceCoach({ data, onUpdate }: { data: FinanceData, onUpdate?: (d: Partial<FinanceData>) => void }) {
+  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem("dreamit_coach_chat_history");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [draft, setDraft] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    try {
+      if (messages.length > 0) {
+        localStorage.setItem("dreamit_coach_chat_history", JSON.stringify(messages));
+      }
+    } catch {}
+  }, [messages]);
 
   // ─── File Attachment & Drag-and-Drop ───
   const [attachedFile, setAttachedFile] = useState<{
@@ -430,6 +445,9 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
 
   const clearChat = () => {
     setMessages([]);
+    try {
+      localStorage.removeItem("dreamit_coach_chat_history");
+    } catch {}
   };
 
   return (
@@ -522,13 +540,18 @@ export default function FinanceCoach({ data }: { data: FinanceData }) {
               </div>
             )}
             <div
-              className="rounded-2xl px-4 py-3 text-sm leading-relaxed max-w-[85%]"
+              className={`text-sm leading-relaxed ${
+                msg.role === "user"
+                  ? "w-fit rounded-[24px] px-4 py-2.5 max-w-[80%] shadow-xs"
+                  : "w-full max-w-full py-1 px-1"
+              }`}
               style={{
                 backgroundColor:
-                  msg.role === "user" ? "var(--m-primary)" : "var(--m-surface)",
+                  msg.role === "user" ? "var(--m-primary)" : "transparent",
                 color:
                   msg.role === "user" ? "var(--m-primary-text)" : "var(--m-text-heading)",
-                border: msg.role === "assistant" ? "1px solid var(--m-border)" : "none",
+                border: "none",
+                borderRadius: msg.role === "user" ? "24px" : undefined,
               }}
             >
               {msg.role === "user" ? (

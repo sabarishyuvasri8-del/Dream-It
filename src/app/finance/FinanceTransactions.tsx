@@ -10,6 +10,7 @@ export default function FinanceTransactions({ data, onUpdate }: { data: FinanceD
   const [searchTerm, setSearchTerm] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">("all");
 
+  const accounts = data.accounts || [];
   const transactions = data.transactions || [];
   const categories = [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES, ...(data.categories || [])];
 
@@ -31,8 +32,57 @@ export default function FinanceTransactions({ data, onUpdate }: { data: FinanceD
 
   const handleDelete = (id: string) => {
     if (confirm("Delete this transaction?")) {
-      onUpdate({ transactions: transactions.filter((t) => t.id !== id) });
+      const txnToDelete = transactions.find((t) => t.id === id);
+      let updatedAccounts = accounts;
+      if (txnToDelete) {
+        const delta = txnToDelete.type === "income" ? -txnToDelete.amount : txnToDelete.amount;
+        updatedAccounts = accounts.map((a) =>
+          a.id === txnToDelete.accountId ? { ...a, balance: a.balance + delta, updatedAt: new Date().toISOString() } : a
+        );
+      }
+      onUpdate({
+        transactions: transactions.filter((t) => t.id !== id),
+        accounts: updatedAccounts,
+      });
     }
+  };
+
+  const handleSaveTransaction = (t: FinanceTransaction) => {
+    const delta = t.type === "income" ? t.amount : -t.amount;
+    let updatedAccounts = accounts;
+
+    if (updatedAccounts.length === 0) {
+      updatedAccounts = [{
+        id: t.accountId || "acc_default",
+        name: "Main Cash & Wallet",
+        type: "wallet",
+        balance: delta,
+        currency: "INR",
+        isDefault: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }];
+    } else {
+      let matched = false;
+      updatedAccounts = updatedAccounts.map((a) => {
+        if (a.id === t.accountId) {
+          matched = true;
+          return { ...a, balance: a.balance + delta, updatedAt: new Date().toISOString() };
+        }
+        return a;
+      });
+      if (!matched && updatedAccounts.length > 0) {
+        updatedAccounts = updatedAccounts.map((a, i) =>
+          i === 0 ? { ...a, balance: a.balance + delta, updatedAt: new Date().toISOString() } : a
+        );
+      }
+    }
+
+    onUpdate({
+      transactions: [t, ...transactions],
+      accounts: updatedAccounts,
+    });
+    setIsAdding(false);
   };
 
   return (
@@ -127,10 +177,7 @@ export default function FinanceTransactions({ data, onUpdate }: { data: FinanceD
         <TransactionModal
           data={data}
           onClose={() => setIsAdding(false)}
-          onSave={(t) => {
-            onUpdate({ transactions: [t, ...transactions] });
-            setIsAdding(false);
-          }}
+          onSave={handleSaveTransaction}
         />
       )}
     </div>

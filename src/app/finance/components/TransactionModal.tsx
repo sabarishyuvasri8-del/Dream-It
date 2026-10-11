@@ -23,6 +23,8 @@ export function TransactionModal({
 
   const allCategories = [...DEFAULT_EXPENSE_CATEGORIES, ...DEFAULT_INCOME_CATEGORIES, ...(data.categories || [])];
   const activeCategories = allCategories.filter((c) => c.type === type);
+  const accounts = data.accounts || [];
+  const [selectedAccountId, setSelectedAccountId] = useState(accounts[0]?.id || "acc_default");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,7 +34,7 @@ export function TransactionModal({
 
     onSave({
       id: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-      accountId: data.accounts?.[0]?.id || "default",
+      accountId: selectedAccountId || accounts[0]?.id || "acc_default",
       type,
       amount: toPaisa(numAmount),
       categoryId,
@@ -68,6 +70,19 @@ export function TransactionModal({
             <label className="text-xs font-bold mb-1.5 block" style={{ color: "var(--m-text-sub)" }}>{type === "expense" ? "Merchant / Title" : "Source / Title"}</label>
             <input type="text" value={merchant} onChange={(e) => setMerchant(e.target.value)} placeholder={type === "expense" ? "e.g. Swiggy, Amazon" : "e.g. Salary, Client"} className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none" style={{ backgroundColor: "var(--m-input-bg)", borderColor: "var(--m-border)", color: "var(--m-text-heading)" }} />
           </div>
+
+          {accounts.length > 0 && (
+            <div>
+              <label className="text-xs font-bold mb-1.5 block" style={{ color: "var(--m-text-sub)" }}>Account / Payment Source</label>
+              <select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)} className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none" style={{ backgroundColor: "var(--m-input-bg)", borderColor: "var(--m-border)", color: "var(--m-text-heading)" }}>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} ({a.type})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>

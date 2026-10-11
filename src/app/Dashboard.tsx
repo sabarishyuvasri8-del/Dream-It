@@ -879,6 +879,34 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     return () => window.removeEventListener("online", handleOnline);
   }, [handleForceSync]);
 
+  // ─── Emergency Save Flush on Tab Close / Page Unload ───
+  useEffect(() => {
+    const handleFlush = () => {
+      if (!userId || !workspaceReady) return;
+      const payload: UserWorkspace = {
+        tasks, scheduleItems, subjects, studyMinutes, focusLog,
+        notes, grades, flashcards, streak, finance
+      };
+      const serialized = JSON.stringify(payload);
+      if (serialized === lastSavedJsonRef.current) return;
+      lastSavedJsonRef.current = serialized;
+      saveUserWorkspace(accessToken, userId, payload).catch(() => {});
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        handleFlush();
+      }
+    };
+
+    window.addEventListener("beforeunload", handleFlush);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      window.removeEventListener("beforeunload", handleFlush);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [accessToken, userId, workspaceReady, tasks, scheduleItems, subjects, studyMinutes, focusLog, notes, grades, flashcards, streak, finance]);
+
   // ─── Pomodoro Focus Tracking & Timer ───
   useEffect(() => {
     if (!isRunning || seconds === 0) return;
@@ -5214,18 +5242,31 @@ Mathematics:
                 ) : (
                   <>
                     {/* Messages Container (Fills middle area perfectly) */}
-                    <div ref={chatContainerRef} className="flex-1 space-y-3.5 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
+                    <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
                   {messages.map((m, idx) => (
                     <div
                       key={idx}
-                      className={`group flex flex-col ${m.role === "user" ? "items-end ml-auto" : "items-start"} max-w-[92%]`}
+                      className={`group flex flex-col ${m.role === "user" ? "items-end ml-auto max-w-[88%]" : "items-start w-full max-w-full"}`}
                     >
                       <div
-                        className="w-full rounded-2xl px-4 py-3 shadow-xs contain-chat"
+                        className={`contain-chat transition ${
+                          m.role === "user"
+                            ? `${editingMessageIdx === idx ? "w-full rounded-2xl p-3" : "w-fit rounded-[22px] px-4 py-2.5"} shadow-xs text-xs leading-relaxed break-words`
+                            : "w-full px-0.5 py-1 text-xs leading-relaxed"
+                        }`}
                         style={
-                          m.role === "assistant"
-                            ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
-                            : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
+                          m.role === "user"
+                            ? {
+                                backgroundColor: "var(--m-chat-user-bg)",
+                                color: "var(--m-chat-user-text)",
+                                borderRadius: editingMessageIdx === idx ? "16px" : "22px",
+                              }
+                            : {
+                                backgroundColor: "transparent",
+                                color: "var(--m-text)",
+                                border: "none",
+                                boxShadow: "none",
+                              }
                         }
                       >
                         {editingMessageIdx === idx ? (
@@ -5280,8 +5321,8 @@ Mathematics:
                       {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
                       {m.content && editingMessageIdx !== idx && (
                         <div
-                          className={`flex items-center gap-1.5 mt-1 text-[11px] opacity-80 hover:opacity-100 transition-opacity ${
-                            m.role === "user" ? "justify-end pr-1" : "justify-start pl-1"
+                          className={`flex items-center gap-1.5 mt-1 text-[11px] opacity-70 group-hover:opacity-100 transition-opacity ${
+                            m.role === "user" ? "justify-end pr-1" : "justify-start pl-0.5"
                           }`}
                           style={{ color: "var(--m-text-sub)" }}
                         >
@@ -5333,7 +5374,7 @@ Mathematics:
                     </div>
                   ))}
                   {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
-                    <div className="flex w-fit items-center gap-2 rounded-2xl px-4 py-3 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px" }}>
+                    <div className="flex w-fit items-center gap-2 py-1.5 pl-0.5">
                       <AIThinkingStatus size="sm" />
                     </div>
                   )}
@@ -7180,22 +7221,33 @@ Mathematics:
             {/* Right Side: Conversation Area & Input */}
             <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden relative">
               {/* Fullscreen Messages Area */}
-              <div ref={chatMaxContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar w-full px-4 sm:px-6 md:px-8 py-6 max-w-5xl mx-auto">
+              <div ref={chatMaxContainerRef} className="flex-1 space-y-6 overflow-y-auto custom-scrollbar w-full px-4 sm:px-6 md:px-8 py-6 max-w-4xl mx-auto">
                 {messages.map((m, idx) => (
                   <div
                     key={idx}
                     className={`group flex flex-col ${
-                      m.role === "user" ? "items-end ml-auto" : "items-start"
-                    } max-w-[90%] md:max-w-[80%]`}
+                      m.role === "user" ? "items-end ml-auto max-w-[85%] sm:max-w-[75%]" : "items-start w-full max-w-full"
+                    }`}
                   >
                     <div
-                      className={`w-full rounded-2xl p-4 md:p-5 leading-relaxed transition contain-chat ${
-                        m.role === "assistant" ? "shadow-xs" : "shadow-sm"
+                      className={`contain-chat transition ${
+                        m.role === "user"
+                          ? `${editingMessageIdx === idx ? "w-full min-w-[280px] sm:min-w-[420px] rounded-2xl p-4" : "w-fit rounded-[26px] px-5 py-3 md:py-3.5"} shadow-sm text-sm sm:text-[15px] leading-relaxed break-words`
+                          : "w-full py-1.5 sm:py-2 px-1 text-sm sm:text-[15px] leading-relaxed"
                       }`}
                       style={
-                        m.role === "assistant"
-                          ? { backgroundColor: "var(--m-chat-bot-bg)", color: "var(--m-chat-bot-text)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }
-                          : { backgroundColor: "var(--m-chat-user-bg)", color: "var(--m-chat-user-text)", borderTopRightRadius: "4px" }
+                        m.role === "user"
+                          ? {
+                              backgroundColor: "var(--m-chat-user-bg)",
+                              color: "var(--m-chat-user-text, #ffffff)",
+                              borderRadius: editingMessageIdx === idx ? "16px" : "26px",
+                            }
+                          : {
+                              backgroundColor: "transparent",
+                              color: "var(--m-text)",
+                              border: "none",
+                              boxShadow: "none",
+                            }
                       }
                     >
                       {editingMessageIdx === idx ? (
@@ -7250,8 +7302,8 @@ Mathematics:
                     {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
                     {m.content && editingMessageIdx !== idx && (
                       <div
-                        className={`flex items-center gap-1.5 mt-1.5 text-xs opacity-80 hover:opacity-100 transition-opacity ${
-                          m.role === "user" ? "justify-end pr-1" : "justify-start pl-1"
+                        className={`flex items-center gap-1.5 mt-1.5 text-xs opacity-70 group-hover:opacity-100 transition-opacity ${
+                          m.role === "user" ? "justify-end pr-2" : "justify-start pl-1"
                         }`}
                         style={{ color: "var(--m-text-sub)" }}
                       >
@@ -7303,7 +7355,7 @@ Mathematics:
                   </div>
                 ))}
                 {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
-                  <div className="flex w-fit items-center gap-3 rounded-2xl p-3.5 shadow-xs" style={{ backgroundColor: "var(--m-chat-bot-bg)", borderTopLeftRadius: "4px", border: "1px solid var(--m-border-light)" }}>
+                  <div className="flex w-fit items-center gap-3 py-2 pl-1">
                     <AIThinkingStatus size="lg" />
                   </div>
                 )}

@@ -21,7 +21,6 @@ import {
   Trash2,
   Info,
   Lightbulb,
-  Shuffle,
   X,
 } from "lucide-react";
 import {
@@ -97,14 +96,17 @@ export default function FinanceSimulator({
   const annualEquivalent = convertToAnnualAmount(redirectedAmount, frequency);
   const monthlyEquivalent = convertToMonthlyAmount(redirectedAmount, frequency);
 
+  // Convert to Paisa for core financial calculation engine and formatters
+  const redirectedPaisa = toPaisa(redirectedAmount);
+
   const result = useMemo(
-    () => calculateFutureValue(redirectedAmount, frequency, annualReturn, timeHorizon),
-    [redirectedAmount, frequency, annualReturn, timeHorizon]
+    () => calculateFutureValue(redirectedPaisa, frequency, annualReturn, timeHorizon),
+    [redirectedPaisa, frequency, annualReturn, timeHorizon]
   );
 
   const chartData = useMemo(
-    () => generateWealthProjectionData(redirectedAmount, frequency, annualReturn, timeHorizon),
-    [redirectedAmount, frequency, annualReturn, timeHorizon]
+    () => generateWealthProjectionData(redirectedPaisa, frequency, annualReturn, timeHorizon),
+    [redirectedPaisa, frequency, annualReturn, timeHorizon]
   );
 
   const multiplier =
@@ -272,46 +274,6 @@ export default function FinanceSimulator({
         </div>
       </div>
 
-      {/* ── Preset Chips ─────────────────────────────────────────── */}
-      <div>
-        <p className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: "var(--m-text-muted)" }}>
-          Quick Scenarios
-        </p>
-        <div className="flex flex-wrap gap-2">
-          {BUILT_IN_PRESETS.map((p) => (
-            <button
-              key={p.label}
-              onClick={() => applyPreset(p)}
-              className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold border transition-all hover:scale-105"
-              style={{
-                borderColor:
-                  expenseName === p.label && amount === p.amount
-                    ? "var(--m-primary)"
-                    : "var(--m-border)",
-                backgroundColor:
-                  expenseName === p.label && amount === p.amount
-                    ? "color-mix(in srgb, var(--m-primary) 12%, transparent)"
-                    : "var(--m-surface)",
-                color: "var(--m-text-heading)",
-              }}
-            >
-              <span>{p.icon}</span>
-              <span>₹{p.amount.toLocaleString("en-IN")}/{FREQ_LABELS[p.frequency]}</span>
-            </button>
-          ))}
-          <button
-            onClick={handleSurpriseMe}
-            className="flex items-center gap-1.5 rounded-full px-3.5 py-2 text-xs font-semibold border transition-all hover:scale-105"
-            style={{
-              borderColor: "var(--m-border)",
-              backgroundColor: "var(--m-surface)",
-              color: "var(--m-primary)",
-            }}
-          >
-            <Shuffle size={12} /> Surprise Me
-          </button>
-        </div>
-      </div>
 
       {/* ── User Spending Presets ─────────────────────────────────── */}
       {userSpendingPresets.length > 0 && (
@@ -355,24 +317,7 @@ export default function FinanceSimulator({
         style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}
       >
         {/* Expense Input Row */}
-        <div className="grid sm:grid-cols-3 gap-4">
-          <div>
-            <label className="text-xs font-bold mb-1.5 block" style={{ color: "var(--m-text-sub)" }}>
-              Expense Name
-            </label>
-            <input
-              type="text"
-              value={expenseName}
-              onChange={(e) => setExpenseName(e.target.value)}
-              placeholder="e.g. Coffee"
-              className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
-              style={{
-                backgroundColor: "var(--m-input-bg)",
-                borderColor: "var(--m-border)",
-                color: "var(--m-text-heading)",
-              }}
-            />
-          </div>
+        <div className="grid sm:grid-cols-2 gap-4">
           <div>
             <label className="text-xs font-bold mb-1.5 block" style={{ color: "var(--m-text-sub)" }}>
               Amount (₹)
@@ -729,7 +674,13 @@ export default function FinanceSimulator({
               />
               <YAxis
                 tick={{ fontSize: 10, fill: "var(--m-text-muted)" }}
-                tickFormatter={(v: number) => `₹${(v / 100).toLocaleString("en-IN")}`}
+                tickFormatter={(v: number) => {
+                  const r = toRupees(v);
+                  if (r >= 10000000) return `₹${(r / 10000000).toFixed(1).replace(/\.0$/, "")}Cr`;
+                  if (r >= 100000) return `₹${(r / 100000).toFixed(1).replace(/\.0$/, "")}L`;
+                  if (r >= 10000) return `₹${(r / 1000).toFixed(0)}k`;
+                  return `₹${Math.round(r).toLocaleString("en-IN")}`;
+                }}
                 width={70}
               />
               <RechartsTooltip content={<CustomTooltip />} />
@@ -826,7 +777,7 @@ export default function FinanceSimulator({
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {savedScenarios.map((s) => {
               const sResult = calculateFutureValue(
-                toRupees(s.expenseAmount) * (s.reductionPercentage / 100),
+                Math.round(s.expenseAmount * (s.reductionPercentage / 100)),
                 s.frequency,
                 s.annualReturn,
                 s.timeHorizon
