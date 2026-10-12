@@ -6696,7 +6696,6 @@ Mathematics:
           remoteIsMuted={callManager.remoteIsMuted}
           handRaised={callManager.handRaised}
           remoteHandRaised={callManager.remoteHandRaised}
-          durationSeconds={callManager.callDuration}
           reactions={callManager.reactions}
           myUserName={userNameDisplay}
           onEndCall={callManager.endCall}

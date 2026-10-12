@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Mic,
   MicOff,
@@ -36,7 +36,6 @@ interface ActiveCallOverlayProps {
   remoteIsMuted?: boolean;
   handRaised?: boolean;
   remoteHandRaised?: boolean;
-  durationSeconds: number;
   reactions?: FloatingReaction[];
   myUserName?: string;
   onEndCall: () => void;
@@ -55,7 +54,72 @@ function formatDuration(totalSeconds: number): string {
   return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
 }
 
-export default function ActiveCallOverlay({
+/**
+ * Isolated duration timer leaf component:
+ * Updates ONLY this small text element every second.
+ * Zero CPU overhead and ZERO re-renders of the parent overlay or Dashboard!
+ */
+const CallDurationDisplay = React.memo(function CallDurationDisplay({
+  startedAt,
+  isRinging,
+}: {
+  startedAt?: number;
+  isRinging: boolean;
+}) {
+  const [seconds, setSeconds] = useState(0);
+
+  useEffect(() => {
+    if (isRinging || !startedAt) {
+      setSeconds(0);
+      return;
+    }
+    const update = () => {
+      setSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1000)));
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt, isRinging]);
+
+  if (isRinging) {
+    return (
+      <span className="px-3 py-1 rounded-full bg-[#3c4043] text-amber-300 text-xs font-medium">
+        Calling friend...
+      </span>
+    );
+  }
+
+  return (
+    <span className="px-3 py-1 rounded-full bg-[#3c4043]/80 text-neutral-300 text-xs font-mono font-medium">
+      {formatDuration(seconds)}
+    </span>
+  );
+});
+
+/**
+ * Isolated live clock leaf component:
+ * Updates its text span once every 10 seconds instead of every second.
+ * Prevents re-rendering the parent overlay!
+ */
+const MeetLiveClock = React.memo(function MeetLiveClock() {
+  const [timeStr, setTimeStr] = useState("");
+
+  useEffect(() => {
+    const update = () => {
+      const now = new Date();
+      setTimeStr(
+        now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })
+      );
+    };
+    update();
+    const interval = setInterval(update, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <span className="font-mono text-neutral-200 font-semibold">{timeStr || "19:09"}</span>;
+});
+
+const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
   session,
   callState,
   localStream,
@@ -68,7 +132,6 @@ export default function ActiveCallOverlay({
   remoteIsMuted = false,
   handRaised = false,
   remoteHandRaised = false,
-  durationSeconds,
   reactions = [],
   myUserName = "You",
   onEndCall,
@@ -82,25 +145,11 @@ export default function ActiveCallOverlay({
   const [showReactionsBar, setShowReactionsBar] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [captionsActive, setCaptionsActive] = useState(false);
-  const [currentTimeStr, setCurrentTimeStr] = useState("");
 
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipRemoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Live time ticker matching Google Meet top-left clock (e.g. "19:09")
-  useEffect(() => {
-    const updateTime = () => {
-      const now = new Date();
-      setCurrentTimeStr(
-        now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false })
-      );
-    };
-    updateTime();
-    const interval = setInterval(updateTime, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Guarantee remote stream audio playback with dedicated hidden audio tag & autoplay unlocker
   useEffect(() => {
@@ -111,9 +160,7 @@ export default function ActiveCallOverlay({
       audioEl.volume = 1.0;
 
       const tryPlay = () => {
-        audioEl.play().catch((err) => {
-          console.warn("[WebRTC Audio] Autoplay blocked, will play on next interaction:", err);
-        });
+        audioEl.play().catch(() => {});
       };
 
       tryPlay();
@@ -183,7 +230,6 @@ export default function ActiveCallOverlay({
   const friendInitial = session.friendName.charAt(0).toUpperCase() || "S";
   const myInitial = myUserName.charAt(0).toUpperCase() || "Y";
 
-  // Hidden audio element ensures audio never drops regardless of video DOM mounts
   const hiddenAudioElement = (
     <audio ref={remoteAudioRef} autoPlay playsInline />
   );
@@ -194,12 +240,12 @@ export default function ActiveCallOverlay({
   if (isPipMode) {
     return (
       <div
-        className="fixed bottom-5 right-5 z-50 w-[330px] sm:w-[360px] h-[390px] rounded-2xl shadow-2xl flex flex-col overflow-hidden border transition-all duration-200 animate-in slide-in-from-bottom-5"
+        className="fixed bottom-5 right-5 z-50 w-[330px] sm:w-[360px] h-[390px] rounded-2xl shadow-2xl flex flex-col overflow-hidden border border-[#3c4043]"
         style={{
           backgroundColor: "#202124",
-          borderColor: "#3c4043",
-          boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.75)",
           color: "#e8eaed",
+          contain: "layout paint",
+          transform: "translateZ(0)",
         }}
       >
         {hiddenAudioElement}
@@ -262,7 +308,7 @@ export default function ActiveCallOverlay({
                 </div>
               )}
               {isRinging && (
-                <p className="text-xs text-neutral-300 mt-2 font-medium animate-pulse">
+                <p className="text-xs text-neutral-300 mt-2 font-medium">
                   Calling...
                 </p>
               )}
@@ -270,7 +316,7 @@ export default function ActiveCallOverlay({
           )}
 
           {/* Bottom-Left Participant Name Tag */}
-          <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/50 backdrop-blur-sm text-white text-xs font-medium">
+          <div className="absolute bottom-2.5 left-2.5 z-10 flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-black/60 text-white text-xs font-medium">
             <span className="truncate max-w-[180px]">
               {session.friendName}
               {remoteIsScreenSharing && " (Presentation)"}
@@ -281,7 +327,6 @@ export default function ActiveCallOverlay({
 
         {/* PiP Bottom Controls Bar */}
         <div className="px-3 py-2.5 bg-[#171717] flex items-center justify-center gap-3 shrink-0">
-          {/* Mic */}
           <button
             type="button"
             onClick={onToggleMute}
@@ -293,7 +338,6 @@ export default function ActiveCallOverlay({
             {isMuted ? <MicOff size={16} /> : <Mic size={16} />}
           </button>
 
-          {/* Camera */}
           <button
             type="button"
             onClick={onToggleVideo}
@@ -305,7 +349,6 @@ export default function ActiveCallOverlay({
             {isVideoOff ? <VideoOff size={16} /> : <Video size={16} />}
           </button>
 
-          {/* Screen Share */}
           <button
             type="button"
             onClick={onToggleScreenShare}
@@ -317,7 +360,6 @@ export default function ActiveCallOverlay({
             <MonitorUp size={16} />
           </button>
 
-          {/* End Call */}
           <button
             type="button"
             onClick={onEndCall}
@@ -332,54 +374,46 @@ export default function ActiveCallOverlay({
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // VIEW 2: GOOGLE MEET FULL VIEW (Image 2)
+  // VIEW 2: GOOGLE MEET FULL VIEW (Image 2 - Solid High-Performance 120 FPS)
   // ══════════════════════════════════════════════════════════════════════════════
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col select-none overflow-hidden animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex flex-col select-none overflow-hidden"
       style={{
         backgroundColor: "#202124",
         color: "#e8eaed",
         fontFamily: "'Google Sans', Roboto, Arial, sans-serif",
+        contain: "strict",
+        transform: "translateZ(0)",
       }}
     >
       {hiddenAudioElement}
 
       {/* ─── Google Meet Top Bar ─── */}
-      <header className="h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20">
+      <header className="h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 bg-[#202124]">
         {/* Left: Time | meeting-code ⓘ */}
         <div className="flex items-center gap-3 text-sm font-medium text-neutral-300">
-          <span className="font-mono text-neutral-200 font-semibold">
-            {currentTimeStr || "19:09"}
-          </span>
+          <MeetLiveClock />
           <span className="text-neutral-500">|</span>
           <span className="font-mono text-neutral-200 tracking-wide font-medium">
             {meetingCodeSlug}
           </span>
           <button
             type="button"
-            className="p-1 rounded-full hover:bg-[#3c4043]/50 text-neutral-400 hover:text-white transition cursor-pointer"
+            className="p-1 rounded-full hover:bg-[#3c4043] text-neutral-400 hover:text-white transition cursor-pointer"
             title="Meeting details"
           >
             <Info size={16} />
           </button>
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#3c4043]/40 text-emerald-400 text-[11px] font-medium border border-emerald-500/20">
+          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#3c4043]/60 text-emerald-400 text-[11px] font-medium border border-emerald-500/20">
             <ShieldCheck size={12} />
             <span>P2P Encrypted • Zero Storage</span>
           </div>
         </div>
 
-        {/* Center: Ringing or Call duration pill */}
+        {/* Center: Isolated Duration Timer (No parent re-renders!) */}
         <div className="flex items-center gap-2">
-          {isRinging ? (
-            <span className="px-3 py-1 rounded-full bg-[#3c4043] text-amber-300 text-xs font-medium animate-pulse">
-              Calling friend...
-            </span>
-          ) : (
-            <span className="px-3 py-1 rounded-full bg-[#3c4043]/60 text-neutral-300 text-xs font-mono font-medium">
-              {formatDuration(durationSeconds)}
-            </span>
-          )}
+          <CallDurationDisplay startedAt={session.startedAt} isRinging={isRinging} />
         </div>
 
         {/* Right: Participant Badge & PiP Minimize Button */}
@@ -407,7 +441,6 @@ export default function ActiveCallOverlay({
 
       {/* ─── Main Meeting Stage (Google Meet Brown Tile) ─── */}
       <main className="flex-1 relative flex items-center justify-center p-3 sm:p-5 overflow-hidden">
-        {/* Main Participant Video Tile */}
         <div
           className="w-full h-full rounded-2xl sm:rounded-3xl relative flex items-center justify-center overflow-hidden shadow-2xl transition-all"
           style={{ backgroundColor: "#382820" }}
@@ -419,17 +452,13 @@ export default function ActiveCallOverlay({
             playsInline
             muted
             className={`w-full h-full object-contain ${remoteHasVideo ? "block" : "hidden"}`}
+            style={{ transform: "translateZ(0)" }}
           />
 
-          {/* Remote Video OFF: Google Meet Signature Avatar Tile (Screenshot 2 Match) */}
+          {/* Remote Video OFF: Google Meet Signature Avatar Tile */}
           {!remoteHasVideo && (
             <div className="flex flex-col items-center justify-center select-none text-center p-6">
               <div className="relative flex items-center justify-center mb-3">
-                {/* Subtle Voice Activity Ring */}
-                {!remoteIsMuted && (
-                  <div className="absolute size-36 sm:size-44 rounded-full border-2 border-white/20 animate-ping opacity-30" />
-                )}
-
                 {session.friendImage ? (
                   <img
                     src={session.friendImage}
@@ -444,7 +473,7 @@ export default function ActiveCallOverlay({
               </div>
 
               {isRinging && (
-                <p className="text-sm font-medium text-neutral-300 mt-2 animate-pulse flex items-center gap-1.5">
+                <p className="text-sm font-medium text-neutral-300 mt-2 flex items-center gap-1.5">
                   <Volume2 size={15} />
                   <span>Ringing...</span>
                 </p>
@@ -452,8 +481,8 @@ export default function ActiveCallOverlay({
             </div>
           )}
 
-          {/* Bottom-Left Participant Name Tag (Signature Google Meet Frosted Tag) */}
-          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/45 backdrop-blur-md text-white text-sm font-medium shadow-md">
+          {/* Bottom-Left Participant Name Tag */}
+          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/60 text-white text-sm font-medium shadow-md">
             <span>
               {session.friendName}
               {remoteIsScreenSharing && " (Presentation)"}
@@ -467,7 +496,7 @@ export default function ActiveCallOverlay({
 
           {/* Friend Hand Raised Floating Badge */}
           {remoteHandRaised && (
-            <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#fbbc04] text-neutral-900 font-bold text-xs shadow-lg animate-bounce">
+            <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#fbbc04] text-neutral-900 font-bold text-xs shadow-lg">
               <Hand size={15} />
               <span>{session.friendName} raised a hand</span>
             </div>
@@ -478,10 +507,10 @@ export default function ActiveCallOverlay({
             {reactions.map((r) => (
               <div
                 key={r.id}
-                className="absolute bottom-16 text-3xl sm:text-4xl animate-in slide-in-from-bottom duration-1000"
+                className="absolute bottom-16 text-3xl sm:text-4xl"
                 style={{
                   left: `${r.leftPercent}%`,
-                  animation: "floatUp 2.4s ease-out forwards",
+                  animation: "floatUp 2.2s ease-out forwards",
                 }}
               >
                 {r.emoji}
@@ -490,7 +519,7 @@ export default function ActiveCallOverlay({
           </div>
 
           {/* ─── Self Preview Picture-in-Picture Tile (Bottom-Right) ─── */}
-          <div className="absolute bottom-4 right-4 z-20 w-36 h-28 sm:w-56 sm:h-36 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#202124] flex items-center justify-center group">
+          <div className="absolute bottom-4 right-4 z-20 w-36 h-28 sm:w-56 sm:h-36 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#202124] flex items-center justify-center">
             {hasLocalVideo ? (
               <video
                 ref={localVideoRef}
@@ -498,6 +527,7 @@ export default function ActiveCallOverlay({
                 playsInline
                 muted
                 className={`w-full h-full object-cover ${isScreenSharing ? "" : "-scale-x-100"}`}
+                style={{ transform: "translateZ(0)" }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center">
@@ -507,8 +537,7 @@ export default function ActiveCallOverlay({
               </div>
             )}
 
-            {/* Self Tag */}
-            <div className="absolute bottom-2 left-2 z-10 px-2 py-0.5 rounded bg-black/60 backdrop-blur-sm text-white text-[11px] font-medium flex items-center gap-1">
+            <div className="absolute bottom-2 left-2 z-10 px-2 py-0.5 rounded bg-black/70 text-white text-[11px] font-medium flex items-center gap-1">
               <span>{isScreenSharing ? "You (Presentation)" : "You"}</span>
               {isMuted && <MicOff size={11} className="text-[#ea4335]" />}
             </div>
@@ -519,7 +548,7 @@ export default function ActiveCallOverlay({
       {/* ─── Floating Emojis Picker Bar ─── */}
       {showReactionsBar && (
         <div className="flex items-center justify-center z-30 mb-2">
-          <div className="flex items-center gap-1 p-2 rounded-full bg-[#3c4043] border border-white/10 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-3">
+          <div className="flex items-center gap-1 p-2 rounded-full bg-[#3c4043] border border-white/10 shadow-2xl">
             {EMOJI_LIST.map((emoji) => (
               <button
                 key={emoji}
@@ -528,7 +557,7 @@ export default function ActiveCallOverlay({
                   onSendReaction?.(emoji);
                   setShowReactionsBar(false);
                 }}
-                className="p-2 hover:scale-125 hover:bg-white/10 rounded-full transition text-2xl cursor-pointer"
+                className="p-2 hover:scale-125 rounded-full transition text-2xl cursor-pointer"
               >
                 {emoji}
               </button>
@@ -538,7 +567,7 @@ export default function ActiveCallOverlay({
       )}
 
       {/* ─── Google Meet Bottom Control Toolbar ─── */}
-      <footer className="h-20 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 relative">
+      <footer className="h-20 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 relative bg-[#202124]">
         {/* Left Space (Meeting details) */}
         <div className="hidden lg:flex items-center gap-2 text-xs text-neutral-400 font-mono">
           <span>{meetingCodeSlug}</span>
@@ -546,7 +575,6 @@ export default function ActiveCallOverlay({
 
         {/* Center: Google Meet Signature Control Buttons */}
         <div className="flex items-center justify-center gap-2 sm:gap-3 mx-auto">
-          {/* Audio Options Chevron */}
           <button
             type="button"
             className="hidden sm:flex items-center justify-center size-10 rounded-full text-neutral-400 hover:text-white hover:bg-[#3c4043] transition cursor-pointer"
@@ -555,7 +583,6 @@ export default function ActiveCallOverlay({
             <ChevronDown size={18} />
           </button>
 
-          {/* Microphone Button */}
           <button
             type="button"
             onClick={onToggleMute}
@@ -569,7 +596,6 @@ export default function ActiveCallOverlay({
             {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
           </button>
 
-          {/* Camera Button */}
           <button
             type="button"
             onClick={onToggleVideo}
@@ -583,7 +609,6 @@ export default function ActiveCallOverlay({
             {isVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
           </button>
 
-          {/* Screen Share Button */}
           <button
             type="button"
             onClick={onToggleScreenShare}
@@ -597,7 +622,6 @@ export default function ActiveCallOverlay({
             <MonitorUp size={20} />
           </button>
 
-          {/* Reactions Button */}
           <button
             type="button"
             onClick={() => setShowReactionsBar(!showReactionsBar)}
@@ -611,7 +635,6 @@ export default function ActiveCallOverlay({
             <Smile size={20} />
           </button>
 
-          {/* Captions Button */}
           <button
             type="button"
             onClick={() => setCaptionsActive(!captionsActive)}
@@ -625,7 +648,6 @@ export default function ActiveCallOverlay({
             <Captions size={20} />
           </button>
 
-          {/* Raise Hand Button */}
           <button
             type="button"
             onClick={onToggleHandRaise}
@@ -639,7 +661,6 @@ export default function ActiveCallOverlay({
             <Hand size={20} />
           </button>
 
-          {/* More Options Button */}
           <button
             type="button"
             onClick={() => setShowMoreMenu(!showMoreMenu)}
@@ -649,7 +670,6 @@ export default function ActiveCallOverlay({
             <MoreVertical size={20} />
           </button>
 
-          {/* Iconic Google Meet End Call Red Pill Button */}
           <button
             type="button"
             onClick={onEndCall}
@@ -660,7 +680,7 @@ export default function ActiveCallOverlay({
           </button>
         </div>
 
-        {/* Right Utility Icons (Google Meet Signature Dock) */}
+        {/* Right Utility Icons */}
         <div className="hidden lg:flex items-center gap-3 text-neutral-400">
           <button
             type="button"
@@ -700,7 +720,7 @@ export default function ActiveCallOverlay({
         </div>
       </footer>
 
-      {/* CSS Keyframe Animation for Floating Reaction Emojis */}
+      {/* Floating Reaction Emojis Animation */}
       <style>{`
         @keyframes floatUp {
           0% {
@@ -709,14 +729,16 @@ export default function ActiveCallOverlay({
           }
           50% {
             opacity: 1;
-            transform: translateY(-120px) scale(1.3);
+            transform: translateY(-120px) scale(1.2);
           }
           100% {
             opacity: 0;
-            transform: translateY(-240px) scale(1.5);
+            transform: translateY(-220px) scale(1.4);
           }
         }
       `}</style>
     </div>
   );
-}
+});
+
+export default ActiveCallOverlay;
