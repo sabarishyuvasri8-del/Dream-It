@@ -81,13 +81,7 @@ export default function IncomingCallModal({
           <span>Incoming {isVideo ? "Video" : "Voice"} Call...</span>
         </div>
 
-        <p
-          className="text-xs mt-3 flex items-center gap-1.5 font-medium opacity-80"
-          style={{ color: "var(--m-text-sub, #64748b)" }}
-        >
-          <ShieldCheck size={13} />
-          <span>Peer-to-peer encrypted • Zero storage</span>
-        </p>
+
 
         {/* Action Buttons: Decline (Red) and Accept (Green) */}
         <div className="flex items-center justify-center gap-8 mt-8 w-full">

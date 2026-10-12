@@ -560,10 +560,6 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
           >
             <Info size={16} />
           </button>
-          <div className="hidden md:flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#3c4043]/60 text-emerald-400 text-[11px] font-medium border border-emerald-500/20">
-            <ShieldCheck size={12} />
-            <span>P2P Encrypted • Zero Storage</span>
-          </div>
         </div>
 
         {/* Center: Duration */}
@@ -904,15 +900,15 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
                   <p className="font-mono text-neutral-400">meet.google.com/{meetingCodeSlug}</p>
                 </div>
 
-                <div className="p-3.5 rounded-xl bg-[#282a2d] border border-white/5 space-y-1.5">
-                  <div className="flex items-center gap-2 text-emerald-400 font-medium">
-                    <ShieldCheck size={16} />
-                    <span>Zero Database Storage</span>
-                  </div>
-                  <p className="text-[11px] text-neutral-400 leading-relaxed">
-                    Calls are peer-to-peer encrypted directly between your devices. No video, audio, or messages are ever recorded or saved on any servers.
-                  </p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`https://meet.google.com/${meetingCodeSlug}`);
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#8ab4f8] text-[#8ab4f8] hover:bg-[#8ab4f8]/10 transition font-medium cursor-pointer"
+                >
+                  <span>Copy joining info</span>
+                </button>
               </div>
             )}
           </aside>
@@ -1502,21 +1498,24 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
                 {/* ─── TAB 3: GENERAL SETTINGS ─── */}
                 {settingsTab === "general" && (
                   <div className="space-y-4 text-xs leading-relaxed">
-                    <div className="p-4 rounded-2xl bg-[#202124] border border-[#3c4043]/50 space-y-2">
-                      <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
-                        <ShieldCheck size={18} />
-                        <span>Peer-to-Peer Encrypted</span>
+                    <div className="p-4 rounded-2xl bg-[#202124] border border-[#3c4043]/50 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-neutral-200">Leave empty calls</p>
+                        <p className="text-[11px] text-neutral-400 mt-0.5">Removes you from a call if no one else joins after a few minutes</p>
                       </div>
-                      <p className="text-neutral-300">
-                        Calls connect directly between users using encrypted WebRTC datagrams. No calls are recorded, stored, or sent through central audio logging databases.
-                      </p>
+                      <div className="size-5 rounded-full bg-[#8ab4f8] flex items-center justify-center">
+                        <Check size={12} className="text-[#202124] stroke-[3]" />
+                      </div>
                     </div>
 
-                    <div className="p-4 rounded-2xl bg-[#202124] border border-[#3c4043]/50 space-y-1">
-                      <p className="font-semibold text-neutral-200">120 FPS Gaming Optimization</p>
-                      <p className="text-neutral-400 text-[11px]">
-                        Opus 32kbps CBR mono voice codec is active. Background video capture and GPU compositing are disabled on voice calls.
-                      </p>
+                    <div className="p-4 rounded-2xl bg-[#202124] border border-[#3c4043]/50 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-neutral-200">Send diagnostic logs</p>
+                        <p className="text-[11px] text-neutral-400 mt-0.5">Helps monitor connection health and audio stream quality</p>
+                      </div>
+                      <div className="size-5 rounded-full bg-[#8ab4f8] flex items-center justify-center">
+                        <Check size={12} className="text-[#202124] stroke-[3]" />
+                      </div>
                     </div>
                   </div>
                 )}
