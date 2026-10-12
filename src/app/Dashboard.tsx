@@ -6704,6 +6704,10 @@ Mathematics:
           onToggleScreenShare={callManager.toggleScreenShare}
           onSendReaction={callManager.sendReaction}
           onToggleHandRaise={callManager.toggleHandRaise}
+          inCallMessages={callManager.inCallMessages}
+          onSendInCallMessage={callManager.sendInCallMessage}
+          onChangeAudioInput={callManager.changeAudioInput}
+          onChangeVideoInput={callManager.changeVideoInput}
         />
       )}
 

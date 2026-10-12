@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
   Mic,
   MicOff,
@@ -13,15 +13,25 @@ import {
   Users,
   MessageSquare,
   LayoutGrid,
-  Lock,
   Maximize2,
   Minimize2,
   ShieldCheck,
   ChevronDown,
+  ChevronUp,
   Captions,
   Volume2,
+  Settings,
+  X,
+  Send,
+  Search,
+  Sparkles,
+  VolumeX,
+  Check,
+  Radio,
+  Sliders,
+  HelpCircle,
 } from "lucide-react";
-import { ActiveCallSession, CallState, FloatingReaction } from "./useWebRTCCall";
+import { ActiveCallSession, CallState, FloatingReaction, InCallMessage } from "./useWebRTCCall";
 
 interface ActiveCallOverlayProps {
   session: ActiveCallSession;
@@ -37,6 +47,7 @@ interface ActiveCallOverlayProps {
   handRaised?: boolean;
   remoteHandRaised?: boolean;
   reactions?: FloatingReaction[];
+  inCallMessages?: InCallMessage[];
   myUserName?: string;
   onEndCall: () => void;
   onToggleMute: () => void;
@@ -44,9 +55,21 @@ interface ActiveCallOverlayProps {
   onToggleScreenShare: () => void;
   onSendReaction?: (emoji: string) => void;
   onToggleHandRaise?: () => void;
+  onSendInCallMessage?: (text: string) => void;
+  onChangeAudioInput?: (deviceId: string) => Promise<void>;
+  onChangeVideoInput?: (deviceId: string) => Promise<void>;
 }
 
 const EMOJI_LIST = ["💖", "👍", "🎉", "👏", "😂", "😮", "😢", "🤔", "🔥"];
+
+type StageTheme = "green" | "brown" | "charcoal" | "navy";
+
+const THEME_COLORS: Record<StageTheme, { bg: string; name: string }> = {
+  green: { bg: "#3d5a22", name: "Moss Green (Default)" },
+  brown: { bg: "#382820", name: "Warm Brown" },
+  charcoal: { bg: "#282a2d", name: "Charcoal Slate" },
+  navy: { bg: "#1e2a38", name: "Midnight Navy" },
+};
 
 function formatDuration(totalSeconds: number): string {
   const mins = Math.floor(totalSeconds / 60);
@@ -56,8 +79,7 @@ function formatDuration(totalSeconds: number): string {
 
 /**
  * Isolated duration timer leaf component:
- * Updates ONLY this small text element every second.
- * Zero CPU overhead and ZERO re-renders of the parent overlay or Dashboard!
+ * Updates ONLY this text element every second. ZERO re-renders of the parent overlay!
  */
 const CallDurationDisplay = React.memo(function CallDurationDisplay({
   startedAt,
@@ -98,8 +120,7 @@ const CallDurationDisplay = React.memo(function CallDurationDisplay({
 
 /**
  * Isolated live clock leaf component:
- * Updates its text span once every 10 seconds instead of every second.
- * Prevents re-rendering the parent overlay!
+ * Updates once every 10 seconds. ZERO re-renders of the parent!
  */
 const MeetLiveClock = React.memo(function MeetLiveClock() {
   const [timeStr, setTimeStr] = useState("");
@@ -116,7 +137,7 @@ const MeetLiveClock = React.memo(function MeetLiveClock() {
     return () => clearInterval(interval);
   }, []);
 
-  return <span className="font-mono text-neutral-200 font-semibold">{timeStr || "19:09"}</span>;
+  return <span className="font-mono text-neutral-200 font-semibold">{timeStr || "19:38"}</span>;
 });
 
 const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
@@ -133,25 +154,86 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
   handRaised = false,
   remoteHandRaised = false,
   reactions = [],
-  myUserName = "You",
+  inCallMessages = [],
+  myUserName = "Sabarish Yuvasri",
   onEndCall,
   onToggleMute,
   onToggleVideo,
   onToggleScreenShare,
   onSendReaction,
   onToggleHandRaise,
+  onSendInCallMessage,
+  onChangeAudioInput,
+  onChangeVideoInput,
 }: ActiveCallOverlayProps) {
+  // Modal & Sidebar states
   const [isPipMode, setIsPipMode] = useState(false);
   const [showReactionsBar, setShowReactionsBar] = useState(false);
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [captionsActive, setCaptionsActive] = useState(false);
+  const [showDeviceBar, setShowDeviceBar] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<"audio" | "video" | "general">("audio");
+  const [activeSidebar, setActiveSidebar] = useState<"none" | "people" | "chat" | "info">("none");
+  const [stageTheme, setStageTheme] = useState<StageTheme>("green");
+  const [showHandToast, setShowHandToast] = useState(false);
+  const [inCallText, setInCallText] = useState("");
+  const [peopleSearch, setPeopleSearch] = useState("");
 
+  // Media Devices list
+  const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
+  const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
+  const [selectedMicId, setSelectedMicId] = useState<string>("");
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState<string>("");
+  const [selectedCamId, setSelectedCamId] = useState<string>("");
+  const [showMicDropdown, setShowMicDropdown] = useState(false);
+  const [showSpeakerDropdown, setShowSpeakerDropdown] = useState(false);
+  const [showCamDropdown, setShowCamDropdown] = useState(false);
+
+  // Video and Audio element refs
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const pipRemoteVideoRef = useRef<HTMLVideoElement | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const settingsPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Guarantee remote stream audio playback with dedicated hidden audio tag & autoplay unlocker
+  // Enumerate hardware devices
+  useEffect(() => {
+    async function loadDevices() {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const aIns = devices.filter((d) => d.kind === "audioinput");
+        const aOuts = devices.filter((d) => d.kind === "audiooutput");
+        const vIns = devices.filter((d) => d.kind === "videoinput");
+
+        setAudioInputs(aIns);
+        setAudioOutputs(aOuts);
+        setVideoInputs(vIns);
+
+        if (aIns.length > 0 && !selectedMicId) setSelectedMicId(aIns[0].deviceId);
+        if (aOuts.length > 0 && !selectedSpeakerId) setSelectedSpeakerId(aOuts[0].deviceId);
+        if (vIns.length > 0 && !selectedCamId) setSelectedCamId(vIns[0].deviceId);
+      } catch (err) {
+        console.warn("[WebRTC] Could not enumerate devices:", err);
+      }
+    }
+    loadDevices();
+  }, [selectedMicId, selectedSpeakerId, selectedCamId]);
+
+  // Hand raised toast simulation (Screenshot 2: "It sounds like you've said something, so your hand will be lowered")
+  useEffect(() => {
+    if (handRaised) {
+      const timer = setTimeout(() => {
+        setShowHandToast(true);
+      }, 5000);
+      return () => clearTimeout(timer);
+    } else {
+      setShowHandToast(false);
+    }
+  }, [handRaised]);
+
+  // Audio stream playback & autoplay unlocker
   useEffect(() => {
     if (remoteAudioRef.current && remoteStream) {
       const audioEl = remoteAudioRef.current;
@@ -159,13 +241,8 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
       audioEl.muted = false;
       audioEl.volume = 1.0;
 
-      const tryPlay = () => {
-        audioEl.play().catch(() => {});
-      };
+      audioEl.play().catch(() => {});
 
-      tryPlay();
-
-      // Window-level interaction listener to unlock autoplay immediately on any click or keypress
       const unlockAudio = () => {
         if (remoteAudioRef.current) {
           remoteAudioRef.current.muted = false;
@@ -186,7 +263,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
     }
   }, [remoteStream]);
 
-  // Synchronize main remote video element
+  // Synchronize remote video
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       if (remoteVideoRef.current.srcObject !== remoteStream) {
@@ -196,7 +273,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
     }
   }, [remoteStream, remoteHasVideo, isPipMode]);
 
-  // Synchronize PiP floating remote video element
+  // Synchronize PiP remote video
   useEffect(() => {
     if (pipRemoteVideoRef.current && remoteStream) {
       if (pipRemoteVideoRef.current.srcObject !== remoteStream) {
@@ -206,7 +283,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
     }
   }, [remoteStream, remoteHasVideo, isPipMode]);
 
-  // Synchronize local preview video element
+  // Synchronize local preview
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       if (localVideoRef.current.srcObject !== localStream) {
@@ -216,26 +293,105 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
     }
   }, [localStream, isVideoOff, isScreenSharing]);
 
+  // Synchronize settings modal preview
+  useEffect(() => {
+    if (settingsPreviewVideoRef.current && localStream) {
+      settingsPreviewVideoRef.current.srcObject = localStream;
+      settingsPreviewVideoRef.current.play().catch(() => {});
+    }
+  }, [showSettingsModal, localStream]);
+
+  // Speaker change handler (setSinkId)
+  const handleSpeakerChange = useCallback((deviceId: string) => {
+    setSelectedSpeakerId(deviceId);
+    setShowSpeakerDropdown(false);
+    if (remoteAudioRef.current && (remoteAudioRef.current as any).setSinkId) {
+      (remoteAudioRef.current as any).setSinkId(deviceId).catch(() => {});
+    }
+  }, []);
+
+  // Mic change handler
+  const handleMicChange = useCallback(
+    (deviceId: string) => {
+      setSelectedMicId(deviceId);
+      setShowMicDropdown(false);
+      onChangeAudioInput?.(deviceId);
+    },
+    [onChangeAudioInput]
+  );
+
+  // Camera change handler
+  const handleCameraChange = useCallback(
+    (deviceId: string) => {
+      setSelectedCamId(deviceId);
+      setShowCamDropdown(false);
+      onChangeVideoInput?.(deviceId);
+    },
+    [onChangeVideoInput]
+  );
+
+  // Test sound generator for audio settings
+  const handleTestAudioSound = useCallback(() => {
+    try {
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5 note
+      osc.frequency.setValueAtTime(880.0, ctx.currentTime + 0.15); // A5 note
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.5);
+    } catch {}
+  }, []);
+
+  // Fullscreen toggle
+  const toggleFullScreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+    setShowMoreMenu(false);
+  }, []);
+
+  // Send in-call chat message
+  const handleSendChat = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inCallText.trim()) return;
+    onSendInCallMessage?.(inCallText);
+    setInCallText("");
+  };
+
   const hasLocalVideo = (!isVideoOff || isScreenSharing) && Boolean(localStream?.getVideoTracks().length);
   const isRinging = callState === "outgoing_ringing";
 
-  // Google Meet meeting code slug formatted from session
   const meetingCodeSlug =
     session.sessionId
       .replace(/[^a-zA-Z0-9]/g, "")
       .slice(0, 9)
       .match(/.{1,3}/g)
-      ?.join("-") || "acn-nied-vom";
+      ?.join("-") || "zix-kwri-hwv";
 
-  const friendInitial = session.friendName.charAt(0).toUpperCase() || "S";
-  const myInitial = myUserName.charAt(0).toUpperCase() || "Y";
+  const friendInitial = session.friendName.charAt(0).toLowerCase() || "j";
+  const myInitial = myUserName.charAt(0).toUpperCase() || "S";
 
-  const hiddenAudioElement = (
-    <audio ref={remoteAudioRef} autoPlay playsInline />
-  );
+  // Active Device Names
+  const activeMicName =
+    audioInputs.find((d) => d.deviceId === selectedMicId)?.label ||
+    "MacBook Air Microphone (Built-in)";
+  const activeSpeakerName =
+    audioOutputs.find((d) => d.deviceId === selectedSpeakerId)?.label ||
+    "External Headphones (Built-in)";
+
+  const hiddenAudioElement = <audio ref={remoteAudioRef} autoPlay playsInline />;
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // VIEW 1: GOOGLE MEET PICTURE-IN-PICTURE (PiP) FLOATING MINI-PLAYER (Image 3)
+  // VIEW 1: GOOGLE MEET PICTURE-IN-PICTURE (PiP) FLOATING MINI-PLAYER
   // ══════════════════════════════════════════════════════════════════════════════
   if (isPipMode) {
     return (
@@ -279,12 +435,11 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
           </div>
         </div>
 
-        {/* PiP Center Tile (Google Meet Brown Tile / Live Video) */}
+        {/* PiP Center Tile */}
         <div
           className="flex-1 relative flex items-center justify-center overflow-hidden m-2 rounded-xl"
-          style={{ backgroundColor: "#382820" }}
+          style={{ backgroundColor: THEME_COLORS[stageTheme].bg }}
         >
-          {/* Live Remote Video */}
           <video
             ref={pipRemoteVideoRef}
             autoPlay
@@ -293,7 +448,6 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
             className={`w-full h-full object-contain ${remoteHasVideo ? "block" : "hidden"}`}
           />
 
-          {/* Fallback Google Meet Avatar Tile */}
           {!remoteHasVideo && (
             <div className="flex flex-col items-center justify-center select-none">
               {session.friendImage ? (
@@ -303,7 +457,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
                   className="size-24 rounded-full object-cover shadow-xl border-2 border-white/20"
                 />
               ) : (
-                <div className="size-24 rounded-full bg-[#5f6368] text-white flex items-center justify-center text-3xl font-normal shadow-xl">
+                <div className="size-20 rounded-full bg-[#66bb6a] text-white flex items-center justify-center text-3xl font-medium shadow-xl">
                   {friendInitial}
                 </div>
               )}
@@ -342,7 +496,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
             type="button"
             onClick={onToggleVideo}
             className={`p-2.5 rounded-full transition cursor-pointer ${
-              isVideoOff ? "bg-[#ea4335] text-white" : "bg-[#3c4043] text-white hover:bg-[#474a4d]"
+              isVideoOff ? "bg-[#f9d8d6] text-[#ea4335]" : "bg-[#3c4043] text-white hover:bg-[#474a4d]"
             }`}
             title={isVideoOff ? "Turn on camera" : "Turn off camera"}
           >
@@ -374,7 +528,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
   }
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // VIEW 2: GOOGLE MEET FULL VIEW (Image 2 - Solid High-Performance 120 FPS)
+  // VIEW 2: GOOGLE MEET FULL VIEW (Matches Screenshots 1, 2, 3, and 4)
   // ══════════════════════════════════════════════════════════════════════════════
   return (
     <div
@@ -400,6 +554,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
           </span>
           <button
             type="button"
+            onClick={() => setActiveSidebar(activeSidebar === "info" ? "none" : "info")}
             className="p-1 rounded-full hover:bg-[#3c4043] text-neutral-400 hover:text-white transition cursor-pointer"
             title="Meeting details"
           >
@@ -411,139 +566,448 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
           </div>
         </div>
 
-        {/* Center: Isolated Duration Timer (No parent re-renders!) */}
+        {/* Center: Duration */}
         <div className="flex items-center gap-2">
           <CallDurationDisplay startedAt={session.startedAt} isRinging={isRinging} />
         </div>
 
-        {/* Right: Participant Badge & PiP Minimize Button */}
-        <div className="flex items-center gap-2">
+        {/* Right: Hand Raised Badge (Screenshot 2) & Contributors Badge */}
+        <div className="flex items-center gap-2.5">
+          {/* Green Hand Capsule Badge (Screenshot 2 match) */}
+          {handRaised && (
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#c4eed0] text-[#072711] text-xs font-semibold shadow-sm animate-in fade-in duration-150">
+              <Hand size={14} className="fill-[#072711]" />
+              <span>{myUserName}</span>
+            </div>
+          )}
+
+          {/* Contributors count badge (Screenshot 2: S 2) */}
           <div
+            onClick={() => setActiveSidebar(activeSidebar === "people" ? "none" : "people")}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#3c4043] text-neutral-200 text-xs font-medium cursor-pointer hover:bg-[#474a4d] transition"
-            title="Participants"
+            title="People (2)"
           >
-            <div className="size-5 rounded-full bg-[#5f6368] text-white flex items-center justify-center text-[10px] font-bold">
+            <div className="size-5 rounded-full bg-[#795548] text-white flex items-center justify-center text-[10px] font-bold">
               {myInitial}
             </div>
             <span>2</span>
           </div>
 
+          {/* Minimize to PiP */}
           <button
             type="button"
             onClick={() => setIsPipMode(true)}
             className="p-2 rounded-full hover:bg-[#3c4043] text-neutral-300 hover:text-white transition cursor-pointer"
-            title="Open Picture-in-Picture floating player"
+            title="Open picture-in-picture mode"
           >
             <Minimize2 size={18} />
           </button>
         </div>
       </header>
 
-      {/* ─── Main Meeting Stage (Google Meet Brown Tile) ─── */}
-      <main className="flex-1 relative flex items-center justify-center p-3 sm:p-5 overflow-hidden">
-        <div
-          className="w-full h-full rounded-2xl sm:rounded-3xl relative flex items-center justify-center overflow-hidden shadow-2xl transition-all"
-          style={{ backgroundColor: "#382820" }}
-        >
-          {/* Live Remote Video Stream */}
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            muted
-            className={`w-full h-full object-contain ${remoteHasVideo ? "block" : "hidden"}`}
-            style={{ transform: "translateZ(0)" }}
-          />
+      {/* ─── Main Content Row (Stage + Optional Sidebar) ─── */}
+      <div className="flex-1 relative flex overflow-hidden">
+        {/* Center Meeting Stage (Participant Tile) */}
+        <main className="flex-1 relative flex items-center justify-center p-3 sm:p-5 overflow-hidden">
+          <div
+            className="w-full h-full rounded-2xl sm:rounded-3xl relative flex items-center justify-center overflow-hidden shadow-2xl transition-all"
+            style={{ backgroundColor: THEME_COLORS[stageTheme].bg }}
+          >
+            {/* Live Remote Video Stream */}
+            <video
+              ref={remoteVideoRef}
+              autoPlay
+              playsInline
+              muted
+              className={`w-full h-full object-contain ${remoteHasVideo ? "block" : "hidden"}`}
+              style={{ transform: "translateZ(0)" }}
+            />
 
-          {/* Remote Video OFF: Google Meet Signature Avatar Tile */}
-          {!remoteHasVideo && (
-            <div className="flex flex-col items-center justify-center select-none text-center p-6">
-              <div className="relative flex items-center justify-center mb-3">
-                {session.friendImage ? (
-                  <img
-                    src={session.friendImage}
-                    alt={session.friendName}
-                    className="relative size-28 sm:size-36 rounded-full object-cover shadow-2xl border-4 border-black/20"
-                  />
-                ) : (
-                  <div className="relative size-28 sm:size-36 rounded-full bg-[#5f6368] text-white flex items-center justify-center text-5xl sm:text-6xl font-normal shadow-2xl">
-                    {friendInitial}
-                  </div>
+            {/* Remote Video OFF: Google Meet Signature Avatar Tile (Screenshot 2 Match) */}
+            {!remoteHasVideo && (
+              <div className="flex flex-col items-center justify-center select-none text-center p-6">
+                <div className="relative flex items-center justify-center mb-3">
+                  {session.friendImage ? (
+                    <img
+                      src={session.friendImage}
+                      alt={session.friendName}
+                      className="relative size-28 sm:size-36 rounded-full object-cover shadow-2xl border-4 border-black/20"
+                    />
+                  ) : (
+                    <div className="relative size-28 sm:size-36 rounded-full bg-[#66bb6a] text-white flex items-center justify-center text-5xl sm:text-6xl font-normal shadow-2xl">
+                      {friendInitial}
+                    </div>
+                  )}
+                </div>
+
+                {isRinging && (
+                  <p className="text-sm font-medium text-neutral-300 mt-2 flex items-center gap-1.5">
+                    <Volume2 size={15} />
+                    <span>Ringing...</span>
+                  </p>
                 )}
               </div>
+            )}
 
-              {isRinging && (
-                <p className="text-sm font-medium text-neutral-300 mt-2 flex items-center gap-1.5">
-                  <Volume2 size={15} />
-                  <span>Ringing...</span>
-                </p>
+            {/* Bottom-Left Participant Name Tag (Screenshot 2: "john bernard") */}
+            <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/60 text-white text-sm font-medium shadow-md">
+              <span>
+                {session.friendName}
+                {remoteIsScreenSharing && " (Presentation)"}
+              </span>
+              {remoteIsMuted && (
+                <span className="p-0.5 rounded bg-[#ea4335]/90 text-white">
+                  <MicOff size={13} />
+                </span>
               )}
             </div>
-          )}
 
-          {/* Bottom-Left Participant Name Tag */}
-          <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/60 text-white text-sm font-medium shadow-md">
-            <span>
-              {session.friendName}
-              {remoteIsScreenSharing && " (Presentation)"}
-            </span>
-            {remoteIsMuted && (
-              <span className="p-0.5 rounded bg-[#ea4335]/90 text-white">
-                <MicOff size={13} />
-              </span>
-            )}
-          </div>
-
-          {/* Friend Hand Raised Floating Badge */}
-          {remoteHandRaised && (
-            <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#fbbc04] text-neutral-900 font-bold text-xs shadow-lg">
-              <Hand size={15} />
-              <span>{session.friendName} raised a hand</span>
-            </div>
-          )}
-
-          {/* Floating Emoji Reactions Stream */}
-          <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-            {reactions.map((r) => (
-              <div
-                key={r.id}
-                className="absolute bottom-16 text-3xl sm:text-4xl"
-                style={{
-                  left: `${r.leftPercent}%`,
-                  animation: "floatUp 2.2s ease-out forwards",
-                }}
-              >
-                {r.emoji}
+            {/* Google Meet Hand Lowering Toast (Screenshot 2 match) */}
+            {showHandToast && (
+              <div className="absolute bottom-16 left-4 z-30 flex items-center gap-3 px-4 py-3 rounded-lg bg-[#282a2d] border border-white/10 text-neutral-200 text-xs shadow-2xl animate-in slide-in-from-bottom-2 duration-200">
+                <span>It sounds like you've said something, so your hand will be lowered.</span>
+                <button
+                  type="button"
+                  onClick={() => setShowHandToast(false)}
+                  className="text-[#8ab4f8] hover:text-[#a8c7fa] font-semibold cursor-pointer underline text-xs"
+                >
+                  Keep it raised
+                </button>
               </div>
-            ))}
-          </div>
+            )}
 
-          {/* ─── Self Preview Picture-in-Picture Tile (Bottom-Right) ─── */}
-          <div className="absolute bottom-4 right-4 z-20 w-36 h-28 sm:w-56 sm:h-36 rounded-2xl overflow-hidden shadow-2xl border border-white/10 bg-[#202124] flex items-center justify-center">
-            {hasLocalVideo ? (
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className={`w-full h-full object-cover ${isScreenSharing ? "" : "-scale-x-100"}`}
-                style={{ transform: "translateZ(0)" }}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center">
-                <div className="size-14 rounded-full bg-[#5f6368] text-white flex items-center justify-center text-xl font-medium shadow">
-                  {myInitial}
+            {/* Friend Hand Raised Floating Badge */}
+            {remoteHandRaised && (
+              <div className="absolute top-4 left-4 z-20 flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#c4eed0] text-[#072711] font-bold text-xs shadow-lg animate-bounce">
+                <Hand size={15} className="fill-[#072711]" />
+                <span>{session.friendName} raised a hand</span>
+              </div>
+            )}
+
+            {/* Floating Emoji Reactions Stream */}
+            <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+              {reactions.map((r) => (
+                <div
+                  key={r.id}
+                  className="absolute bottom-16 text-3xl sm:text-4xl"
+                  style={{
+                    left: `${r.leftPercent}%`,
+                    animation: "floatUp 2.2s ease-out forwards",
+                  }}
+                >
+                  {r.emoji}
+                </div>
+              ))}
+            </div>
+
+            {/* ─── Self Preview Picture-in-Picture Tile (Bottom-Right, Screenshot 2 Match) ─── */}
+            <div
+              className="absolute bottom-4 right-4 z-20 w-44 h-28 sm:w-56 sm:h-36 rounded-2xl overflow-hidden shadow-2xl border-2 border-[#f28b82]/40 flex items-center justify-center"
+              style={{ backgroundColor: "#4a3525" }}
+            >
+              {hasLocalVideo ? (
+                <video
+                  ref={localVideoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className={`w-full h-full object-cover ${isScreenSharing ? "" : "-scale-x-100"}`}
+                  style={{ transform: "translateZ(0)" }}
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center">
+                  <div className="size-14 rounded-full bg-[#795548] text-white flex items-center justify-center text-xl font-normal shadow">
+                    {myInitial}
+                  </div>
+                </div>
+              )}
+
+              {/* Bottom tag inside self tile (Screenshot 2: Green hand capsule badge if raised, else name) */}
+              <div className="absolute bottom-2 left-2 z-10 flex items-center gap-1.5">
+                {handRaised ? (
+                  <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#c4eed0] text-[#072711] text-[10px] font-bold shadow-xs">
+                    <Hand size={11} className="fill-[#072711]" />
+                    <span>{myUserName}</span>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded bg-black/70 text-white text-[10px] font-medium flex items-center gap-1">
+                    <span>{isScreenSharing ? "You (Presentation)" : myUserName}</span>
+                    {isMuted && <MicOff size={10} className="text-[#ea4335]" />}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </main>
+
+        {/* ─── Google Meet Right Sidebar (People / Chat / Info) (Screenshot 4) ─── */}
+        {activeSidebar !== "none" && (
+          <aside
+            className="w-80 sm:w-96 bg-[#202124] border-l border-[#3c4043] flex flex-col z-30 shrink-0 animate-in slide-in-from-right duration-150"
+            style={{ contain: "layout paint" }}
+          >
+            {/* Sidebar Header */}
+            <div className="h-16 px-6 flex items-center justify-between border-b border-[#3c4043]/60">
+              <h3 className="text-base font-medium text-neutral-200">
+                {activeSidebar === "people" && "People"}
+                {activeSidebar === "chat" && "In-call messages"}
+                {activeSidebar === "info" && "Meeting details"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActiveSidebar("none")}
+                className="p-1.5 rounded-full hover:bg-[#3c4043] text-neutral-400 hover:text-white transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* ─── SIDEBAR VIEW 1: PEOPLE (Screenshot 4 Match) ─── */}
+            {activeSidebar === "people" && (
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {/* Search Bar (Screenshot 4) */}
+                <div className="relative">
+                  <Search size={16} className="absolute left-3.5 top-3 text-neutral-400" />
+                  <input
+                    type="text"
+                    value={peopleSearch}
+                    onChange={(e) => setPeopleSearch(e.target.value)}
+                    placeholder="Search for people"
+                    className="w-full bg-[#303134] text-neutral-200 text-xs rounded-full pl-9 pr-4 py-2.5 border border-transparent focus:border-[#8ab4f8] outline-hidden placeholder:text-neutral-400"
+                  />
+                </div>
+
+                {/* Section Header */}
+                <div className="text-[11px] font-bold text-neutral-400 tracking-wider uppercase px-2">
+                  In the meeting
+                </div>
+
+                {/* Contributors Accordion (Screenshot 4) */}
+                <div className="rounded-xl border border-[#3c4043]/60 bg-[#282a2d] overflow-hidden">
+                  <div className="px-3.5 py-2.5 flex items-center justify-between text-xs text-neutral-300 font-medium border-b border-[#3c4043]/40">
+                    <span>Contributors</span>
+                    <span className="flex items-center gap-1 text-neutral-400">
+                      2 <ChevronDown size={14} />
+                    </span>
+                  </div>
+
+                  {/* Participant 1: You */}
+                  <div className="p-3 flex items-center justify-between hover:bg-[#303134] transition">
+                    <div className="flex items-center gap-3">
+                      <div className="size-8 rounded-full bg-[#795548] text-white flex items-center justify-center text-xs font-bold">
+                        {myInitial}
+                      </div>
+                      <div className="text-left">
+                        <p className="text-xs font-medium text-neutral-200">
+                          {myUserName} (You)
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-neutral-400">
+                      {isMuted ? <MicOff size={14} className="text-[#ea4335]" /> : <Mic size={14} />}
+                      <MoreVertical size={14} className="cursor-pointer" />
+                    </div>
+                  </div>
+
+                  {/* Participant 2: Friend */}
+                  <div className="p-3 flex items-center justify-between hover:bg-[#303134] transition border-t border-[#3c4043]/40">
+                    <div className="flex items-center gap-3">
+                      <div className="size-8 rounded-full bg-[#66bb6a] text-white flex items-center justify-center text-xs font-bold">
+                        {friendInitial}
+                      </div>
+                      <div className="text-left">
+                        <p className="text-xs font-medium text-neutral-200">
+                          {session.friendName}
+                        </p>
+                        <p className="text-[10px] text-neutral-400">Meeting participant</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-neutral-400">
+                      {remoteIsMuted ? <MicOff size={14} className="text-[#ea4335]" /> : <Mic size={14} />}
+                      <MoreVertical size={14} className="cursor-pointer" />
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
 
-            <div className="absolute bottom-2 left-2 z-10 px-2 py-0.5 rounded bg-black/70 text-white text-[11px] font-medium flex items-center gap-1">
-              <span>{isScreenSharing ? "You (Presentation)" : "You"}</span>
-              {isMuted && <MicOff size={11} className="text-[#ea4335]" />}
-            </div>
+            {/* ─── SIDEBAR VIEW 2: IN-CALL MESSAGES / CHAT ─── */}
+            {activeSidebar === "chat" && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                <div className="p-3 text-[11px] text-neutral-400 bg-[#282a2d] border-b border-[#3c4043] leading-relaxed text-center">
+                  Messages can only be seen by people in the call and are deleted when the call ends.
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {inCallMessages.length === 0 ? (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-neutral-400 text-xs">
+                      <MessageSquare size={32} className="opacity-40 mb-2" />
+                      <p>No messages yet</p>
+                      <p className="text-[11px] text-neutral-500 mt-0.5">Send a message to your friend</p>
+                    </div>
+                  ) : (
+                    inCallMessages.map((msg) => {
+                      const isMe = msg.senderId === session.friendId ? false : true;
+                      return (
+                        <div
+                          key={msg.id}
+                          className={`flex flex-col text-left ${isMe ? "items-end" : "items-start"}`}
+                        >
+                          <div className="flex items-center gap-1 text-[10px] text-neutral-400 mb-0.5">
+                            <span className="font-medium text-neutral-300">{msg.senderName}</span>
+                            <span>•</span>
+                            <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                          </div>
+                          <div
+                            className={`p-2.5 px-3 rounded-2xl text-xs max-w-[85%] break-words ${
+                              isMe
+                                ? "bg-[#8ab4f8] text-[#202124] rounded-tr-xs"
+                                : "bg-[#303134] text-neutral-200 rounded-tl-xs"
+                            }`}
+                          >
+                            {msg.text}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* Message Input */}
+                <form
+                  onSubmit={handleSendChat}
+                  className="p-3 border-t border-[#3c4043] flex items-center gap-2 bg-[#202124]"
+                >
+                  <input
+                    type="text"
+                    value={inCallText}
+                    onChange={(e) => setInCallText(e.target.value)}
+                    placeholder="Send a message to everyone"
+                    className="flex-1 bg-[#303134] text-neutral-200 text-xs rounded-full px-4 py-2.5 outline-hidden focus:border-[#8ab4f8] border border-transparent placeholder:text-neutral-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!inCallText.trim()}
+                    className="p-2.5 rounded-full bg-[#8ab4f8] text-[#202124] hover:bg-[#a8c7fa] disabled:opacity-40 disabled:hover:bg-[#8ab4f8] transition cursor-pointer"
+                  >
+                    <Send size={15} />
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {/* ─── SIDEBAR VIEW 3: MEETING INFO ─── */}
+            {activeSidebar === "info" && (
+              <div className="flex-1 p-5 text-left space-y-4 text-xs text-neutral-300">
+                <div>
+                  <h4 className="font-semibold text-neutral-200 text-sm mb-1">Joining info</h4>
+                  <p className="font-mono text-neutral-400">meet.google.com/{meetingCodeSlug}</p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-[#282a2d] border border-white/5 space-y-1.5">
+                  <div className="flex items-center gap-2 text-emerald-400 font-medium">
+                    <ShieldCheck size={16} />
+                    <span>Zero Database Storage</span>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 leading-relaxed">
+                    Calls are peer-to-peer encrypted directly between your devices. No video, audio, or messages are ever recorded or saved on any servers.
+                  </p>
+                </div>
+              </div>
+            )}
+          </aside>
+        )}
+      </div>
+
+      {/* ─── Device Selection Floating Bar (Screenshot 1 Match) ─── */}
+      {showDeviceBar && (
+        <div className="mx-auto mb-2 px-4 py-2.5 rounded-2xl bg-[#171717] border border-[#3c4043] shadow-2xl flex items-center gap-3 z-30 animate-in slide-in-from-bottom-2 duration-150">
+          {/* Mic Selector Pill */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowMicDropdown(!showMicDropdown);
+                setShowSpeakerDropdown(false);
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#202124] hover:bg-[#303134] text-xs text-neutral-200 border border-[#3c4043] transition cursor-pointer max-w-[220px]"
+            >
+              <Mic size={14} className="text-[#8ab4f8] shrink-0" />
+              <span className="truncate">{activeMicName}</span>
+              <ChevronDown size={14} className="shrink-0 text-neutral-400" />
+            </button>
+
+            {showMicDropdown && (
+              <div className="absolute bottom-full mb-2 left-0 w-64 bg-[#303134] border border-[#3c4043] rounded-xl shadow-2xl overflow-hidden py-1 z-40 text-left text-xs">
+                {audioInputs.length === 0 ? (
+                  <div className="p-2.5 text-neutral-400">Default Microphone</div>
+                ) : (
+                  audioInputs.map((d) => (
+                    <button
+                      key={d.deviceId}
+                      type="button"
+                      onClick={() => handleMicChange(d.deviceId)}
+                      className="w-full px-3 py-2 text-left hover:bg-[#3c4043] flex items-center justify-between text-neutral-200 cursor-pointer"
+                    >
+                      <span className="truncate">{d.label || `Microphone ${d.deviceId.slice(0, 5)}`}</span>
+                      {selectedMicId === d.deviceId && <Check size={14} className="text-[#8ab4f8]" />}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Speaker Selector Pill */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => {
+                setShowSpeakerDropdown(!showSpeakerDropdown);
+                setShowMicDropdown(false);
+              }}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#202124] hover:bg-[#303134] text-xs text-neutral-200 border border-[#3c4043] transition cursor-pointer max-w-[220px]"
+            >
+              <Volume2 size={14} className="text-[#8ab4f8] shrink-0" />
+              <span className="truncate">{activeSpeakerName}</span>
+              <ChevronDown size={14} className="shrink-0 text-neutral-400" />
+            </button>
+
+            {showSpeakerDropdown && (
+              <div className="absolute bottom-full mb-2 left-0 w-64 bg-[#303134] border border-[#3c4043] rounded-xl shadow-2xl overflow-hidden py-1 z-40 text-left text-xs">
+                {audioOutputs.length === 0 ? (
+                  <div className="p-2.5 text-neutral-400">Default Speaker / Headphones</div>
+                ) : (
+                  audioOutputs.map((d) => (
+                    <button
+                      key={d.deviceId}
+                      type="button"
+                      onClick={() => handleSpeakerChange(d.deviceId)}
+                      className="w-full px-3 py-2 text-left hover:bg-[#3c4043] flex items-center justify-between text-neutral-200 cursor-pointer"
+                    >
+                      <span className="truncate">{d.label || `Speaker ${d.deviceId.slice(0, 5)}`}</span>
+                      {selectedSpeakerId === d.deviceId && <Check size={14} className="text-[#8ab4f8]" />}
+                    </button>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Settings Gear */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowSettingsModal(true);
+              setShowDeviceBar(false);
+            }}
+            className="p-2 rounded-full hover:bg-[#303134] text-neutral-300 hover:text-white transition cursor-pointer"
+            title="Audio & Video Settings"
+          >
+            <Settings size={16} />
+          </button>
         </div>
-      </main>
+      )}
 
       {/* ─── Floating Emojis Picker Bar ─── */}
       {showReactionsBar && (
@@ -566,49 +1030,74 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
         </div>
       )}
 
-      {/* ─── Google Meet Bottom Control Toolbar ─── */}
+      {/* ─── Google Meet Bottom Control Toolbar (Exact Match to Screenshot 1 & 2) ─── */}
       <footer className="h-20 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 relative bg-[#202124]">
-        {/* Left Space (Meeting details) */}
+        {/* Left Space (Meeting details code) */}
         <div className="hidden lg:flex items-center gap-2 text-xs text-neutral-400 font-mono">
           <span>{meetingCodeSlug}</span>
         </div>
 
-        {/* Center: Google Meet Signature Control Buttons */}
+        {/* Center: Google Meet Controls (Screenshot 1 & 2 Match) */}
         <div className="flex items-center justify-center gap-2 sm:gap-3 mx-auto">
+          {/* Quick Audio Chevron */}
           <button
             type="button"
+            onClick={() => setShowDeviceBar(!showDeviceBar)}
             className="hidden sm:flex items-center justify-center size-10 rounded-full text-neutral-400 hover:text-white hover:bg-[#3c4043] transition cursor-pointer"
-            title="Audio settings"
+            title="Audio & Video Devices"
           >
-            <ChevronDown size={18} />
+            {showDeviceBar ? <ChevronDown size={18} /> : <ChevronUp size={18} />}
           </button>
 
-          <button
-            type="button"
-            onClick={onToggleMute}
-            className={`size-12 rounded-full flex items-center justify-center transition shadow cursor-pointer active:scale-95 ${
-              isMuted
-                ? "bg-[#ea4335] text-white hover:bg-[#d93025]"
-                : "bg-[#3c4043] text-white hover:bg-[#474a4d]"
-            }`}
-            title={isMuted ? "Turn on microphone" : "Turn off microphone"}
-          >
-            {isMuted ? <MicOff size={20} /> : <Mic size={20} />}
-          </button>
+          {/* Split / Combined Microphone Button (Screenshot 1: Chevron + Mic) */}
+          <div className="flex items-center rounded-full bg-[#3c4043] p-0.5">
+            <button
+              type="button"
+              onClick={() => setShowDeviceBar(!showDeviceBar)}
+              className="p-2.5 rounded-l-full hover:bg-[#474a4d] text-neutral-300 transition cursor-pointer"
+              title="Microphone settings"
+            >
+              <ChevronUp size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleMute}
+              className={`size-11 rounded-full flex items-center justify-center transition shadow cursor-pointer active:scale-95 ${
+                isMuted
+                  ? "bg-[#ea4335] text-white hover:bg-[#d93025]"
+                  : "bg-transparent text-white hover:bg-[#474a4d]"
+              }`}
+              title={isMuted ? "Turn on microphone" : "Turn off microphone"}
+            >
+              {isMuted ? <MicOff size={19} /> : <Mic size={19} />}
+            </button>
+          </div>
 
-          <button
-            type="button"
-            onClick={onToggleVideo}
-            className={`size-12 rounded-full flex items-center justify-center transition shadow cursor-pointer active:scale-95 ${
-              isVideoOff
-                ? "bg-[#ea4335] text-white hover:bg-[#d93025]"
-                : "bg-[#3c4043] text-white hover:bg-[#474a4d]"
-            }`}
-            title={isVideoOff ? "Turn on camera" : "Turn off camera"}
-          >
-            {isVideoOff ? <VideoOff size={20} /> : <Video size={20} />}
-          </button>
+          {/* Split / Combined Camera Button (Screenshot 1: Chevron + Light Red Pill when Off) */}
+          <div className="flex items-center rounded-full bg-[#3c4043] p-0.5">
+            <button
+              type="button"
+              onClick={() => setShowCamDropdown(!showCamDropdown)}
+              className="p-2.5 rounded-l-full hover:bg-[#474a4d] text-neutral-300 transition cursor-pointer"
+              title="Camera settings"
+            >
+              <ChevronUp size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleVideo}
+              className={`h-11 px-3.5 rounded-full flex items-center justify-center transition shadow cursor-pointer active:scale-95 ${
+                isVideoOff
+                  ? "bg-[#f9d8d6] text-[#ea4335] hover:bg-[#fbd0cd]"
+                  : "bg-transparent text-white hover:bg-[#474a4d]"
+              }`}
+              title={isVideoOff ? "Turn on camera" : "Turn off camera"}
+            >
+              {isVideoOff ? <VideoOff size={19} /> : <Video size={19} />}
+            </button>
+          </div>
 
+          {/* Screen Share Button */}
           <button
             type="button"
             onClick={onToggleScreenShare}
@@ -619,9 +1108,10 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
             }`}
             title={isScreenSharing ? "Stop presenting" : "Present screen (with audio)"}
           >
-            <MonitorUp size={20} />
+            <MonitorUp size={19} />
           </button>
 
+          {/* Reactions Button */}
           <button
             type="button"
             onClick={() => setShowReactionsBar(!showReactionsBar)}
@@ -632,9 +1122,10 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
             }`}
             title="Send a reaction"
           >
-            <Smile size={20} />
+            <Smile size={19} />
           </button>
 
+          {/* Closed Captions Button (CC) */}
           <button
             type="button"
             onClick={() => setCaptionsActive(!captionsActive)}
@@ -645,31 +1136,134 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
             }`}
             title={captionsActive ? "Turn off captions" : "Turn on captions"}
           >
-            <Captions size={20} />
+            <Captions size={19} />
           </button>
 
+          {/* Hand Raise Button (Screenshot 2: Filled Light Blue #a8c7fa when raised!) */}
           <button
             type="button"
             onClick={onToggleHandRaise}
             className={`size-12 rounded-full flex items-center justify-center transition shadow cursor-pointer active:scale-95 ${
               handRaised
-                ? "bg-[#fbbc04] text-neutral-900"
+                ? "bg-[#a8c7fa] text-[#041e49]"
                 : "bg-[#3c4043] text-white hover:bg-[#474a4d]"
             }`}
             title={handRaised ? "Lower hand" : "Raise hand"}
           >
-            <Hand size={20} />
+            <Hand size={19} className={handRaised ? "fill-[#041e49]" : ""} />
           </button>
 
-          <button
-            type="button"
-            onClick={() => setShowMoreMenu(!showMoreMenu)}
-            className="hidden sm:flex size-12 rounded-full items-center justify-center bg-[#3c4043] text-white hover:bg-[#474a4d] transition shadow cursor-pointer"
-            title="More options"
-          >
-            <MoreVertical size={20} />
-          </button>
+          {/* More Options Button (Opens Screenshot 3 Menu) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowMoreMenu(!showMoreMenu)}
+              className="size-12 rounded-full flex items-center justify-center bg-[#3c4043] text-white hover:bg-[#474a4d] transition shadow cursor-pointer"
+              title="More options"
+            >
+              <MoreVertical size={19} />
+            </button>
 
+            {/* ─── More Options Popup Menu (Screenshot 3 Match) ─── */}
+            {showMoreMenu && (
+              <div
+                className="absolute bottom-full mb-3 right-0 w-72 bg-[#282a2d] border border-[#3c4043] rounded-2xl shadow-2xl py-2 z-50 text-left text-xs text-neutral-200 overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+                style={{ contain: "layout paint" }}
+              >
+                {/* Disabled Header: Recording unavailable (Screenshot 3 match) */}
+                <div className="px-4 py-2.5 flex items-start gap-3 border-b border-[#3c4043]/60 opacity-60">
+                  <Radio size={16} className="mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-semibold text-neutral-300">Recording unavailable</p>
+                    <p className="text-[10px] text-neutral-400">You're not allowed to record this video call</p>
+                  </div>
+                </div>
+
+                {/* Menu Items (Screenshot 3 match) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreMenu(false);
+                  }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-[#35373a] transition cursor-pointer"
+                >
+                  <LayoutGrid size={16} className="text-neutral-400" />
+                  <span>Adjust view</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={toggleFullScreen}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-[#35373a] transition cursor-pointer"
+                >
+                  <Maximize2 size={16} className="text-neutral-400" />
+                  <span>Full screen</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPipMode(true);
+                    setShowMoreMenu(false);
+                  }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-[#35373a] transition cursor-pointer"
+                >
+                  <Minimize2 size={16} className="text-neutral-400" />
+                  <span>Open picture-in-picture mode</span>
+                </button>
+
+                {/* Backgrounds & effects theme switcher (Screenshot 3 match) */}
+                <div className="px-4 py-2 hover:bg-[#35373a] transition">
+                  <div className="flex items-center gap-3 mb-1.5">
+                    <Sparkles size={16} className="text-neutral-400" />
+                    <span>Backgrounds and effects</span>
+                  </div>
+                  <div className="flex items-center gap-2 pl-7">
+                    {(Object.keys(THEME_COLORS) as StageTheme[]).map((thm) => (
+                      <button
+                        key={thm}
+                        type="button"
+                        onClick={() => setStageTheme(thm)}
+                        className={`size-6 rounded-full border-2 transition cursor-pointer ${
+                          stageTheme === thm ? "border-white scale-110" : "border-transparent opacity-70"
+                        }`}
+                        style={{ backgroundColor: THEME_COLORS[thm].bg }}
+                        title={THEME_COLORS[thm].name}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                <div className="my-1 border-t border-[#3c4043]/60" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveSidebar("chat");
+                    setShowMoreMenu(false);
+                  }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-[#35373a] transition cursor-pointer"
+                >
+                  <MessageSquare size={16} className="text-neutral-400" />
+                  <span>In-call messages</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSettingsModal(true);
+                    setShowMoreMenu(false);
+                  }}
+                  className="w-full px-4 py-2.5 flex items-center gap-3 hover:bg-[#35373a] transition cursor-pointer"
+                >
+                  <Settings size={16} className="text-neutral-400" />
+                  <span>Settings</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* End Call Red Pill Button */}
           <button
             type="button"
             onClick={onEndCall}
@@ -680,47 +1274,259 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
           </button>
         </div>
 
-        {/* Right Utility Icons */}
-        <div className="hidden lg:flex items-center gap-3 text-neutral-400">
+        {/* Right Utility Icons (Screenshot 2 & 4: Info, People, Chat, Activities) */}
+        <div className="hidden lg:flex items-center gap-2.5 text-neutral-400">
           <button
             type="button"
-            className="p-2.5 rounded-full hover:bg-[#3c4043] hover:text-white transition cursor-pointer"
+            onClick={() => setActiveSidebar(activeSidebar === "info" ? "none" : "info")}
+            className={`p-2.5 rounded-full transition cursor-pointer ${
+              activeSidebar === "info" ? "bg-[#3c4043] text-white" : "hover:bg-[#3c4043] hover:text-white"
+            }`}
             title="Meeting details"
           >
             <Info size={19} />
           </button>
+
           <button
             type="button"
-            className="p-2.5 rounded-full hover:bg-[#3c4043] hover:text-white transition cursor-pointer relative"
+            onClick={() => setActiveSidebar(activeSidebar === "people" ? "none" : "people")}
+            className={`p-2.5 rounded-full transition cursor-pointer ${
+              activeSidebar === "people" ? "bg-[#3c4043] text-white" : "hover:bg-[#3c4043] hover:text-white"
+            }`}
             title="People (2)"
           >
             <Users size={19} />
           </button>
+
           <button
             type="button"
-            className="p-2.5 rounded-full hover:bg-[#3c4043] hover:text-white transition cursor-pointer"
+            onClick={() => setActiveSidebar(activeSidebar === "chat" ? "none" : "chat")}
+            className={`p-2.5 rounded-full transition cursor-pointer ${
+              activeSidebar === "chat" ? "bg-[#3c4043] text-white" : "hover:bg-[#3c4043] hover:text-white"
+            }`}
             title="Chat with everyone"
           >
             <MessageSquare size={19} />
           </button>
+
           <button
             type="button"
+            onClick={() => setShowDeviceBar(!showDeviceBar)}
             className="p-2.5 rounded-full hover:bg-[#3c4043] hover:text-white transition cursor-pointer"
-            title="Activities"
+            title="Activities & Audio tools"
           >
             <LayoutGrid size={19} />
-          </button>
-          <button
-            type="button"
-            className="p-2.5 rounded-full hover:bg-[#3c4043] hover:text-white transition cursor-pointer"
-            title="Host controls"
-          >
-            <Lock size={19} />
           </button>
         </div>
       </footer>
 
-      {/* Floating Reaction Emojis Animation */}
+      {/* ─── Google Meet Settings Modal (Audio, Video, General) ─── */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in duration-150">
+          <div
+            className="w-full max-w-2xl bg-[#282a2d] border border-[#3c4043] rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh] text-left text-neutral-200"
+            style={{ contain: "layout paint" }}
+          >
+            {/* Header */}
+            <div className="h-16 px-6 flex items-center justify-between border-b border-[#3c4043]/60">
+              <h3 className="text-base font-semibold text-neutral-100 flex items-center gap-2">
+                <Settings size={18} className="text-[#8ab4f8]" />
+                <span>Settings</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="p-1.5 rounded-full hover:bg-[#3c4043] text-neutral-400 hover:text-white transition cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body: Left Tab Nav + Right Content */}
+            <div className="flex-1 flex overflow-hidden">
+              {/* Left Tabs */}
+              <div className="w-48 bg-[#202124] border-r border-[#3c4043]/60 p-3 space-y-1">
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("audio")}
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2.5 transition cursor-pointer ${
+                    settingsTab === "audio" ? "bg-[#3c4043] text-white" : "text-neutral-400 hover:bg-[#303134]"
+                  }`}
+                >
+                  <Mic size={15} />
+                  <span>Audio</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("video")}
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2.5 transition cursor-pointer ${
+                    settingsTab === "video" ? "bg-[#3c4043] text-white" : "text-neutral-400 hover:bg-[#303134]"
+                  }`}
+                >
+                  <Video size={15} />
+                  <span>Video</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSettingsTab("general")}
+                  className={`w-full px-3.5 py-2.5 rounded-xl text-xs font-medium flex items-center gap-2.5 transition cursor-pointer ${
+                    settingsTab === "general" ? "bg-[#3c4043] text-white" : "text-neutral-400 hover:bg-[#303134]"
+                  }`}
+                >
+                  <Sliders size={15} />
+                  <span>General</span>
+                </button>
+              </div>
+
+              {/* Right Settings Panel */}
+              <div className="flex-1 p-6 overflow-y-auto space-y-6 text-xs text-neutral-300">
+                {/* ─── TAB 1: AUDIO SETTINGS ─── */}
+                {settingsTab === "audio" && (
+                  <>
+                    <div>
+                      <label className="block text-neutral-400 font-medium mb-2">Microphone</label>
+                      <div className="flex items-center gap-3">
+                        <select
+                          value={selectedMicId}
+                          onChange={(e) => handleMicChange(e.target.value)}
+                          className="flex-1 bg-[#303134] border border-[#3c4043] rounded-xl px-3.5 py-2.5 text-xs text-neutral-200 outline-hidden"
+                        >
+                          {audioInputs.map((d) => (
+                            <option key={d.deviceId} value={d.deviceId}>
+                              {d.label || `Microphone ${d.deviceId.slice(0, 5)}`}
+                            </option>
+                          ))}
+                        </select>
+                        {/* Audio input green level dots */}
+                        <div className="flex items-center gap-1 px-3 py-2 bg-[#303134] rounded-xl border border-[#3c4043]">
+                          <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                          <span className="size-2 rounded-full bg-emerald-500/40" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-neutral-400 font-medium mb-2">Speakers</label>
+                      <div className="flex items-center gap-3">
+                        <select
+                          value={selectedSpeakerId}
+                          onChange={(e) => handleSpeakerChange(e.target.value)}
+                          className="flex-1 bg-[#303134] border border-[#3c4043] rounded-xl px-3.5 py-2.5 text-xs text-neutral-200 outline-hidden"
+                        >
+                          {audioOutputs.map((d) => (
+                            <option key={d.deviceId} value={d.deviceId}>
+                              {d.label || `Speaker ${d.deviceId.slice(0, 5)}`}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handleTestAudioSound}
+                          className="px-4 py-2.5 rounded-xl bg-[#3c4043] hover:bg-[#474a4d] text-neutral-200 text-xs font-semibold transition cursor-pointer"
+                        >
+                          Test
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-[#202124] border border-[#3c4043]/50 flex items-center justify-between">
+                      <div>
+                        <p className="font-medium text-neutral-200">Noise cancellation</p>
+                        <p className="text-[11px] text-neutral-400 mt-0.5">Filters out sound that isn't speech</p>
+                      </div>
+                      <div className="size-5 rounded-full bg-[#8ab4f8] flex items-center justify-center">
+                        <Check size={12} className="text-[#202124] stroke-[3]" />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ─── TAB 2: VIDEO SETTINGS ─── */}
+                {settingsTab === "video" && (
+                  <>
+                    <div>
+                      <label className="block text-neutral-400 font-medium mb-2">Camera</label>
+                      <select
+                        value={selectedCamId}
+                        onChange={(e) => handleCameraChange(e.target.value)}
+                        className="w-full bg-[#303134] border border-[#3c4043] rounded-xl px-3.5 py-2.5 text-xs text-neutral-200 outline-hidden"
+                      >
+                        {videoInputs.map((d) => (
+                          <option key={d.deviceId} value={d.deviceId}>
+                            {d.label || `Camera ${d.deviceId.slice(0, 5)}`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-neutral-400 font-medium mb-2">Send resolution</label>
+                        <select className="w-full bg-[#303134] border border-[#3c4043] rounded-xl px-3.5 py-2 text-xs text-neutral-200 outline-hidden">
+                          <option>High definition (720p)</option>
+                          <option>Standard definition (360p)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-neutral-400 font-medium mb-2">Receive resolution</label>
+                        <select className="w-full bg-[#303134] border border-[#3c4043] rounded-xl px-3.5 py-2 text-xs text-neutral-200 outline-hidden">
+                          <option>High definition (720p)</option>
+                          <option>Standard definition (360p)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Camera preview tile */}
+                    <div>
+                      <p className="text-neutral-400 font-medium mb-2">Video preview</p>
+                      <div className="w-full h-36 rounded-2xl bg-[#171717] border border-[#3c4043] overflow-hidden flex items-center justify-center">
+                        {localStream && !isVideoOff ? (
+                          <video
+                            ref={settingsPreviewVideoRef}
+                            autoPlay
+                            playsInline
+                            muted
+                            className="w-full h-full object-cover -scale-x-100"
+                          />
+                        ) : (
+                          <p className="text-neutral-500">Camera is off</p>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* ─── TAB 3: GENERAL SETTINGS ─── */}
+                {settingsTab === "general" && (
+                  <div className="space-y-4 text-xs leading-relaxed">
+                    <div className="p-4 rounded-2xl bg-[#202124] border border-[#3c4043]/50 space-y-2">
+                      <div className="flex items-center gap-2 text-emerald-400 font-semibold text-sm">
+                        <ShieldCheck size={18} />
+                        <span>Peer-to-Peer Encrypted</span>
+                      </div>
+                      <p className="text-neutral-300">
+                        Calls connect directly between users using encrypted WebRTC datagrams. No calls are recorded, stored, or sent through central audio logging databases.
+                      </p>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-[#202124] border border-[#3c4043]/50 space-y-1">
+                      <p className="font-semibold text-neutral-200">120 FPS Gaming Optimization</p>
+                      <p className="text-neutral-400 text-[11px]">
+                        Opus 32kbps CBR mono voice codec is active. Background video capture and GPU compositing are disabled on voice calls.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Reaction Emojis CSS Animation */}
       <style>{`
         @keyframes floatUp {
           0% {

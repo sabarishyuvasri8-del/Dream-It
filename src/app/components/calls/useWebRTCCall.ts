@@ -30,6 +30,14 @@ export interface FloatingReaction {
   leftPercent: number;
 }
 
+export interface InCallMessage {
+  id: string;
+  senderId: string;
+  senderName: string;
+  text: string;
+  timestamp: number;
+}
+
 const ICE_SERVERS: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
@@ -66,6 +74,7 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
   const [handRaised, setHandRaised] = useState(false);
   const [remoteHandRaised, setRemoteHandRaised] = useState(false);
   const [reactions, setReactions] = useState<FloatingReaction[]>([]);
+  const [inCallMessages, setInCallMessages] = useState<InCallMessage[]>([]);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
@@ -165,6 +174,7 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
     setRemoteIsMuted(false);
     setHandRaised(false);
     setRemoteHandRaised(false);
+    setInCallMessages([]);
     setActiveSession(null);
     setIncomingCall(null);
   }, []);
@@ -439,6 +449,11 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
               }, 2500);
             }
           })
+          .on("broadcast", { event: "in-call-message" }, ({ payload }: { payload: InCallMessage }) => {
+            if (payload?.text) {
+              setInCallMessages((prev) => [...prev, payload]);
+            }
+          })
           .on("broadcast", { event: "call-reject" }, () => {
             callAudio.playEndCallChime();
             cleanupMediaAndPeer();
@@ -627,6 +642,11 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
             setTimeout(() => {
               setReactions((prev) => prev.filter((r) => r.id !== reactionItem.id));
             }, 2500);
+          }
+        })
+        .on("broadcast", { event: "in-call-message" }, ({ payload }: { payload: InCallMessage }) => {
+          if (payload?.text) {
+            setInCallMessages((prev) => [...prev, payload]);
           }
         })
         .on("broadcast", { event: "call-hangup" }, () => {
@@ -1016,6 +1036,97 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
     };
   }, [cleanupMediaAndPeer]);
 
+  /**
+   * Send ephemeral in-call chat message
+   */
+  const sendInCallMessage = useCallback(
+    (text: string) => {
+      if (!text.trim() || !sessionChannelRef.current) return;
+      const msg: InCallMessage = {
+        id: `${Date.now()}-${Math.random()}`,
+        senderId: userId,
+        senderName: userNameDisplay,
+        text: text.trim(),
+        timestamp: Date.now(),
+      };
+      setInCallMessages((prev) => [...prev, msg]);
+      sessionChannelRef.current.send({
+        type: "broadcast",
+        event: "in-call-message",
+        payload: msg,
+      });
+    },
+    [userId, userNameDisplay]
+  );
+
+  /**
+   * Switch active microphone
+   */
+  const changeAudioInput = useCallback(
+    async (deviceId: string) => {
+      if (!pcRef.current) return;
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: { exact: deviceId },
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: false,
+            channelCount: 1,
+          },
+        });
+        const newTrack = newStream.getAudioTracks()[0];
+        if (rawMicTrackRef.current) {
+          rawMicTrackRef.current.stop();
+        }
+        rawMicTrackRef.current = newTrack;
+        const audioSender = getAudioSender(pcRef.current);
+        if (audioSender) {
+          await audioSender.replaceTrack(newTrack);
+        }
+      } catch (err) {
+        console.warn("[WebRTC] Could not switch mic:", err);
+      }
+    },
+    [getAudioSender]
+  );
+
+  /**
+   * Switch active camera
+   */
+  const changeVideoInput = useCallback(
+    async (deviceId: string) => {
+      if (!pcRef.current || isVideoOff) return;
+      try {
+        const newStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            deviceId: { exact: deviceId },
+            width: { ideal: 1280, max: 1280 },
+            height: { ideal: 720, max: 720 },
+            frameRate: { ideal: 24, max: 30 },
+          },
+        });
+        const newTrack = newStream.getVideoTracks()[0];
+        if (rawCamTrackRef.current) {
+          rawCamTrackRef.current.stop();
+        }
+        rawCamTrackRef.current = newTrack;
+        const videoSender = getVideoSender(pcRef.current);
+        if (videoSender) {
+          await videoSender.replaceTrack(newTrack);
+        }
+        const tracks = [newTrack];
+        if (rawMicTrackRef.current) tracks.push(rawMicTrackRef.current);
+        const composite = new MediaStream(tracks);
+        localStreamRef.current = composite;
+        setLocalStream(composite);
+      } catch (err) {
+        console.warn("[WebRTC] Could not switch camera:", err);
+      }
+    },
+    [isVideoOff, getVideoSender]
+  );
+
   return {
     callState,
     activeSession,
@@ -1031,6 +1142,7 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
     handRaised,
     remoteHandRaised,
     reactions,
+    inCallMessages,
     startCall,
     acceptCall,
     declineCall,
@@ -1040,5 +1152,8 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
     toggleScreenShare,
     sendReaction,
     toggleHandRaise,
+    sendInCallMessage,
+    changeAudioInput,
+    changeVideoInput,
   };
 }
