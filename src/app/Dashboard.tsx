@@ -132,6 +132,9 @@ import InboxModal from "./components/InboxModal";
 import FriendsModal from "./components/FriendsModal";
 import { useAppStore } from "../lib/store";
 import ChatModal from "./components/ChatModal";
+import { useWebRTCCall } from "./components/calls/useWebRTCCall";
+import IncomingCallModal from "./components/calls/IncomingCallModal";
+import ActiveCallOverlay from "./components/calls/ActiveCallOverlay";
 import { AIThinkingStatus } from "./components/AIThinkingStatus";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { OfflineSyncIndicator } from "./components/OfflineSyncIndicator";
@@ -620,6 +623,9 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     const namePart = userEmail.split("@")[0];
     return namePart.charAt(0).toUpperCase() + namePart.slice(1);
   }, [userName, userEmail]);
+
+  // ─── P2P WebRTC Friends Calling (Zero Storage) ───
+  const callManager = useWebRTCCall(userId, userNameDisplay, userImageUrl);
 
   // ─── XP Helper ───
   const addXP = useCallback((amount: number) => {
@@ -6655,12 +6661,41 @@ Mathematics:
           userNameDisplay={userNameDisplay}
           friends={friends}
           onClose={() => setChatModalOpen(false)}
+          onStartCall={(friendId, friendName, friendImage, callType) => {
+            callManager.startCall(friendId, friendName, friendImage, callType);
+          }}
           onRefreshUnreadCount={async () => {
             if (userId) {
               const count = await fetchUnreadMessageCount(userId);
               setUnreadMessageCount(count);
             }
           }}
+        />
+      )}
+
+      {/* ─── P2P WebRTC Calling (Zero Storage) ─── */}
+      {callManager.incomingCall && (
+        <IncomingCallModal
+          incomingCall={callManager.incomingCall}
+          onAccept={callManager.acceptCall}
+          onDecline={callManager.declineCall}
+        />
+      )}
+
+      {(callManager.callState === "connected" || callManager.callState === "outgoing_ringing") && callManager.activeSession && (
+        <ActiveCallOverlay
+          session={callManager.activeSession}
+          callState={callManager.callState}
+          localStream={callManager.localStream}
+          remoteStream={callManager.remoteStream}
+          isMuted={callManager.isMuted}
+          isVideoOff={callManager.isVideoOff}
+          isScreenSharing={callManager.isScreenSharing}
+          durationSeconds={callManager.callDuration}
+          onEndCall={callManager.endCall}
+          onToggleMute={callManager.toggleMute}
+          onToggleVideo={callManager.toggleVideo}
+          onToggleScreenShare={callManager.toggleScreenShare}
         />
       )}
 

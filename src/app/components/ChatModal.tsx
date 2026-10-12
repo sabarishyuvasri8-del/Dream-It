@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File as FileIcon, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic } from "lucide-react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File as FileIcon, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic, Phone, Video } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -45,6 +45,7 @@ interface ChatModalProps {
   friends: Friendship[];
   onClose: () => void;
   onRefreshUnreadCount?: () => void;
+  onStartCall?: (friendId: string, friendName: string, friendImage: string | undefined, callType: "audio" | "video") => void;
 }
 
 export default function ChatModal({
@@ -53,6 +54,7 @@ export default function ChatModal({
   friends,
   onClose,
   onRefreshUnreadCount,
+  onStartCall,
 }: ChatModalProps) {
   const [activeFriend, setActiveFriend] = useState<Friendship | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
@@ -794,6 +796,37 @@ export default function ChatModal({
                 )}
               </div>
               <div className="flex items-center gap-1 shrink-0 ml-2">
+                {activeFriend && onStartCall && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+                        const friendProfile = friendId ? profiles[friendId] : null;
+                        onStartCall(friendId, activeFriendName, friendProfile?.image_url, "audio");
+                      }}
+                      className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-75 hover:opacity-100 hover:text-emerald-400"
+                      title={`Start Voice Call with ${activeFriendName}`}
+                      aria-label="Voice Call"
+                    >
+                      <Phone size={17} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+                        const friendProfile = friendId ? profiles[friendId] : null;
+                        onStartCall(friendId, activeFriendName, friendProfile?.image_url, "video");
+                      }}
+                      className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-75 hover:opacity-100 hover:text-indigo-400"
+                      title={`Start Video Call with ${activeFriendName}`}
+                      aria-label="Video Call"
+                    >
+                      <Video size={17} />
+                    </button>
+                  </>
+                )}
                 <button onClick={() => setIsWide(!isWide)} className="hidden md:block p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100">
                   {isWide ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                 </button>
