@@ -390,9 +390,14 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
         pc.addTrack(videoTrack, compositeLocalStream);
 
         pc.ontrack = (event) => {
-          if (event.track) {
+          if (event.streams && event.streams[0]) {
+            setRemoteStream(event.streams[0]);
+          } else if (event.track) {
             rStream.addTrack(event.track);
-            setRemoteStream(new MediaStream(rStream.getTracks()));
+            setRemoteStream(rStream);
+          }
+          if (event.track && event.track.kind === "audio") {
+            event.track.enabled = true;
           }
         };
 
@@ -595,19 +600,28 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
       pc.addTrack(videoTrack, compositeLocalStream);
 
       pc.ontrack = (event) => {
-        if (event.track) {
+        if (event.streams && event.streams[0]) {
+          setRemoteStream(event.streams[0]);
+        } else if (event.track) {
           rStream.addTrack(event.track);
-          setRemoteStream(new MediaStream(rStream.getTracks()));
+          setRemoteStream(rStream);
+        }
+        if (event.track && event.track.kind === "audio") {
+          event.track.enabled = true;
         }
       };
 
       pc.onicecandidate = (event) => {
-        if (event.candidate && sessionChannelRef.current) {
-          sessionChannelRef.current.send({
-            type: "broadcast",
-            event: "ice-candidate",
-            payload: { candidate: event.candidate.toJSON() },
-          });
+        if (event.candidate) {
+          if (sessionChannelRef.current) {
+            sessionChannelRef.current.send({
+              type: "broadcast",
+              event: "ice-candidate",
+              payload: { candidate: event.candidate.toJSON() },
+            });
+          } else {
+            outgoingCandidateBufferRef.current.push(event.candidate.toJSON());
+          }
         }
       };
 
@@ -676,6 +690,8 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
         event: "call-answer",
         payload: { answer },
       });
+
+      flushOutgoingCandidates(sessionChannelRef.current);
 
       // Send initial media state
       sessionChannel.send({

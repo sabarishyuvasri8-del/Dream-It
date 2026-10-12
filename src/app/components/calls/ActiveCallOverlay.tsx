@@ -102,11 +102,40 @@ export default function ActiveCallOverlay({
     return () => clearInterval(interval);
   }, []);
 
-  // Guarantee remote stream audio playback with dedicated hidden audio tag
+  // Guarantee remote stream audio playback with dedicated hidden audio tag & autoplay unlocker
   useEffect(() => {
     if (remoteAudioRef.current && remoteStream) {
-      remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.play().catch(() => {});
+      const audioEl = remoteAudioRef.current;
+      audioEl.srcObject = remoteStream;
+      audioEl.muted = false;
+      audioEl.volume = 1.0;
+
+      const tryPlay = () => {
+        audioEl.play().catch((err) => {
+          console.warn("[WebRTC Audio] Autoplay blocked, will play on next interaction:", err);
+        });
+      };
+
+      tryPlay();
+
+      // Window-level interaction listener to unlock autoplay immediately on any click or keypress
+      const unlockAudio = () => {
+        if (remoteAudioRef.current) {
+          remoteAudioRef.current.muted = false;
+          remoteAudioRef.current.volume = 1.0;
+          remoteAudioRef.current.play().catch(() => {});
+        }
+      };
+
+      window.addEventListener("click", unlockAudio);
+      window.addEventListener("touchstart", unlockAudio);
+      window.addEventListener("keydown", unlockAudio);
+
+      return () => {
+        window.removeEventListener("click", unlockAudio);
+        window.removeEventListener("touchstart", unlockAudio);
+        window.removeEventListener("keydown", unlockAudio);
+      };
     }
   }, [remoteStream]);
 
