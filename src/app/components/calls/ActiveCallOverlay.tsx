@@ -9,7 +9,6 @@ import {
   Smile,
   Hand,
   MoreVertical,
-  Info,
   Users,
   MessageSquare,
   LayoutGrid,
@@ -174,7 +173,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
   const [showDeviceBar, setShowDeviceBar] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [settingsTab, setSettingsTab] = useState<"audio" | "video" | "general">("audio");
-  const [activeSidebar, setActiveSidebar] = useState<"none" | "people" | "chat" | "info">("none");
+  const [activeSidebar, setActiveSidebar] = useState<"none" | "people" | "chat">("none");
   const [stageTheme, setStageTheme] = useState<StageTheme>("green");
   const [showHandToast, setShowHandToast] = useState(false);
   const [inCallText, setInCallText] = useState("");
@@ -370,13 +369,6 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
   const hasLocalVideo = (!isVideoOff || isScreenSharing) && Boolean(localStream?.getVideoTracks().length);
   const isRinging = callState === "outgoing_ringing";
 
-  const meetingCodeSlug =
-    session.sessionId
-      .replace(/[^a-zA-Z0-9]/g, "")
-      .slice(0, 9)
-      .match(/.{1,3}/g)
-      ?.join("-") || "zix-kwri-hwv";
-
   const friendInitial = session.friendName.charAt(0).toLowerCase() || "j";
   const myInitial = myUserName.charAt(0).toUpperCase() || "S";
 
@@ -414,7 +406,7 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
               <polygon points="17,9 22,5 22,19 17,15" fill="#00897B" />
             </svg>
             <span className="text-xs font-medium text-neutral-300 font-sans tracking-tight truncate max-w-[150px]">
-              meet.google.com
+              {session.friendName}
             </span>
           </div>
 
@@ -545,21 +537,9 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
 
       {/* ─── Google Meet Top Bar ─── */}
       <header className="h-14 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 bg-[#202124]">
-        {/* Left: Time | meeting-code ⓘ */}
+        {/* Left: Time */}
         <div className="flex items-center gap-3 text-sm font-medium text-neutral-300">
           <MeetLiveClock />
-          <span className="text-neutral-500">|</span>
-          <span className="font-mono text-neutral-200 tracking-wide font-medium">
-            {meetingCodeSlug}
-          </span>
-          <button
-            type="button"
-            onClick={() => setActiveSidebar(activeSidebar === "info" ? "none" : "info")}
-            className="p-1 rounded-full hover:bg-[#3c4043] text-neutral-400 hover:text-white transition cursor-pointer"
-            title="Meeting details"
-          >
-            <Info size={16} />
-          </button>
         </div>
 
         {/* Center: Duration */}
@@ -747,7 +727,6 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
               <h3 className="text-base font-medium text-neutral-200">
                 {activeSidebar === "people" && "People"}
                 {activeSidebar === "chat" && "In-call messages"}
-                {activeSidebar === "info" && "Meeting details"}
               </h3>
               <button
                 type="button"
@@ -891,26 +870,6 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
                 </form>
               </div>
             )}
-
-            {/* ─── SIDEBAR VIEW 3: MEETING INFO ─── */}
-            {activeSidebar === "info" && (
-              <div className="flex-1 p-5 text-left space-y-4 text-xs text-neutral-300">
-                <div>
-                  <h4 className="font-semibold text-neutral-200 text-sm mb-1">Joining info</h4>
-                  <p className="font-mono text-neutral-400">meet.google.com/{meetingCodeSlug}</p>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(`https://meet.google.com/${meetingCodeSlug}`);
-                  }}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#8ab4f8] text-[#8ab4f8] hover:bg-[#8ab4f8]/10 transition font-medium cursor-pointer"
-                >
-                  <span>Copy joining info</span>
-                </button>
-              </div>
-            )}
           </aside>
         )}
       </div>
@@ -1028,9 +987,9 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
 
       {/* ─── Google Meet Bottom Control Toolbar (Exact Match to Screenshot 1 & 2) ─── */}
       <footer className="h-20 px-4 sm:px-6 flex items-center justify-between shrink-0 z-20 relative bg-[#202124]">
-        {/* Left Space (Meeting details code) */}
-        <div className="hidden lg:flex items-center gap-2 text-xs text-neutral-400 font-mono">
-          <span>{meetingCodeSlug}</span>
+        {/* Left Space: Friend Name */}
+        <div className="hidden lg:flex items-center gap-2 text-xs text-neutral-400">
+          <span className="font-medium text-neutral-300">{session.friendName}</span>
         </div>
 
         {/* Center: Google Meet Controls (Screenshot 1 & 2 Match) */}
@@ -1270,19 +1229,8 @@ const ActiveCallOverlay = React.memo(function ActiveCallOverlay({
           </button>
         </div>
 
-        {/* Right Utility Icons (Screenshot 2 & 4: Info, People, Chat, Activities) */}
+        {/* Right Utility Icons (People, Chat, Activities) */}
         <div className="hidden lg:flex items-center gap-2.5 text-neutral-400">
-          <button
-            type="button"
-            onClick={() => setActiveSidebar(activeSidebar === "info" ? "none" : "info")}
-            className={`p-2.5 rounded-full transition cursor-pointer ${
-              activeSidebar === "info" ? "bg-[#3c4043] text-white" : "hover:bg-[#3c4043] hover:text-white"
-            }`}
-            title="Meeting details"
-          >
-            <Info size={19} />
-          </button>
-
           <button
             type="button"
             onClick={() => setActiveSidebar(activeSidebar === "people" ? "none" : "people")}
