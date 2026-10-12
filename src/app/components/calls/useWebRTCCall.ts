@@ -36,28 +36,34 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
   const [callState, setCallState] = useState<CallState>("idle");
   const [activeSession, setActiveSession] = useState<ActiveCallSession | null>(null);
   const [incomingCall, setIncomingCall] = useState<IncomingCallInvite | null>(null);
-  
+
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOff, setIsVideoOff] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [remoteHasVideo, setRemoteHasVideo] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const rawMicTrackRef = useRef<MediaStreamTrack | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
   const sessionChannelRef = useRef<any>(null);
   const timerIntervalRef = useRef<any>(null);
-  const pendingCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const callStateRef = useRef<CallState>("idle");
 
-  // Keep ref synchronized to prevent stale closure checks in realtime handlers
+  // Candidate buffering queues to ensure zero dropped candidates
+  const outgoingCandidateBufferRef = useRef<RTCIceCandidateInit[]>([]);
+  const incomingCandidateBufferRef = useRef<RTCIceCandidateInit[]>([]);
+  const isAnswerReceivedRef = useRef(false);
+
   useEffect(() => {
     callStateRef.current = callState;
   }, [callState]);
 
-  // Call timer interval when connected
+  // Duration timer
   useEffect(() => {
     if (callState === "connected") {
       setCallDuration(0);
@@ -83,7 +89,15 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
   const cleanupMediaAndPeer = useCallback(() => {
     callAudio.stopAll();
 
-    // Stop local camera/mic hardware immediately
+    // Stop raw mic
+    if (rawMicTrackRef.current) {
+      try {
+        rawMicTrackRef.current.stop();
+      } catch {}
+      rawMicTrackRef.current = null;
+    }
+
+    // Stop local media tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
         try {
@@ -93,7 +107,7 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
       localStreamRef.current = null;
     }
 
-    // Stop screen share tracks if any
+    // Stop screen sharing tracks
     if (screenStreamRef.current) {
       screenStreamRef.current.getTracks().forEach((track) => {
         try {
@@ -101,6 +115,14 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
         } catch {}
       });
       screenStreamRef.current = null;
+    }
+
+    // Close AudioContext if used for mixing screen sound
+    if (audioContextRef.current) {
+      try {
+        audioContextRef.current.close();
+      } catch {}
+      audioContextRef.current = null;
     }
 
     // Close PeerConnection
@@ -119,15 +141,74 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
       sessionChannelRef.current = null;
     }
 
-    pendingCandidatesRef.current = [];
+    outgoingCandidateBufferRef.current = [];
+    incomingCandidateBufferRef.current = [];
+    isAnswerReceivedRef.current = false;
+
     setLocalStream(null);
     setRemoteStream(null);
     setIsMuted(false);
     setIsVideoOff(false);
     setIsScreenSharing(false);
+    setRemoteHasVideo(false);
     setActiveSession(null);
     setIncomingCall(null);
     setCallDuration(0);
+  }, []);
+
+  /**
+   * Helper to safely flush buffered remote ICE candidates
+   */
+  const flushIncomingCandidates = useCallback(async (pc: RTCPeerConnection) => {
+    while (incomingCandidateBufferRef.current.length > 0) {
+      const cand = incomingCandidateBufferRef.current.shift();
+      if (cand) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(cand));
+        } catch (e) {
+          console.warn("[WebRTC] Could not add buffered candidate:", e);
+        }
+      }
+    }
+  }, []);
+
+  /**
+   * Helper to safely flush buffered outgoing ICE candidates once peer is ready
+   */
+  const flushOutgoingCandidates = useCallback((channel: any) => {
+    while (outgoingCandidateBufferRef.current.length > 0) {
+      const cand = outgoingCandidateBufferRef.current.shift();
+      if (cand && channel) {
+        channel.send({
+          type: "broadcast",
+          event: "ice-candidate",
+          payload: { candidate: cand },
+        });
+      }
+    }
+  }, []);
+
+  /**
+   * Attach and monitor remote tracks
+   */
+  const setupRemoteStreamMonitoring = useCallback((stream: MediaStream) => {
+    setRemoteStream(stream);
+
+    const checkVideoActive = () => {
+      const vTracks = stream.getVideoTracks();
+      const active = vTracks.length > 0 && vTracks.some((t) => t.enabled && t.readyState === "live");
+      setRemoteHasVideo(active);
+    };
+
+    checkVideoActive();
+
+    stream.onaddtrack = () => checkVideoActive();
+    stream.onremovetrack = () => checkVideoActive();
+    stream.getVideoTracks().forEach((vt) => {
+      vt.onmute = () => checkVideoActive();
+      vt.onunmute = () => checkVideoActive();
+      vt.onended = () => checkVideoActive();
+    });
   }, []);
 
   /**
@@ -154,7 +235,6 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
    */
   const declineCall = useCallback(() => {
     if (incomingCall) {
-      // Notify caller on their session channel that call was declined
       const sessionChannel = supabase.channel(`call-session:${incomingCall.sessionId}`);
       sessionChannel.subscribe((status) => {
         if (status === "SUBSCRIBED") {
@@ -184,6 +264,7 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
       try {
         setCallState("outgoing_ringing");
         callAudio.startOutgoingRingtone();
+        isAnswerReceivedRef.current = false;
 
         const sessionId = `${userId}-${friendId}-${Date.now()}`;
         const session: ActiveCallSession = {
@@ -196,40 +277,65 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
         };
         setActiveSession(session);
 
-        // 1. Acquire local user media (audio + video if requested)
+        // 1. Acquire local user media (always get audio; get video if callType === "video")
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: true,
-          video: callType === "video",
+          audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+          video: callType === "video" ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
         });
-        localStreamRef.current = stream;
-        setLocalStream(stream);
 
-        // 2. Initialize WebRTC PeerConnection
+        localStreamRef.current = stream;
+        rawMicTrackRef.current = stream.getAudioTracks()[0] || null;
+        setLocalStream(stream);
+        setIsVideoOff(callType !== "video");
+
+        // 2. Initialize PeerConnection with pre-allocated audio & video transceivers
         const pc = new RTCPeerConnection(ICE_SERVERS);
         pcRef.current = pc;
 
-        // Add local tracks to PeerConnection
-        stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+        // Remote stream container
+        const rStream = new MediaStream();
+        setupRemoteStreamMonitoring(rStream);
 
-        // Listen for incoming remote tracks from friend
+        // Setup transceivers: allows seamless audio <-> video <-> screen share transitions
+        const audioTrack = stream.getAudioTracks()[0];
+        if (audioTrack) {
+          pc.addTrack(audioTrack, stream);
+        } else {
+          pc.addTransceiver("audio", { direction: "sendrecv" });
+        }
+
+        const videoTrack = stream.getVideoTracks()[0];
+        if (videoTrack) {
+          pc.addTrack(videoTrack, stream);
+        } else {
+          pc.addTransceiver("video", { direction: "sendrecv" });
+        }
+
+        // On track received from remote friend
         pc.ontrack = (event) => {
-          if (event.streams && event.streams[0]) {
-            setRemoteStream(event.streams[0]);
+          if (event.track) {
+            rStream.addTrack(event.track);
+            setupRemoteStreamMonitoring(rStream);
           }
         };
 
-        // Listen for ICE candidates to send over Realtime broadcast
+        // On ICE Candidate gathered
         pc.onicecandidate = (event) => {
-          if (event.candidate && sessionChannelRef.current) {
-            sessionChannelRef.current.send({
-              type: "broadcast",
-              event: "ice-candidate",
-              payload: { candidate: event.candidate.toJSON() },
-            });
+          if (event.candidate) {
+            if (isAnswerReceivedRef.current && sessionChannelRef.current) {
+              sessionChannelRef.current.send({
+                type: "broadcast",
+                event: "ice-candidate",
+                payload: { candidate: event.candidate.toJSON() },
+              });
+            } else {
+              // Buffer candidates until Callee answers and is subscribed to channel
+              outgoingCandidateBufferRef.current.push(event.candidate.toJSON());
+            }
           }
         };
 
-        // 3. Create deterministic session channel
+        // 3. Create Session Channel
         const sessionChannel = supabase.channel(`call-session:${sessionId}`);
         sessionChannelRef.current = sessionChannel;
 
@@ -237,12 +343,15 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
           .on("broadcast", { event: "call-answer" }, async ({ payload }) => {
             if (!pcRef.current || pcRef.current.signalingState === "closed") return;
             try {
+              isAnswerReceivedRef.current = true;
               await pcRef.current.setRemoteDescription(new RTCSessionDescription(payload.answer));
-              // Flush any buffered ICE candidates
-              while (pendingCandidatesRef.current.length > 0) {
-                const cand = pendingCandidatesRef.current.shift();
-                if (cand) await pcRef.current.addIceCandidate(new RTCIceCandidate(cand));
-              }
+              
+              // Flush buffered incoming candidates
+              await flushIncomingCandidates(pcRef.current);
+              
+              // Flush buffered outgoing candidates now that friend is subscribed!
+              flushOutgoingCandidates(sessionChannelRef.current);
+
               callAudio.playConnectedChime();
               setCallState("connected");
               setActiveSession((prev) => (prev ? { ...prev, startedAt: Date.now() } : null));
@@ -256,10 +365,15 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
               if (pcRef.current.remoteDescription) {
                 await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
               } else {
-                pendingCandidatesRef.current.push(payload.candidate);
+                incomingCandidateBufferRef.current.push(payload.candidate);
               }
             } catch (err) {
               console.warn("[WebRTC] Error adding ICE candidate:", err);
+            }
+          })
+          .on("broadcast", { event: "media-state" }, ({ payload }) => {
+            if (typeof payload.hasVideo === "boolean") {
+              setRemoteHasVideo(payload.hasVideo);
             }
           })
           .on("broadcast", { event: "call-reject" }, () => {
@@ -305,7 +419,7 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
         setCallState("idle");
       }
     },
-    [userId, userNameDisplay, userImageUrl, cleanupMediaAndPeer]
+    [userId, userNameDisplay, userImageUrl, cleanupMediaAndPeer, flushIncomingCandidates, flushOutgoingCandidates, setupRemoteStreamMonitoring]
   );
 
   /**
@@ -331,21 +445,42 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
 
       // 1. Acquire local user media
       const stream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: incomingCall.callType === "video",
+        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+        video: incomingCall.callType === "video" ? { width: { ideal: 1280 }, height: { ideal: 720 } } : false,
       });
+
       localStreamRef.current = stream;
+      rawMicTrackRef.current = stream.getAudioTracks()[0] || null;
       setLocalStream(stream);
+      setIsVideoOff(incomingCall.callType !== "video");
 
       // 2. Initialize PeerConnection
       const pc = new RTCPeerConnection(ICE_SERVERS);
       pcRef.current = pc;
 
-      stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+      // Remote stream container
+      const rStream = new MediaStream();
+      setupRemoteStreamMonitoring(rStream);
+
+      // Add tracks or transceivers
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        pc.addTrack(audioTrack, stream);
+      } else {
+        pc.addTransceiver("audio", { direction: "sendrecv" });
+      }
+
+      const videoTrack = stream.getVideoTracks()[0];
+      if (videoTrack) {
+        pc.addTrack(videoTrack, stream);
+      } else {
+        pc.addTransceiver("video", { direction: "sendrecv" });
+      }
 
       pc.ontrack = (event) => {
-        if (event.streams && event.streams[0]) {
-          setRemoteStream(event.streams[0]);
+        if (event.track) {
+          rStream.addTrack(event.track);
+          setupRemoteStreamMonitoring(rStream);
         }
       };
 
@@ -370,10 +505,15 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
             if (pcRef.current.remoteDescription) {
               await pcRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
             } else {
-              pendingCandidatesRef.current.push(payload.candidate);
+              incomingCandidateBufferRef.current.push(payload.candidate);
             }
           } catch (err) {
             console.warn("[WebRTC] Error adding ICE candidate:", err);
+          }
+        })
+        .on("broadcast", { event: "media-state" }, ({ payload }) => {
+          if (typeof payload.hasVideo === "boolean") {
+            setRemoteHasVideo(payload.hasVideo);
           }
         })
         .on("broadcast", { event: "call-hangup" }, () => {
@@ -387,11 +527,8 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
       // 4. Set Remote Offer & create Answer
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.offer));
 
-      // Flush any buffered ICE candidates
-      while (pendingCandidatesRef.current.length > 0) {
-        const cand = pendingCandidatesRef.current.shift();
-        if (cand) await pc.addIceCandidate(new RTCIceCandidate(cand));
-      }
+      // Flush any buffered candidates from caller
+      await flushIncomingCandidates(pc);
 
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
@@ -410,107 +547,246 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
       cleanupMediaAndPeer();
       setCallState("idle");
     }
-  }, [incomingCall, cleanupMediaAndPeer]);
+  }, [incomingCall, cleanupMediaAndPeer, flushIncomingCandidates, setupRemoteStreamMonitoring]);
 
   /**
    * Toggle microphone mute / unmute
    */
   const toggleMute = useCallback(() => {
-    if (localStreamRef.current) {
-      const audioTrack = localStreamRef.current.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsMuted(!audioTrack.enabled);
-      }
+    if (rawMicTrackRef.current) {
+      rawMicTrackRef.current.enabled = !rawMicTrackRef.current.enabled;
+      setIsMuted(!rawMicTrackRef.current.enabled);
     }
-  }, []);
+    if (localStreamRef.current) {
+      const aTrack = localStreamRef.current.getAudioTracks()[0];
+      if (aTrack) aTrack.enabled = !isMuted;
+    }
+  }, [isMuted]);
 
   /**
-   * Toggle camera video on / off
+   * Toggle camera video on / off (instant transmission without renegotiation)
    */
   const toggleVideo = useCallback(async () => {
-    if (!localStreamRef.current || !pcRef.current) return;
+    if (!pcRef.current) return;
 
-    const videoTrack = localStreamRef.current.getVideoTracks()[0];
-    if (videoTrack) {
-      // Toggle existing track
-      videoTrack.enabled = !videoTrack.enabled;
-      setIsVideoOff(!videoTrack.enabled);
+    const pc = pcRef.current;
+    const senders = pc.getSenders();
+    let videoSender = senders.find((s) => s.track?.kind === "video");
+    if (!videoSender) {
+      // Find video transceiver sender
+      const tr = pc.getTransceivers().find((t) => t.sender.track?.kind === "video" || t.receiver.track.kind === "video");
+      if (tr) videoSender = tr.sender;
+    }
+
+    // If currently screen sharing, turning on camera replaces screen share
+    if (isScreenSharing && screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+      setIsScreenSharing(false);
+    }
+
+    if (!isVideoOff) {
+      // Turn camera OFF
+      if (localStreamRef.current) {
+        const vTrack = localStreamRef.current.getVideoTracks()[0];
+        if (vTrack) {
+          vTrack.stop();
+          localStreamRef.current.removeTrack(vTrack);
+        }
+      }
+      if (videoSender) {
+        await videoSender.replaceTrack(null);
+      }
+      setIsVideoOff(true);
+
+      // Notify remote peer
+      if (sessionChannelRef.current) {
+        sessionChannelRef.current.send({
+          type: "broadcast",
+          event: "media-state",
+          payload: { hasVideo: false },
+        });
+      }
     } else {
-      // User started as audio-only, now turning camera on
+      // Turn camera ON
       try {
-        const camStream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const camStream = await navigator.mediaDevices.getUserMedia({
+          video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+        });
         const newTrack = camStream.getVideoTracks()[0];
-        localStreamRef.current.addTrack(newTrack);
-        pcRef.current.addTrack(newTrack, localStreamRef.current);
+
+        if (localStreamRef.current) {
+          localStreamRef.current.addTrack(newTrack);
+        } else {
+          localStreamRef.current = new MediaStream([newTrack]);
+        }
         setLocalStream(new MediaStream(localStreamRef.current.getTracks()));
+
+        if (videoSender) {
+          await videoSender.replaceTrack(newTrack);
+        } else if (localStreamRef.current) {
+          pc.addTrack(newTrack, localStreamRef.current);
+        }
+
         setIsVideoOff(false);
+
+        // Notify remote peer
+        if (sessionChannelRef.current) {
+          sessionChannelRef.current.send({
+            type: "broadcast",
+            event: "media-state",
+            payload: { hasVideo: true },
+          });
+        }
       } catch (err) {
         console.warn("[WebRTC] Could not enable camera:", err);
       }
     }
-  }, []);
+  }, [isVideoOff, isScreenSharing]);
 
   /**
-   * Toggle screen sharing for collaborative study
+   * Share screen with tab/system sound and mic audio mixing
    */
   const toggleScreenShare = useCallback(async () => {
     if (!pcRef.current) return;
 
+    const pc = pcRef.current;
+    const senders = pc.getSenders();
+    let videoSender = senders.find((s) => s.track?.kind === "video");
+    if (!videoSender) {
+      const tr = pc.getTransceivers().find((t) => t.receiver.track.kind === "video");
+      if (tr) videoSender = tr.sender;
+    }
+
+    let audioSender = senders.find((s) => s.track?.kind === "audio");
+    if (!audioSender) {
+      const tr = pc.getTransceivers().find((t) => t.receiver.track.kind === "audio");
+      if (tr) audioSender = tr.sender;
+    }
+
     if (isScreenSharing) {
-      // Stop screen sharing and restore webcam
+      // STOP screen share
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach((t) => t.stop());
         screenStreamRef.current = null;
       }
-      if (localStreamRef.current) {
-        const camTrack = localStreamRef.current.getVideoTracks()[0];
-        const senders = pcRef.current.getSenders();
-        const videoSender = senders.find((s) => s.track && s.track.kind === "video");
-        if (videoSender && camTrack) {
-          videoSender.replaceTrack(camTrack);
-        }
+
+      // Reconnect original mic if mixed
+      if (rawMicTrackRef.current && audioSender) {
+        await audioSender.replaceTrack(rawMicTrackRef.current);
       }
-      setIsScreenSharing(false);
-    } else {
-      // Start screen sharing
-      try {
-        const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-        screenStreamRef.current = displayStream;
-        const screenTrack = displayStream.getVideoTracks()[0];
 
-        const senders = pcRef.current.getSenders();
-        const videoSender = senders.find((s) => s.track && s.track.kind === "video");
+      // Restore camera or clear video
+      const camTrack = localStreamRef.current?.getVideoTracks()[0];
+      if (camTrack && !isVideoOff) {
+        if (videoSender) await videoSender.replaceTrack(camTrack);
+      } else {
+        if (videoSender) await videoSender.replaceTrack(null);
+      }
+
+      setIsScreenSharing(false);
+
+      if (sessionChannelRef.current) {
+        sessionChannelRef.current.send({
+          type: "broadcast",
+          event: "media-state",
+          payload: { hasVideo: !isVideoOff },
+        });
+      }
+    } else {
+      // START screen sharing with audio!
+      try {
+        const displayStream = await navigator.mediaDevices.getDisplayMedia({
+          video: { cursor: "always" as any },
+          audio: true, // Captures tab and system audio!
+        });
+
+        screenStreamRef.current = displayStream;
+        const screenVideoTrack = displayStream.getVideoTracks()[0];
+        const screenAudioTrack = displayStream.getAudioTracks()[0];
+
+        // 1. Send Screen Video Track
         if (videoSender) {
-          videoSender.replaceTrack(screenTrack);
+          await videoSender.replaceTrack(screenVideoTrack);
         } else if (localStreamRef.current) {
-          pcRef.current.addTrack(screenTrack, localStreamRef.current);
+          pc.addTrack(screenVideoTrack, localStreamRef.current);
         }
 
-        screenTrack.onended = () => {
+        // 2. Mix Screen Sound + Microphone so remote peer hears BOTH!
+        if (screenAudioTrack && audioSender) {
+          try {
+            const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
+            const audioCtx = new AudioCtxClass();
+            audioContextRef.current = audioCtx;
+            const dest = audioCtx.createMediaStreamDestination();
+
+            // Connect raw mic if available
+            if (rawMicTrackRef.current) {
+              const micSource = audioCtx.createMediaStreamSource(new MediaStream([rawMicTrackRef.current]));
+              micSource.connect(dest);
+            }
+
+            // Connect screen audio track
+            const screenSource = audioCtx.createMediaStreamSource(new MediaStream([screenAudioTrack]));
+            screenSource.connect(dest);
+
+            const mixedTrack = dest.stream.getAudioTracks()[0];
+            await audioSender.replaceTrack(mixedTrack);
+          } catch (mixErr) {
+            console.warn("[WebRTC] Audio mixing fallback to screen audio:", mixErr);
+            await audioSender.replaceTrack(screenAudioTrack);
+          }
+        }
+
+        setIsScreenSharing(true);
+
+        // When user clicks the browser native "Stop sharing" button
+        screenVideoTrack.onended = () => {
+          if (screenStreamRef.current) {
+            screenStreamRef.current.getTracks().forEach((t) => t.stop());
+            screenStreamRef.current = null;
+          }
+          if (rawMicTrackRef.current && audioSender) {
+            audioSender.replaceTrack(rawMicTrackRef.current).catch(() => {});
+          }
+          const cam = localStreamRef.current?.getVideoTracks()[0];
+          if (cam && !isVideoOff && videoSender) {
+            videoSender.replaceTrack(cam).catch(() => {});
+          } else if (videoSender) {
+            videoSender.replaceTrack(null).catch(() => {});
+          }
           setIsScreenSharing(false);
-          if (localStreamRef.current) {
-            const camTrack = localStreamRef.current.getVideoTracks()[0];
-            const sender = pcRef.current?.getSenders().find((s) => s.track && s.track.kind === "video");
-            if (sender && camTrack) sender.replaceTrack(camTrack);
+
+          if (sessionChannelRef.current) {
+            sessionChannelRef.current.send({
+              type: "broadcast",
+              event: "media-state",
+              payload: { hasVideo: !isVideoOff },
+            });
           }
         };
 
-        setIsScreenSharing(true);
+        // Notify remote peer of video stream
+        if (sessionChannelRef.current) {
+          sessionChannelRef.current.send({
+            type: "broadcast",
+            event: "media-state",
+            payload: { hasVideo: true },
+          });
+        }
       } catch (err) {
         console.warn("[WebRTC] Screen sharing cancelled or denied:", err);
       }
     }
-  }, [isScreenSharing]);
+  }, [isScreenSharing, isVideoOff]);
 
-  // Listen globally to the user's personal signaling inbox for incoming calls
+  // Global inbox listener for incoming calls
   useEffect(() => {
     if (!userId) return;
 
     const inboxChannel = supabase.channel(`user-call-signals:${userId}`);
     inboxChannel
       .on("broadcast", { event: "call-invite" }, ({ payload }: { payload: IncomingCallInvite }) => {
-        // If already busy in a call, reject automatically with 'busy'
         if (callStateRef.current !== "idle") {
           const busyChannel = supabase.channel(`call-session:${payload.sessionId}`);
           busyChannel.subscribe((status) => {
@@ -527,7 +803,6 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
           return;
         }
 
-        // Display incoming call alert and play pleasant ringtone
         setIncomingCall(payload);
         setCallState("incoming_ringing");
         callAudio.startIncomingRingtone();
@@ -539,7 +814,7 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
     };
   }, [userId]);
 
-  // Safety cleanup if user closes or reloads page
+  // Page unload cleanup
   useEffect(() => {
     const handleUnload = () => {
       if (sessionChannelRef.current) {
@@ -567,6 +842,7 @@ export function useWebRTCCall(userId: string, userNameDisplay: string, userImage
     isMuted,
     isVideoOff,
     isScreenSharing,
+    remoteHasVideo,
     callDuration,
     startCall,
     acceptCall,

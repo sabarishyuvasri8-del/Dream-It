@@ -6691,6 +6691,7 @@ Mathematics:
           isMuted={callManager.isMuted}
           isVideoOff={callManager.isVideoOff}
           isScreenSharing={callManager.isScreenSharing}
+          remoteHasVideo={callManager.remoteHasVideo}
           durationSeconds={callManager.callDuration}
           onEndCall={callManager.endCall}
           onToggleMute={callManager.toggleMute}
