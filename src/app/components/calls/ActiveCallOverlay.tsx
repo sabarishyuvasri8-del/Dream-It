@@ -14,7 +14,6 @@ import {
   LayoutGrid,
   Maximize2,
   Minimize2,
-  ShieldCheck,
   ChevronDown,
   ChevronUp,
   Captions,

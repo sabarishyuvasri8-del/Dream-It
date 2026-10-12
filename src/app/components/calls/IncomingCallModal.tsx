@@ -1,5 +1,5 @@
 import React from "react";
-import { Phone, Video, PhoneOff, ShieldCheck } from "lucide-react";
+import { Phone, Video, PhoneOff } from "lucide-react";
 import { IncomingCallInvite } from "./useWebRTCCall";
 
 interface IncomingCallModalProps {
