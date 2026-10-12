@@ -6692,11 +6692,19 @@ Mathematics:
           isVideoOff={callManager.isVideoOff}
           isScreenSharing={callManager.isScreenSharing}
           remoteHasVideo={callManager.remoteHasVideo}
+          remoteIsScreenSharing={callManager.remoteIsScreenSharing}
+          remoteIsMuted={callManager.remoteIsMuted}
+          handRaised={callManager.handRaised}
+          remoteHandRaised={callManager.remoteHandRaised}
           durationSeconds={callManager.callDuration}
+          reactions={callManager.reactions}
+          myUserName={userNameDisplay}
           onEndCall={callManager.endCall}
           onToggleMute={callManager.toggleMute}
           onToggleVideo={callManager.toggleVideo}
           onToggleScreenShare={callManager.toggleScreenShare}
+          onSendReaction={callManager.sendReaction}
+          onToggleHandRaise={callManager.toggleHandRaise}
         />
       )}
 
