@@ -117,23 +117,23 @@ export default async function handler(req: any, res?: any) {
 
     // Dynamic candidate models list for seamless failover if a model is quota-limited (429) or down
     const FALLBACK_MODELS = [
-      "gemini-3.5-flash-lite",
-      "gemini-flash-lite-latest",
       "gemini-3.1-flash-lite",
-      "gemini-3.5-flash",
       "gemini-3.6-flash",
+      "gemini-3.5-flash",
+      "gemini-flash-latest",
       "gemini-3.7-flash",
       "gemini-3.8-flash",
+      "gemini-3.5-flash-lite",
+      "gemini-flash-lite-latest",
     ];
 
-    let userModel = model || "gemini-3.5-flash-lite";
+    let userModel = model || "gemini-3.1-flash-lite";
     if (
       userModel === "gemini-2.5-flash" ||
       userModel === "gemini-2.5-flash-lite" ||
-      userModel === "gemini-2.0-flash" ||
-      userModel === "gemini-3.1-flash-lite"
+      userModel === "gemini-2.0-flash"
     ) {
-      userModel = "gemini-3.5-flash-lite";
+      userModel = "gemini-3.1-flash-lite";
     }
 
     const candidateModels = Array.from(new Set([userModel, ...FALLBACK_MODELS]));
@@ -143,7 +143,7 @@ export default async function handler(req: any, res?: any) {
       contents,
       generationConfig: {
         temperature: typeof temperature === "number" ? temperature : 0.2,
-        maxOutputTokens: typeof max_tokens === "number" ? Math.min(4096, Math.max(512, max_tokens)) : 2048,
+        maxOutputTokens: typeof max_tokens === "number" ? Math.min(8192, Math.max(512, max_tokens)) : 4096,
         ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
         topP: top_p,
       },
@@ -163,7 +163,7 @@ export default async function handler(req: any, res?: any) {
       const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${apiKey.trim()}`;
       const requestBody = JSON.parse(JSON.stringify(baseRequestBody));
       const modelCtrl = new AbortController();
-      const modelTimer = setTimeout(() => modelCtrl.abort(), 6500);
+      const modelTimer = setTimeout(() => modelCtrl.abort(), 25000);
 
       try {
         let googleRes = await fetch(googleUrl, {

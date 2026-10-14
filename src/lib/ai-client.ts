@@ -42,26 +42,26 @@ const aiCache = new Map<string, { content: string; expiry: number }>();
 const CACHE_TTL = 3 * 60 * 1000;
 
 function normalizeModelName(m?: string): string {
-  if (!m) return "gemini-3.5-flash-lite";
+  if (!m) return "gemini-3.1-flash-lite";
   if (
     m === "gemini-2.5-flash" ||
     m === "gemini-2.5-flash-lite" ||
-    m === "gemini-2.0-flash" ||
-    m === "gemini-3.1-flash-lite"
+    m === "gemini-2.0-flash"
   ) {
-    return "gemini-3.5-flash-lite";
+    return "gemini-3.1-flash-lite";
   }
   return m;
 }
 
 const FALLBACK_MODELS = [
-  "gemini-3.5-flash-lite",
-  "gemini-flash-lite-latest",
   "gemini-3.1-flash-lite",
-  "gemini-3.5-flash",
   "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-flash-latest",
   "gemini-3.7-flash",
   "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-flash-lite-latest",
 ];
 
 /**
@@ -185,7 +185,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         contents,
         generationConfig: {
           temperature: typeof params.temperature === "number" ? params.temperature : 0.2,
-          maxOutputTokens: typeof params.max_tokens === "number" ? Math.min(4096, Math.max(512, params.max_tokens)) : 2048,
+          maxOutputTokens: typeof params.max_tokens === "number" ? Math.min(8192, Math.max(512, params.max_tokens)) : 4096,
           ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
           topP: params.top_p,
         },
@@ -195,11 +195,13 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         requestBody.system_instruction = { parts: systemParts };
       }
 
+      const perModelTimeout = Math.max(20000, Math.min(45000, timeoutDuration));
+
       for (let i = 0; i < candidateModels.length; i++) {
         const activeModel = candidateModels[i];
         const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${localEnvKey.trim()}`;
         const modelCtrl = new AbortController();
-        const modelTimer = setTimeout(() => modelCtrl.abort(), 6500);
+        const modelTimer = setTimeout(() => modelCtrl.abort(), perModelTimeout);
 
         try {
           const res = await fetch(googleUrl, {

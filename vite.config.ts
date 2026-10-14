@@ -47,23 +47,23 @@ function localAiProxyPlugin(env: Record<string, string>) {
               }
 
               const FALLBACK_MODELS = [
-                'gemini-3.5-flash-lite',
-                'gemini-flash-lite-latest',
                 'gemini-3.1-flash-lite',
-                'gemini-3.5-flash',
                 'gemini-3.6-flash',
+                'gemini-3.5-flash',
+                'gemini-flash-latest',
                 'gemini-3.7-flash',
                 'gemini-3.8-flash',
+                'gemini-3.5-flash-lite',
+                'gemini-flash-lite-latest',
               ];
 
-              let requestedModel = parsedBody.model || 'gemini-3.5-flash-lite';
+              let requestedModel = parsedBody.model || 'gemini-3.1-flash-lite';
               if (
                 requestedModel === 'gemini-2.5-flash' ||
                 requestedModel === 'gemini-2.5-flash-lite' ||
-                requestedModel === 'gemini-2.0-flash' ||
-                requestedModel === 'gemini-3.1-flash-lite'
+                requestedModel === 'gemini-2.0-flash'
               ) {
-                requestedModel = 'gemini-3.5-flash-lite';
+                requestedModel = 'gemini-3.1-flash-lite';
               }
 
               const candidateModels = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
@@ -104,11 +104,13 @@ function localAiProxyPlugin(env: Record<string, string>) {
                 }
               }
 
+              const chosenMimeType = parsedBody.responseMimeType || parsedBody.response_mime_type;
               const baseRequestBody: any = {
                 contents,
                 generationConfig: {
                   temperature: typeof parsedBody.temperature === 'number' ? parsedBody.temperature : 0.2,
-                  maxOutputTokens: typeof parsedBody.max_tokens === 'number' ? parsedBody.max_tokens : 4096,
+                  maxOutputTokens: typeof parsedBody.max_tokens === 'number' ? Math.min(8192, Math.max(512, parsedBody.max_tokens)) : 4096,
+                  ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
                   topP: parsedBody.top_p,
                 },
               };
