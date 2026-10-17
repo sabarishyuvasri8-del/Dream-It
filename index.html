@@ -1,7 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="theme-mono-light">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      (function() {
+        try {
+          var key = "dreamit_theme_id";
+          var valid = ["mono-light", "mono-dark", "ethereal-light", "midnight-void", "sage-harmony", "rose-quartz", "arctic-dusk"];
+          var stored = localStorage.getItem(key);
+          var theme = "mono-light";
+          if (stored && valid.indexOf(stored) !== -1) {
+            theme = stored;
+          } else {
+            var legacy = localStorage.getItem("dreamit_theme");
+            if (legacy === "dark") {
+              theme = "mono-dark";
+            } else if (legacy === "light") {
+              theme = "mono-light";
+            } else {
+              var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+              theme = prefersDark ? "mono-dark" : "mono-light";
+            }
+          }
+          document.documentElement.className = "theme-" + theme;
+        } catch (e) {
+          document.documentElement.className = "theme-mono-light";
+        }
+      })();
+    </script>
     <link rel="icon" type="image/png" href="/logo.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0" />
     <title>Dream It — Personal Study Workspace & AI Companion</title>

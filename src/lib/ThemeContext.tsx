@@ -14,8 +14,13 @@ import { supabase } from "./supabase";
 
 /* ─────────────── Theme Definitions ─────────────── */
 
+/** Sector/category of theme */
+export type ThemeSector = "common" | "palettes";
+
 /** All available theme IDs */
 export type ThemeId =
+  | "mono-light"
+  | "mono-dark"
   | "ethereal-light"
   | "midnight-void"
   | "sage-harmony"
@@ -34,10 +39,35 @@ export interface ThemeConfig {
   swatches: [string, string, string, string];
   /** Emoji icon for the theme */
   icon: string;
+  /** Sector grouping (common user vs mood palettes) */
+  sector: ThemeSector;
 }
 
-/** Registry of all 5 themes */
+/** Registry of all themes */
 export const THEMES: ThemeConfig[] = [
+  /* ─── Sector: Standard Themes (Everyday Black & White) ─── */
+  {
+    id: "mono-light",
+    name: "Standard Light",
+    description: "Clean white surfaces, soft mist canvas, everyday readability",
+    isDark: false,
+    cssClass: "theme-mono-light",
+    swatches: ["#ffffff", "#fafafa", "#18181b", "#e2e8f0"],
+    icon: "⚪",
+    sector: "common",
+  },
+  {
+    id: "mono-dark",
+    name: "Standard Dark",
+    description: "Deep neutral dark canvas, soft white text, zero glare",
+    isDark: true,
+    cssClass: "theme-mono-dark",
+    swatches: ["#171717", "#212121", "#ececec", "#2e2e2e"],
+    icon: "⚫",
+    sector: "common",
+  },
+
+  /* ─── Sector: Mood Palettes (Curated Color Schemes) ─── */
   {
     id: "ethereal-light",
     name: "Ethereal Light",
@@ -46,6 +76,7 @@ export const THEMES: ThemeConfig[] = [
     cssClass: "theme-ethereal-light",
     swatches: ["#f4f6f9", "#3b6b8a", "#a8c8e0", "#ffffff"],
     icon: "☁️",
+    sector: "palettes",
   },
   {
     id: "midnight-void",
@@ -55,6 +86,7 @@ export const THEMES: ThemeConfig[] = [
     cssClass: "theme-midnight-void",
     swatches: ["#0a0c10", "#a78bfa", "#c4b5fd", "#12141a"],
     icon: "🌑",
+    sector: "palettes",
   },
   {
     id: "sage-harmony",
@@ -64,6 +96,7 @@ export const THEMES: ThemeConfig[] = [
     cssClass: "theme-sage-harmony",
     swatches: ["#f6f4ee", "#244c3b", "#f2cf91", "#fffefb"],
     icon: "🌿",
+    sector: "palettes",
   },
   {
     id: "rose-quartz",
@@ -73,6 +106,7 @@ export const THEMES: ThemeConfig[] = [
     cssClass: "theme-rose-quartz",
     swatches: ["#faf5f5", "#8b5a6b", "#d4a0b0", "#fffbfb"],
     icon: "🌸",
+    sector: "palettes",
   },
   {
     id: "arctic-dusk",
@@ -82,6 +116,7 @@ export const THEMES: ThemeConfig[] = [
     cssClass: "theme-arctic-dusk",
     swatches: ["#0c1020", "#60a5fa", "#93c5fd", "#141830"],
     icon: "🌌",
+    sector: "palettes",
   },
 ];
 
@@ -89,7 +124,7 @@ export const THEMES: ThemeConfig[] = [
 export const THEME_MAP = new Map(THEMES.map((t) => [t.id, t]));
 
 /** Default theme */
-const DEFAULT_THEME: ThemeId = "sage-harmony";
+const DEFAULT_THEME: ThemeId = "mono-light";
 
 /* ─────────────── Context Shape ─────────────── */
 
@@ -113,6 +148,17 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 const STORAGE_KEY = "dreamit_theme_id";
 const LEGACY_STORAGE_KEY = "dreamit_theme";
 
+function getSystemDefaultTheme(): ThemeId {
+  if (
+    typeof window !== "undefined" &&
+    window.matchMedia &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  ) {
+    return "mono-dark";
+  }
+  return "mono-light";
+}
+
 function readStoredTheme(): ThemeId {
   if (typeof window === "undefined") return DEFAULT_THEME;
 
@@ -124,10 +170,11 @@ function readStoredTheme(): ThemeId {
 
   // Migrate legacy dark/light toggle value
   const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-  if (legacy === "dark") return "midnight-void";
-  if (legacy === "light") return "sage-harmony";
+  if (legacy === "dark") return "mono-dark";
+  if (legacy === "light") return "mono-light";
 
-  return DEFAULT_THEME;
+  // New user -> detect computer OS theme
+  return getSystemDefaultTheme();
 }
 
 function writeStoredTheme(id: ThemeId): void {
@@ -150,7 +197,7 @@ export function ThemeProvider({ children, accessToken }: ThemeProviderProps) {
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   const themeConfig = useMemo(
-    () => THEME_MAP.get(theme) ?? THEMES[2], // fallback to sage-harmony
+    () => THEME_MAP.get(theme) ?? THEME_MAP.get(DEFAULT_THEME) ?? THEMES[0],
     [theme]
   );
 
@@ -177,6 +224,22 @@ export function ThemeProvider({ children, accessToken }: ThemeProviderProps) {
     },
     [theme, accessToken]
   );
+
+  // For fresh users: dynamically sync with OS dark mode changes if no theme explicitly stored
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    if (localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY)) return;
+
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = (e: MediaQueryListEvent) => {
+      if (!localStorage.getItem(STORAGE_KEY) && !localStorage.getItem(LEGACY_STORAGE_KEY)) {
+        setThemeState(e.matches ? "mono-dark" : "mono-light");
+      }
+    };
+
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
 
   // On mount: Try to read theme from Supabase user_metadata
   useEffect(() => {
