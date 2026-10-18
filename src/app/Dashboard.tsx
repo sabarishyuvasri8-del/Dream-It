@@ -168,13 +168,13 @@ function toDateKey(d: Date): string {
 }
 
 /** Render markdown content lazily with KaTeX and GFM support */
-function renderSimpleMarkdown(text: string) {
+function renderSimpleMarkdown(text: string, isUserMessage?: boolean) {
   if (!text || !text.trim()) {
     return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet. Switch to Edit mode to write your note!</p>;
   }
   return (
     <Suspense fallback={<div className="animate-pulse bg-black/5 dark:bg-white/5 h-12 rounded-xl" />}>
-      <MarkdownRenderer content={text} />
+      <MarkdownRenderer content={text} compact={isUserMessage} />
     </Suspense>
   );
 }
@@ -5255,7 +5255,7 @@ Mathematics:
                       <div
                         className={`contain-chat transition ${
                           m.role === "user"
-                            ? `${editingMessageIdx === idx ? "w-full rounded-2xl p-3" : "w-fit rounded-[22px] px-4 py-2.5"} shadow-xs text-xs leading-relaxed break-words`
+                            ? `user-chat-bubble ${editingMessageIdx === idx ? "w-full rounded-2xl p-3" : "w-fit rounded-[20px] px-3.5 py-2 sm:px-4 sm:py-2.5"} shadow-xs text-xs sm:text-[13px] leading-relaxed break-words`
                             : "w-full px-0.5 py-1 text-xs leading-relaxed"
                         }`}
                         style={
@@ -5263,7 +5263,8 @@ Mathematics:
                             ? {
                                 backgroundColor: "var(--m-chat-user-bg)",
                                 color: "var(--m-chat-user-text)",
-                                borderRadius: editingMessageIdx === idx ? "16px" : "22px",
+                                border: "1px solid var(--m-chat-user-border, transparent)",
+                                borderRadius: editingMessageIdx === idx ? "16px" : "20px",
                               }
                             : {
                                 backgroundColor: "transparent",
@@ -5316,7 +5317,7 @@ Mathematics:
                             </div>
                           </div>
                         ) : m.content ? (
-                          renderSimpleMarkdown(m.content)
+                          renderSimpleMarkdown(m.content, m.role === "user")
                         ) : (
                           <AIThinkingStatus size="sm" />
                         )}
@@ -7309,15 +7310,16 @@ Mathematics:
                     <div
                       className={`contain-chat transition ${
                         m.role === "user"
-                          ? `${editingMessageIdx === idx ? "w-full min-w-[280px] sm:min-w-[420px] rounded-2xl p-4" : "w-fit rounded-[26px] px-5 py-3 md:py-3.5"} shadow-sm text-sm sm:text-[15px] leading-relaxed break-words`
+                          ? `user-chat-bubble ${editingMessageIdx === idx ? "w-full min-w-[280px] sm:min-w-[420px] rounded-2xl p-4" : "w-fit rounded-[22px] px-4 py-2.5 sm:px-5 sm:py-3"} shadow-sm text-sm sm:text-[15px] leading-relaxed break-words`
                           : "w-full py-1.5 sm:py-2 px-1 text-sm sm:text-[15px] leading-relaxed"
                       }`}
                       style={
                         m.role === "user"
                           ? {
                               backgroundColor: "var(--m-chat-user-bg)",
-                              color: "var(--m-chat-user-text, #ffffff)",
-                              borderRadius: editingMessageIdx === idx ? "16px" : "26px",
+                              color: "var(--m-chat-user-text)",
+                              border: "1px solid var(--m-chat-user-border, transparent)",
+                              borderRadius: editingMessageIdx === idx ? "16px" : "22px",
                             }
                           : {
                               backgroundColor: "transparent",
@@ -7370,7 +7372,7 @@ Mathematics:
                           </div>
                         </div>
                       ) : m.content ? (
-                        renderSimpleMarkdown(m.content)
+                        renderSimpleMarkdown(m.content, m.role === "user")
                       ) : (
                         <AIThinkingStatus size="lg" />
                       )}
