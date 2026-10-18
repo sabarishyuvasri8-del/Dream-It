@@ -3980,9 +3980,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
             <button onClick={() => setThemeSelectorOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Change theme">
               <Palette size={17} />
             </button>
-            <button onClick={() => setSubjectsOpen(true)} className="hidden sm:flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition hover:opacity-80 minimal-surface" style={{ color: "var(--m-primary)" }}>
-              <FolderPlus size={14} /><span>Projects ({subjects.length})</span>
-            </button>
+
           </div>
         </header>
 
