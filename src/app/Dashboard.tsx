@@ -17,6 +17,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  ChevronLeft,
   ChevronRight,
   Circle,
   Clock3,
@@ -367,6 +368,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   type NavItem = "Today" | "Planner" | "Projects" | "Focus" | "Notes" | "Grades" | "Cards" | "Money" | "Exams";
   const [activeNav, setActiveNav] = useState<NavItem>("Today");
   const [selectedSubject, setSelectedSubject] = useState("All subjects");
+  const subjectFilterScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollSubjectFilter = (direction: "left" | "right") => {
+    if (subjectFilterScrollRef.current) {
+      const amount = direction === "left" ? -220 : 220;
+      subjectFilterScrollRef.current.scrollBy({ left: amount, behavior: "smooth" });
+    }
+  };
   const [taskFilterStatus, setTaskFilterStatus] = useState<"all" | "active" | "completed">("all");
   const [plannerViewMode, setPlannerViewMode] = useState<"timeline" | "kanban" | "calendar">("timeline");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -3914,14 +3923,14 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       )}
 
       {/* ─── Main Content ─── */}
-      <section className="transition-all duration-300 w-full lg:pl-[76px]">
+      <section className="transition-all duration-300 w-full min-w-0 max-w-full overflow-x-hidden lg:pl-[76px]">
         {/* Top Bar */}
-        <header className="sticky top-0 z-20 flex items-center justify-between px-3.5 sm:px-6 py-2.5 sm:py-3.5 md:px-8 minimal-surface shadow-xs overflow-x-auto custom-scrollbar gap-4" style={{ backgroundColor: "var(--m-surface-solid)", borderBottom: "1px solid var(--m-border-light)" }}>
-          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
-            <button className="lg:hidden p-2 rounded-xl hover:opacity-80 transition minimal-surface min-h-[40px] min-w-[40px] flex items-center justify-center" onClick={() => setMobileOpen(true)} aria-label="Open menu">
-              <Menu size={20} />
+        <header className="sticky top-0 z-20 flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3.5 md:px-8 minimal-surface shadow-xs gap-2 sm:gap-4" style={{ backgroundColor: "var(--m-surface-solid)", borderBottom: "1px solid var(--m-border-light)" }}>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
+            <button className="lg:hidden p-2 rounded-xl hover:opacity-80 transition minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center shrink-0" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+              <Menu size={18} />
             </button>
-            <div>
+            <div className="min-w-0">
               <p className="text-xs sm:text-sm font-medium truncate max-w-[170px] sm:max-w-none" style={{ color: "var(--m-text-heading)" }}>
                 {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
               </p>
@@ -3955,9 +3964,6 @@ You can save notes and flashcards. When asked to save to notes or create flashca
               <Command size={17} />
             </button>
 
-            <button onClick={() => setIsChatMaximized(true)} className="flex items-center gap-1.5 rounded-xl px-2.5 sm:px-3 py-1.5 text-xs font-bold transition hover:scale-105 shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }} title="Open AI Tutor">
-              <Brain size={15} /><span className="hidden xs:inline">AI Tutor</span>
-            </button>
             <button onClick={() => setFriendsModalOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Friends">
               <Users size={17} />
             </button>
@@ -3984,7 +3990,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           </div>
         </header>
 
-        <div className="px-3.5 sm:px-6 md:px-8 pb-28 lg:pb-10 pt-4 sm:pt-6">
+        <div className="px-3 sm:px-6 md:px-8 pb-28 lg:pb-10 pt-3 sm:pt-6 min-w-0 max-w-full">
 
           {/* ═══ Welcome Onboarding ═══ */}
           {showOnboarding && (
@@ -4085,7 +4091,15 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                       <AlarmClock size={15} style={{ color: "var(--m-danger)" }} />
                       <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Upcoming deadlines</p>
                     </div>
-                    <div className="flex gap-3 overflow-x-auto pb-1">
+                    <div
+                      onWheel={(e) => {
+                        if (e.deltaY !== 0 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                          e.currentTarget.scrollLeft += e.deltaY;
+                        }
+                      }}
+                      className="flex gap-3 overflow-x-auto pb-1.5 no-scrollbar select-none cursor-grab active:cursor-grabbing w-full min-w-0"
+                      style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-x pan-y" }}
+                    >
                       {upcomingDeadlines.map((t) => (
                         <div key={t.id} className="shrink-0 rounded-xl px-3 py-2 text-xs feature-chip" style={{ border: `1px solid ${deadlineColor(t.daysLeft)}30`, backgroundColor: `${deadlineColor(t.daysLeft)}10` }}>
                           <p className="font-bold truncate max-w-[140px]" style={{ color: "var(--m-text-heading)" }}>{t.title}</p>
@@ -4099,21 +4113,85 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                 )}
 
                 {/* Subject Filter */}
-                <section className="mb-5 rounded-xl p-4 minimal-inset feature-zoom">
+                <section className="mb-5 rounded-xl p-4 minimal-inset feature-zoom w-full min-w-0">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Filter by project</p>
-                    <button onClick={() => setSubjectsOpen(true)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition hover:scale-105" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
+                    <div className="flex items-center gap-2.5">
+                      <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Filter by project</p>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => scrollSubjectFilter("left")}
+                          className="p-1 rounded-lg border transition hover:opacity-80 active:scale-90 cursor-pointer shadow-2xs"
+                          style={{
+                            backgroundColor: "var(--m-surface)",
+                            borderColor: "var(--m-border)",
+                            color: "var(--m-text-sub)",
+                          }}
+                          aria-label="Scroll left"
+                          title="Scroll left"
+                        >
+                          <ChevronLeft size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollSubjectFilter("right")}
+                          className="p-1 rounded-lg border transition hover:opacity-80 active:scale-90 cursor-pointer shadow-2xs"
+                          style={{
+                            backgroundColor: "var(--m-surface)",
+                            borderColor: "var(--m-border)",
+                            color: "var(--m-text-sub)",
+                          }}
+                          aria-label="Scroll right"
+                          title="Scroll right"
+                        >
+                          <ChevronRight size={13} />
+                        </button>
+                      </div>
+                    </div>
+                    <button onClick={() => setSubjectsOpen(true)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition hover:scale-105 cursor-pointer shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
                       <FolderPlus size={14} /><span>Manage</span>
                     </button>
                   </div>
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    <button onClick={() => setSelectedSubject("All subjects")} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 feature-chip" style={selectedSubject === "All subjects" ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
+                  <div
+                    ref={subjectFilterScrollRef}
+                    onWheel={(e) => {
+                      if (e.deltaY !== 0 && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+                        e.currentTarget.scrollLeft += e.deltaY;
+                      }
+                    }}
+                    onMouseDown={(e) => {
+                      const el = e.currentTarget;
+                      el.dataset.down = "true";
+                      el.dataset.startX = String(e.pageX - el.offsetLeft);
+                      el.dataset.scrollLeft = String(el.scrollLeft);
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.dataset.down = "false";
+                    }}
+                    onMouseUp={(e) => {
+                      e.currentTarget.dataset.down = "false";
+                    }}
+                    onMouseMove={(e) => {
+                      const el = e.currentTarget;
+                      if (el.dataset.down !== "true") return;
+                      e.preventDefault();
+                      const x = e.pageX - el.offsetLeft;
+                      const walk = (x - Number(el.dataset.startX || 0)) * 1.5;
+                      el.scrollLeft = Number(el.dataset.scrollLeft || 0) - walk;
+                    }}
+                    className="mt-3 flex gap-2 overflow-x-auto pb-1.5 no-scrollbar select-none cursor-grab active:cursor-grabbing w-full min-w-0"
+                    style={{
+                      WebkitOverflowScrolling: "touch",
+                      touchAction: "pan-x pan-y",
+                    }}
+                  >
+                    <button onClick={() => setSelectedSubject("All subjects")} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 active:scale-95 feature-chip cursor-pointer" style={selectedSubject === "All subjects" ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
                       All ({tasks.length})
                     </button>
                     {subjects.map((s) => {
                       const count = openTaskCountByCourse.get(s.name) || 0;
                       return (
-                        <button key={s.id} onClick={() => { setSelectedSubject(s.name); setTaskCourse(s.name); }} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 feature-chip" style={selectedSubject === s.name ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
+                        <button key={s.id} onClick={() => { setSelectedSubject(s.name); setTaskCourse(s.name); }} className="shrink-0 rounded-xl px-3.5 py-2 text-xs font-semibold transition hover:scale-105 active:scale-95 feature-chip cursor-pointer" style={selectedSubject === s.name ? { backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" } : { backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}>
                           <span className="mr-2 inline-block size-2.5 rounded-full" style={{ backgroundColor: s.color }} />
                           {s.name} {count > 0 && <span className="opacity-75">({count})</span>}
                         </button>
@@ -4621,7 +4699,7 @@ Mathematics:
                         <textarea 
                           value={autopilotText}
                           onChange={(e) => setAutopilotText(e.target.value)}
-                          placeholder="Type any command: 'create subject AI', 'create flashcards for Chemistry: ...', 'add grade Math 95/100', 'take note for History: ...', 'schedule my tasks', 'add income 1,00,000'..."
+                          placeholder="Command for autopilot..."
                           className="w-full rounded-xl border p-3 text-xs outline-none resize-y min-h-[85px] transition focus:ring-1"
                           style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}
                         />
