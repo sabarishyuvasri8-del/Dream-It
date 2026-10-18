@@ -432,21 +432,21 @@
 
 /* ─── Theme: Standard Light (Everyday White & Mist) ──────────────────────
    Standard pure white surfaces (#ffffff) with soft mist canvas (#fafafa)
-   and natural charcoal text (#18181b). Balanced for comfortable daily use.
+   and balanced charcoal (#27272a). Softened contrast for comfortable daily use.
    ──────────────────────────────────────────────────────────────────────── */
 :root,
 .theme-mono-light {
   --font-size: 16px;
   --background: #fafafa;
-  --foreground: #18181b;
+  --foreground: #27272a;
   --card: #ffffff;
-  --card-foreground: #18181b;
+  --card-foreground: #27272a;
   --popover: #ffffff;
-  --popover-foreground: #18181b;
-  --primary: #18181b;
+  --popover-foreground: #27272a;
+  --primary: #27272a;
   --primary-foreground: #ffffff;
   --secondary: #f4f4f5;
-  --secondary-foreground: #18181b;
+  --secondary-foreground: #27272a;
   --muted: #f4f4f5;
   --muted-foreground: #64748b;
   --accent: #f1f5f9;
@@ -459,21 +459,21 @@
   --switch-background: #e2e8f0;
   --font-weight-medium: 500;
   --font-weight-normal: 400;
-  --ring: #18181b;
-  --chart-1: #18181b;
+  --ring: #27272a;
+  --chart-1: #27272a;
   --chart-2: #475569;
   --chart-3: #64748b;
   --chart-4: #94a3b8;
   --chart-5: #cbd5e1;
   --radius: 1rem;
   --sidebar: #f8fafc;
-  --sidebar-foreground: #18181b;
-  --sidebar-primary: #18181b;
+  --sidebar-foreground: #27272a;
+  --sidebar-primary: #27272a;
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: #f1f5f9;
-  --sidebar-accent-foreground: #18181b;
+  --sidebar-accent-foreground: #27272a;
   --sidebar-border: #e2e8f0;
-  --sidebar-ring: #18181b;
+  --sidebar-ring: #27272a;
 
   /* Dream It Dashboard theme tokens */
   --m-bg: #fafafa;
@@ -483,13 +483,13 @@
   --m-surface-alt: #f4f4f5;
   --m-border: #e2e8f0;
   --m-border-light: #f1f5f9;
-  --m-text: #18181b;
-  --m-text-heading: #0f172a;
+  --m-text: #27272a;
+  --m-text-heading: #1e293b;
   --m-text-sub: #475569;
   --m-text-muted: #64748b;
   --m-text-faint: #94a3b8;
-  --m-primary: #18181b;
-  --m-primary-hover: #27272a;
+  --m-primary: #27272a;
+  --m-primary-hover: #3f3f46;
   --m-primary-text: #ffffff;
   --m-accent: #f1f5f9;
   --m-accent-text: #0f172a;
@@ -501,16 +501,16 @@
   --m-warning: #d97706;
   --m-input-bg: #ffffff;
   --m-chat-bot-bg: #f4f4f5;
-  --m-chat-bot-text: #18181b;
+  --m-chat-bot-text: #27272a;
   --m-chat-user-bg: #f4f4f5;
-  --m-chat-user-text: #18181b;
+  --m-chat-user-text: #27272a;
   --m-chat-user-border: #e4e4e7;
   --m-sidebar-bg: #f8fafc;
   --m-sidebar-pill-bg: #f1f5f9;
   --m-sidebar-card-bg: #ffffff;
   --m-sidebar-card-border: #e2e8f0;
-  --m-selection: rgba(24, 24, 27, 0.12);
-  --m-selection-text: #18181b;
+  --m-selection: rgba(39, 39, 42, 0.12);
+  --m-selection-text: #27272a;
   --m-modal-overlay: rgba(15, 23, 42, 0.45);
   --m-modal-surface: #ffffff;
   --m-is-dark: 0;

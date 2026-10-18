@@ -52,7 +52,7 @@ export const THEMES: ThemeConfig[] = [
     description: "Clean white surfaces, soft mist canvas, everyday readability",
     isDark: false,
     cssClass: "theme-mono-light",
-    swatches: ["#ffffff", "#fafafa", "#18181b", "#e2e8f0"],
+    swatches: ["#ffffff", "#fafafa", "#27272a", "#e2e8f0"],
     icon: "⚪",
     sector: "common",
   },
