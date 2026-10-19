@@ -7213,10 +7213,6 @@ Mathematics:
                 <div className="flex items-center gap-1.5 sm:gap-2">
                   <h2 className="font-[Roboto_Slab] text-sm sm:text-base md:text-lg font-bold truncate leading-tight" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
                   <span className="hidden md:inline-block rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-xs shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
-                  <span className="inline-flex md:hidden items-center gap-1 text-[10px] font-medium text-emerald-400 shrink-0">
-                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                    <span>Online</span>
-                  </span>
                 </div>
                 <p className="hidden sm:block text-[11px] truncate" style={{ color: "var(--m-text-sub)" }}>
                   Ready for full-screen study assistance
