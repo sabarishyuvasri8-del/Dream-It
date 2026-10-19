@@ -499,6 +499,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   activeChatSessionIdRef.current = activeChatSessionId;
   const messagesRef = useRef<Message[]>([DEFAULT_WELCOME_MESSAGE]);
   messagesRef.current = messages;
+  const [showPastChatsDrawer, setShowPastChatsDrawer] = useState(false);
   const [wideSidebarOpen, setWideSidebarOpen] = useState(() => {
     if (typeof window !== "undefined") {
       return window.innerWidth >= 768;
