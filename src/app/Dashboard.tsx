@@ -134,6 +134,14 @@ import InboxModal from "./components/InboxModal";
 import FriendsModal from "./components/FriendsModal";
 import { useAppStore } from "../lib/store";
 import ChatModal from "./components/ChatModal";
+import {
+  isNotificationSupported,
+  getNotificationPermission,
+  requestNotificationPermission,
+  isTabInactive,
+  pushMessageNotification,
+  playNotificationChime,
+} from "../lib/desktopNotifications";
 import { useWebRTCCall } from "./components/calls/useWebRTCCall";
 import IncomingCallModal from "./components/calls/IncomingCallModal";
 import ActiveCallOverlay from "./components/calls/ActiveCallOverlay";
@@ -594,6 +602,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [addFriendDraft, setAddFriendDraft] = useState("");
   const [isAddingFriend, setIsAddingFriend] = useState(false);
   const [chatModalOpen, setChatModalOpen] = useState(false);
+  const [chatInitialFriendId, setChatInitialFriendId] = useState<string | null>(null);
+  const [showNotifBanner, setShowNotifBanner] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
@@ -849,6 +859,11 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     }
   }, [userId, userNameDisplay, userImageUrl]);
 
+  const friendsRef = useRef(friends);
+  friendsRef.current = friends;
+  const chatModalOpenRef = useRef(chatModalOpen);
+  chatModalOpenRef.current = chatModalOpen;
+
   useEffect(() => {
     checkInbox();
     loadFriends();
@@ -856,13 +871,42 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     // Poll every 30 seconds for new notes & requests
     const interval = window.setInterval(checkInbox, 30000);
     
-    // Listen for real-time messages when modal is closed
+    // Listen for real-time messages across the whole application
     let unsubscribe: () => void = () => {};
     if (userId) {
       unsubscribe = subscribeToDirectMessages(userId, (newMsg) => {
-        // If we receive a new message directed at us, update inbox count
+        // If we receive a new message directed at us
         if (newMsg.receiver_id === userId && !newMsg.is_read) {
           checkInbox();
+
+          // Resolve sender friend display information
+          const currentFriends = friendsRef.current;
+          const senderFriend = currentFriends.find(
+            (f) => f.requester_id === newMsg.sender_id || f.target_id === newMsg.sender_id
+          );
+          const senderName = senderFriend
+            ? (senderFriend.requester_id === newMsg.sender_id
+                ? senderFriend.requester_identifier
+                : (senderFriend.target_actual_identifier || senderFriend.target_identifier || "Friend"))
+            : "A friend";
+
+          const inactive = isTabInactive();
+
+          // If the user is on another tab, push outside notification!
+          if (inactive) {
+            pushMessageNotification({
+              message: newMsg,
+              senderName,
+              onOpenChat: (friendId) => {
+                setChatInitialFriendId(friendId);
+                setChatModalOpen(true);
+              },
+            });
+          } else if (!chatModalOpenRef.current) {
+            // User is in Dream It on this tab, but chat modal is closed
+            playNotificationChime();
+            showToast(`💬 ${senderName}: ${newMsg.content || "Sent an attachment"}`, "info");
+          }
         }
       });
     }
@@ -871,7 +915,59 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       window.clearInterval(interval);
       unsubscribe();
     };
-  }, [checkInbox, loadFriends, userId]);
+  }, [checkInbox, loadFriends, userId, showToast]);
+
+  // ─── Outside Notification Click & Custom Event Listener ───
+  useEffect(() => {
+    const handleOpenChat = (e: any) => {
+      const friendId = e.detail?.friendId;
+      if (friendId) {
+        setChatInitialFriendId(friendId);
+      }
+      setChatModalOpen(true);
+    };
+    window.addEventListener("dreamit:open-chat", handleOpenChat);
+
+    try {
+      const url = new URL(window.location.href);
+      const openChatFriendId = url.searchParams.get("openChat");
+      if (openChatFriendId) {
+        setChatInitialFriendId(openChatFriendId);
+        setChatModalOpen(true);
+        url.searchParams.delete("openChat");
+        window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
+      }
+    } catch {}
+
+    return () => window.removeEventListener("dreamit:open-chat", handleOpenChat);
+  }, []);
+
+  // ─── Desktop Outside Notification Permission Prompt Check ───
+  useEffect(() => {
+    if (isNotificationSupported() && getNotificationPermission() === "default") {
+      const dismissed = localStorage.getItem("dreamit_notif_banner_dismissed");
+      if (!dismissed) {
+        const timer = setTimeout(() => setShowNotifBanner(true), 3000);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    const res = await requestNotificationPermission();
+    setShowNotifBanner(false);
+    if (res === "granted") {
+      showToast("🎉 Desktop notifications enabled! You'll get alerts in other tabs.", "success");
+      playNotificationChime();
+    } else {
+      showToast("Notifications not enabled. You can enable them anytime from Messages.", "info");
+    }
+  };
+
+  const handleDismissNotifBanner = () => {
+    setShowNotifBanner(false);
+    localStorage.setItem("dreamit_notif_banner_dismissed", "true");
+  };
 
   // ─── Auto-save workspace (debounced with 0ms input latency & de-duplication) ───
   const lastSavedJsonRef = useRef<string>("");
@@ -6858,13 +6954,63 @@ Mathematics:
           <span>{toast.message}</span>
         </div>
       )}
+
+      {/* ─── Desktop Notification Permission Banner ─── */}
+      {showNotifBanner && (
+        <div
+          className="fixed bottom-6 right-6 z-50 max-w-sm rounded-2xl p-4 shadow-2xl border backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 duration-200 flex items-start gap-3.5"
+          style={{
+            backgroundColor: "var(--m-surface-solid)",
+            borderColor: "var(--m-border)",
+            color: "var(--m-text)",
+          }}
+        >
+          <div className="size-9 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center shrink-0">
+            <Bell size={20} className="animate-bounce" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h4 className="text-xs font-bold font-[Roboto_Slab]">Get alerts in other tabs?</h4>
+            <p className="text-[11px] opacity-75 mt-0.5 leading-snug">
+              Turn on notifications so you can see when friends message you while you're in another tab or app.
+            </p>
+            <div className="flex items-center gap-2 mt-2.5">
+              <button
+                type="button"
+                onClick={handleEnableNotifications}
+                className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-sm transition cursor-pointer"
+              >
+                Turn On
+              </button>
+              <button
+                type="button"
+                onClick={handleDismissNotifBanner}
+                className="px-2.5 py-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 opacity-70 hover:opacity-100 text-xs font-semibold transition cursor-pointer"
+              >
+                Not Now
+              </button>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDismissNotifBanner}
+            className="p-1 rounded-lg opacity-60 hover:opacity-100 transition shrink-0 cursor-pointer -mr-1 -mt-1"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
+
       {/* ─── Chat Modal ─── */}
       {chatModalOpen && (
         <ChatModal
           userId={userId}
           userNameDisplay={userNameDisplay}
           friends={friends}
-          onClose={() => setChatModalOpen(false)}
+          initialFriendId={chatInitialFriendId}
+          onClose={() => {
+            setChatModalOpen(false);
+            setChatInitialFriendId(null);
+          }}
           onStartCall={(friendId, friendName, friendImage, callType) => {
             callManager.startCall(friendId, friendName, friendImage, callType);
           }}

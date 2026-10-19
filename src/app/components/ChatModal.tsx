@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File as FileIcon, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic, Phone, Video } from "lucide-react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File as FileIcon, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic, Phone, Video, Bell, BellOff } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -16,6 +16,13 @@ import {
   FriendConversationMeta,
   formatMessageSnippet
 } from "../../lib/supabase";
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  isTabInactive,
+  pushMessageNotification,
+  playNotificationChime,
+} from "../../lib/desktopNotifications";
 import ChatMessageContent from "./ChatMessageContent";
 import LinkPreviewCard from "./LinkPreviewCard";
 import VoiceMessagePlayer from "./VoiceMessagePlayer";
@@ -46,6 +53,7 @@ interface ChatModalProps {
   onClose: () => void;
   onRefreshUnreadCount?: () => void;
   onStartCall?: (friendId: string, friendName: string, friendImage: string | undefined, callType: "audio" | "video") => void;
+  initialFriendId?: string | null;
 }
 
 export default function ChatModal({
@@ -55,6 +63,7 @@ export default function ChatModal({
   onClose,
   onRefreshUnreadCount,
   onStartCall,
+  initialFriendId,
 }: ChatModalProps) {
   const [activeFriend, setActiveFriend] = useState<Friendship | null>(null);
   const [messages, setMessages] = useState<DirectMessage[]>([]);
@@ -64,6 +73,15 @@ export default function ChatModal({
   const [profiles, setProfiles] = useState<Record<string, UserProfileData>>({});
   const [convoMeta, setConvoMeta] = useState<Record<string, FriendConversationMeta>>({});
   const [isWide, setIsWide] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(getNotificationPermission());
+
+  const handleToggleNotification = async () => {
+    const res = await requestNotificationPermission();
+    setNotifPermission(res);
+    if (res === "granted") {
+      playNotificationChime();
+    }
+  };
   
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -255,6 +273,55 @@ export default function ChatModal({
     }
   };
 
+  // Select initial friend if provided as prop
+  useEffect(() => {
+    if (initialFriendId && friends.length > 0) {
+      const match = friends.find((f) => {
+        const fId = f.requester_id === userId ? f.target_id : f.requester_id;
+        return fId === initialFriendId;
+      });
+      if (match) {
+        handleSelectFriend(match);
+      }
+    }
+  }, [initialFriendId, friends, userId]);
+
+  // Listen for outside notification click event to open specific friend chat
+  useEffect(() => {
+    const handleOpenChatEvent = (e: any) => {
+      const targetFriendId = e.detail?.friendId;
+      if (!targetFriendId || !friends.length) return;
+      const match = friends.find((f) => {
+        const fId = f.requester_id === userId ? f.target_id : f.requester_id;
+        return fId === targetFriendId;
+      });
+      if (match) {
+        handleSelectFriend(match);
+      }
+    };
+    window.addEventListener("dreamit:open-chat", handleOpenChatEvent);
+    return () => window.removeEventListener("dreamit:open-chat", handleOpenChatEvent);
+  }, [friends, userId]);
+
+  // When user returns to tab, mark active friend messages as read
+  useEffect(() => {
+    const handleReturnToTab = () => {
+      if (!isTabInactive() && activeFriend) {
+        const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+        if (friendId) {
+          markMessagesAsRead(userId, friendId);
+          onRefreshUnreadCount?.();
+        }
+      }
+    };
+    window.addEventListener("focus", handleReturnToTab);
+    window.addEventListener("visibilitychange", handleReturnToTab);
+    return () => {
+      window.removeEventListener("focus", handleReturnToTab);
+      window.removeEventListener("visibilitychange", handleReturnToTab);
+    };
+  }, [activeFriend, userId, onRefreshUnreadCount]);
+
   // Load messages when active friend changes
   useEffect(() => {
     if (!activeFriend) return;
@@ -269,9 +336,11 @@ export default function ChatModal({
       setLoadingMessages(false);
       scrollToBottom(false);
       
-      // Mark as read when we open the chat
-      await markMessagesAsRead(userId, friendId);
-      onRefreshUnreadCount?.();
+      // Mark as read when we open the chat (only if visible)
+      if (!isTabInactive()) {
+        await markMessagesAsRead(userId, friendId);
+        onRefreshUnreadCount?.();
+      }
     };
     
     loadMessages();
@@ -293,34 +362,61 @@ export default function ChatModal({
 
         const isCurrentChatActive = currentActiveFriendId === otherUserId;
         const isIncoming = newMsg.sender_id === otherUserId && newMsg.receiver_id === userId;
+        const inactive = isTabInactive();
 
         // 1. Update conversation metadata (this causes friend to reorder to top immediately & tracks unread counts)
         setConvoMeta((prev) => {
           const prevMeta = prev[otherUserId] || { lastMessageAt: null, lastMessageText: null, unreadCount: 0 };
-          const shouldCountUnread = isIncoming && !isCurrentChatActive;
+          const shouldCountUnread = isIncoming && (!isCurrentChatActive || inactive);
 
           return {
             ...prev,
             [otherUserId]: {
               lastMessageAt: newMsg.created_at,
               lastMessageText: formatMessageSnippet(newMsg),
-              unreadCount: shouldCountUnread ? (prevMeta.unreadCount || 0) + 1 : (isCurrentChatActive ? 0 : prevMeta.unreadCount || 0),
+              unreadCount: shouldCountUnread ? (prevMeta.unreadCount || 0) + 1 : (isCurrentChatActive && !inactive ? 0 : prevMeta.unreadCount || 0),
             },
           };
         });
 
-        // 2. If it belongs to currently open chat, append to messages and mark as read
+        // 2. If it belongs to currently open chat, append to messages
         if (isCurrentChatActive) {
           setMessages((prev) => {
             if (prev.find((m) => m.id === newMsg.id)) return prev;
             return [...prev, newMsg];
           });
           if (isIncoming) {
-            markMessagesAsRead(userId, otherUserId);
-            onRefreshUnreadCount?.();
+            // Only mark as read if the tab is visible and focused
+            if (!inactive) {
+              markMessagesAsRead(userId, otherUserId);
+              onRefreshUnreadCount?.();
+            }
           }
         } else if (isIncoming) {
           onRefreshUnreadCount?.();
+        }
+
+        // 3. PUSH OUTSIDE NOTIFICATION IF IN ANOTHER TAB OR LOOKING AT ANOTHER CHAT
+        if (isIncoming && (inactive || !isCurrentChatActive)) {
+          const friendObj = friends.find(
+            (f) => (f.requester_id === userId ? f.target_id : f.requester_id) === otherUserId
+          );
+          const friendName = friendObj ? getFriendName(friendObj) : (profiles[otherUserId]?.username || "Friend");
+          const friendAvatar = profiles[otherUserId]?.image_url;
+
+          pushMessageNotification({
+            message: newMsg,
+            senderName: friendName,
+            senderAvatar: friendAvatar,
+            onOpenChat: (fId) => {
+              const targetFriend = friends.find(
+                (f) => (f.requester_id === userId ? f.target_id : f.requester_id) === fId
+              );
+              if (targetFriend) {
+                handleSelectFriend(targetFriend);
+              }
+            },
+          });
         }
       },
       (deletedMsgId) => {
@@ -340,7 +436,7 @@ export default function ChatModal({
     return () => {
       unsubscribe();
     };
-  }, [userId, activeFriend, onRefreshUnreadCount]);
+  }, [userId, activeFriend, friends, profiles, getFriendName, onRefreshUnreadCount]);
 
   // ─── Voice Message Recording System ───
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -647,9 +743,33 @@ export default function ChatModal({
         <div className={`w-full md:w-80 flex-col border-r-0 md:border-r ${activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ borderColor: "var(--m-border)" }}>
           <div className="p-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--m-border)" }}>
             <h3 className="font-bold font-[Roboto_Slab] text-lg truncate flex-1">{userNameDisplay}</h3>
-            <button onClick={onClose} className="md:hidden p-2 -mr-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0 ml-2">
-              <X size={20} />
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={handleToggleNotification}
+                className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit"
+                title={
+                  notifPermission === "granted"
+                    ? "Outside desktop notifications active (alerts pop up in other tabs)"
+                    : "Enable outside notifications to get alerted in other tabs"
+                }
+              >
+                {notifPermission === "granted" ? (
+                  <span className="relative flex items-center justify-center">
+                    <Bell size={17} className="opacity-80 hover:opacity-100 text-emerald-500" />
+                    <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-[var(--m-surface)]" />
+                  </span>
+                ) : (
+                  <span className="relative flex items-center justify-center">
+                    <BellOff size={17} className="text-amber-500 hover:text-amber-400" />
+                    <span className="absolute -top-1 -right-1 size-2 rounded-full bg-amber-500 animate-ping" />
+                  </span>
+                )}
+              </button>
+              <button onClick={onClose} className="md:hidden p-2 -mr-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0 ml-1">
+                <X size={20} />
+              </button>
+            </div>
           </div>
           
           <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2">
@@ -827,6 +947,29 @@ export default function ChatModal({
                     </button>
                   </>
                 )}
+                <button
+                  type="button"
+                  onClick={handleToggleNotification}
+                  className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit opacity-75 hover:opacity-100"
+                  title={
+                    notifPermission === "granted"
+                      ? "Outside notifications active (you'll get alerts in other tabs)"
+                      : "Enable outside notifications to get alerted in other tabs"
+                  }
+                  aria-label="Desktop Notifications"
+                >
+                  {notifPermission === "granted" ? (
+                    <span className="relative flex items-center justify-center">
+                      <Bell size={17} className="text-emerald-500" />
+                      <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-emerald-500" />
+                    </span>
+                  ) : (
+                    <span className="relative flex items-center justify-center">
+                      <BellOff size={17} className="text-amber-500" />
+                      <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-amber-500 animate-ping" />
+                    </span>
+                  )}
+                </button>
                 <button onClick={() => setIsWide(!isWide)} className="hidden md:block p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100">
                   {isWide ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                 </button>

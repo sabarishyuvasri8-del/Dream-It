@@ -21,9 +21,11 @@ import {
   Layers,
   Wallet,
   Clock,
-  BookOpen
+  BookOpen,
+  BellRing
 } from "lucide-react";
 import { NoteEntry, Task, Subject } from "../../lib/supabase";
+import { requestNotificationPermission, playNotificationChime } from "../../lib/desktopNotifications";
 
 export interface CommandItem {
   id: string;
@@ -384,6 +386,21 @@ export default function CommandPalette({
         onSelect: () => {
           onOpenThemeSelector();
           onClose();
+        },
+      },
+      {
+        id: "tool-desktop-notifications",
+        title: "Desktop & Outside Notifications",
+        subtitle: "Enable native alerts when friends message you while in another tab",
+        category: "Settings & Tools",
+        icon: <BellRing size={16} className="text-indigo-400" />,
+        badge: "Alerts",
+        onSelect: async () => {
+          onClose();
+          const permission = await requestNotificationPermission();
+          if (permission === "granted") {
+            playNotificationChime();
+          }
         },
       },
       {

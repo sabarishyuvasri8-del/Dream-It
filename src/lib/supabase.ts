@@ -1045,8 +1045,10 @@ export function subscribeToDirectMessages(
   onMessageDeleted?: (msgId: string) => void,
   onMessageHidden?: (msg: DirectMessage) => void
 ) {
+  // Use unique channel identifier to prevent one component unmounting from tearing down another component's channel
+  const subInstanceId = Math.random().toString(36).substring(2, 9);
   const channel = supabase
-    .channel(`public:direct_messages:${userId}`)
+    .channel(`public:direct_messages:${userId}:${subInstanceId}`)
     .on(
       'postgres_changes',
       { event: '*', schema: 'public', table: 'direct_messages' },

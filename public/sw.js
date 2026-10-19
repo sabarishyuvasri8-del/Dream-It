@@ -146,3 +146,33 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// Notification Click Event: Focus existing window or open new one
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const friendId = event.notification.data && event.notification.data.friendId;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      // 1. If an existing window/tab is open, focus it and tell it to open the chat
+      for (const client of clientList) {
+        if ('focus' in client) {
+          client.focus();
+          if (friendId) {
+            client.postMessage({
+              type: 'DREAMIT_OPEN_CHAT',
+              friendId: friendId
+            });
+          }
+          return;
+        }
+      }
+      // 2. Otherwise open a new window
+      if (self.clients.openWindow) {
+        const targetUrl = friendId ? `/?openChat=${encodeURIComponent(friendId)}` : '/';
+        return self.clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+
