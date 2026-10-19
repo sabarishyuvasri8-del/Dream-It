@@ -51,6 +51,7 @@ import {
   Minimize2,
   Moon,
   MoreHorizontal,
+  MoreVertical,
   Notebook,
   MessageCircle,
   MessageSquare,
@@ -572,6 +573,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [isAddingFriend, setIsAddingFriend] = useState(false);
   const [chatModalOpen, setChatModalOpen] = useState(false);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
 
   // ─── Grades State ───
@@ -3809,42 +3811,6 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                 <Activity size={17} className="shrink-0" />
                 <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0"}`}>Cadence Screening</span>
               </a>
-
-              <button
-                type="button"
-                onClick={() => { setFriendsModalOpen(true); setMobileOpen(false); }}
-                className={`flex items-center rounded-xl transition-all duration-300 feature-chip ${
-                  isExpanded ? "w-full px-3.5 py-2.5" : "w-10 h-10 justify-center mx-auto"
-                }`}
-                style={{ color: "var(--m-text-sub)" }}
-                title={!isExpanded ? "Study Friends" : undefined}
-              >
-                <Users size={17} className="shrink-0" />
-                <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0"}`}>Friends</span>
-                {pendingFriendRequests.length > 0 && isExpanded && (
-                  <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.2 text-[10px] font-bold text-white">
-                    {pendingFriendRequests.length}
-                  </span>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => { setChatModalOpen(true); checkInbox(); setMobileOpen(false); }}
-                className={`flex items-center rounded-xl transition-all duration-300 feature-chip ${
-                  isExpanded ? "w-full px-3.5 py-2.5" : "w-10 h-10 justify-center mx-auto"
-                }`}
-                style={{ color: "var(--m-text-sub)" }}
-                title={!isExpanded ? "Messages & Chat" : undefined}
-              >
-                <MessageCircle size={17} className="shrink-0" />
-                <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0"}`}>Messages</span>
-                {unreadMessageCount > 0 && isExpanded && (
-                  <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.2 text-[10px] font-bold text-white">
-                    {unreadMessageCount}
-                  </span>
-                )}
-              </button>
             </nav>
           </div>
 
@@ -3995,18 +3961,18 @@ You can save notes and flashcards. When asked to save to notes or create flashca
             <button
               onClick={() => setCommandPaletteOpen(true)}
               className="flex md:hidden p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] items-center justify-center cursor-pointer shrink-0"
-              title="Command Palette (Cmd + K)"
+              title="Search & Commands"
+              aria-label="Search"
             >
-              <Command size={16} />
+              <Search size={16} />
             </button>
 
-            {/* Friends: shown on tablet/desktop, accessible via sidebar drawer on phones */}
-            <button onClick={() => setFriendsModalOpen(true)} className="hidden sm:flex p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] items-center justify-center shrink-0" title="Friends">
+            {/* Desktop / Tablet Icons: Friends, Messages, Inbox, Theme */}
+            <button onClick={() => setFriendsModalOpen(true)} className="hidden sm:flex p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] items-center justify-center shrink-0 cursor-pointer" title="Friends">
               <Users size={17} />
             </button>
 
-            {/* Messages: shown on tablet/desktop, or on phone when there are unread messages */}
-            <button onClick={() => { setChatModalOpen(true); checkInbox(); }} className={`${unreadMessageCount > 0 ? "flex" : "hidden sm:flex"} relative p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] items-center justify-center shrink-0`} title="Messages">
+            <button onClick={() => { setChatModalOpen(true); checkInbox(); }} className="hidden sm:flex relative p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] items-center justify-center shrink-0 cursor-pointer" title="Messages">
               <MessageCircle size={16} />
               {unreadMessageCount > 0 && (
                 <span className="absolute top-1 right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white shadow-sm ring-2 ring-[var(--m-header-bg)]">
@@ -4015,8 +3981,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
               )}
             </button>
 
-            {/* Inbox & Notifications */}
-            <button onClick={() => setInboxOpen(true)} className="relative p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] flex items-center justify-center shrink-0" title="Inbox">
+            <button onClick={() => setInboxOpen(true)} className="hidden sm:flex relative p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] items-center justify-center shrink-0 cursor-pointer" title="Inbox">
               <Bell size={16} />
               {(pendingShares.length + pendingFriendRequests.length) > 0 && (
                 <span className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
@@ -4025,10 +3990,106 @@ You can save notes and flashcards. When asked to save to notes or create flashca
               )}
             </button>
 
-            {/* Theme Selector */}
-            <button onClick={() => setThemeSelectorOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] flex items-center justify-center shrink-0" title="Change theme">
+            {/* Theme Selector (Desktop / Tablet only — hidden on mobile as requested) */}
+            <button onClick={() => setThemeSelectorOpen(true)} className="hidden sm:flex p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] items-center justify-center shrink-0 cursor-pointer" title="Change theme">
               <Palette size={16} />
             </button>
+
+            {/* Mobile Three-Dots Action Menu (Smartphone viewpoint) */}
+            <div className="relative sm:hidden">
+              <button
+                type="button"
+                onClick={() => setMobileActionsOpen((v) => !v)}
+                className="relative p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 flex items-center justify-center shrink-0 cursor-pointer"
+                title="More options"
+                aria-label="More options"
+              >
+                <MoreVertical size={17} />
+                {(unreadMessageCount > 0 || (pendingShares.length + pendingFriendRequests.length) > 0) && (
+                  <span className="absolute top-1 right-1 flex size-2 rounded-full bg-red-500 ring-2 ring-[var(--m-header-bg)]" />
+                )}
+              </button>
+
+              {mobileActionsOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-40"
+                    onClick={() => setMobileActionsOpen(false)}
+                  />
+                  <div
+                    className="absolute right-0 top-full mt-2 z-50 min-w-[210px] rounded-2xl p-1.5 shadow-2xl border animate-in fade-in zoom-in-95 duration-150 backdrop-blur-md"
+                    style={{
+                      backgroundColor: "var(--m-surface-solid)",
+                      borderColor: "var(--m-border)",
+                    }}
+                  >
+                    {/* Chatbox / Messages */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setChatModalOpen(true);
+                        checkInbox();
+                        setMobileActionsOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                      style={{ color: "var(--m-text)" }}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <MessageCircle size={16} style={{ color: "var(--m-primary)" }} />
+                        <span>Chatbox</span>
+                      </div>
+                      {unreadMessageCount > 0 && (
+                        <span className="flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                          {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Friends */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFriendsModalOpen(true);
+                        setMobileActionsOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                      style={{ color: "var(--m-text)" }}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Users size={16} style={{ color: "var(--m-primary)" }} />
+                        <span>Friends</span>
+                      </div>
+                      {pendingFriendRequests.length > 0 && (
+                        <span className="flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                          {pendingFriendRequests.length}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Inbox & Notifications */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInboxOpen(true);
+                        setMobileActionsOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                      style={{ color: "var(--m-text)" }}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Bell size={16} style={{ color: "var(--m-primary)" }} />
+                        <span>Inbox Notifications</span>
+                      </div>
+                      {(pendingShares.length + pendingFriendRequests.length) > 0 && (
+                        <span className="flex h-4 min-w-[16px] px-1 items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                          {pendingShares.length + pendingFriendRequests.length}
+                        </span>
+                      )}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
 
           </div>
         </header>
