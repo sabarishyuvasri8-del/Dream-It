@@ -3809,6 +3809,42 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                 <Activity size={17} className="shrink-0" />
                 <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0"}`}>Cadence Screening</span>
               </a>
+
+              <button
+                type="button"
+                onClick={() => { setFriendsModalOpen(true); setMobileOpen(false); }}
+                className={`flex items-center rounded-xl transition-all duration-300 feature-chip ${
+                  isExpanded ? "w-full px-3.5 py-2.5" : "w-10 h-10 justify-center mx-auto"
+                }`}
+                style={{ color: "var(--m-text-sub)" }}
+                title={!isExpanded ? "Study Friends" : undefined}
+              >
+                <Users size={17} className="shrink-0" />
+                <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0"}`}>Friends</span>
+                {pendingFriendRequests.length > 0 && isExpanded && (
+                  <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.2 text-[10px] font-bold text-white">
+                    {pendingFriendRequests.length}
+                  </span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => { setChatModalOpen(true); checkInbox(); setMobileOpen(false); }}
+                className={`flex items-center rounded-xl transition-all duration-300 feature-chip ${
+                  isExpanded ? "w-full px-3.5 py-2.5" : "w-10 h-10 justify-center mx-auto"
+                }`}
+                style={{ color: "var(--m-text-sub)" }}
+                title={!isExpanded ? "Messages & Chat" : undefined}
+              >
+                <MessageCircle size={17} className="shrink-0" />
+                <span className={`text-sm font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[200px] opacity-100 ml-3" : "max-w-0 opacity-0 ml-0"}`}>Messages</span>
+                {unreadMessageCount > 0 && isExpanded && (
+                  <span className="ml-auto rounded-full bg-red-500 px-1.5 py-0.2 text-[10px] font-bold text-white">
+                    {unreadMessageCount}
+                  </span>
+                )}
+              </button>
             </nav>
           </div>
 
@@ -3925,24 +3961,24 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       {/* ─── Main Content ─── */}
       <section className="transition-all duration-300 w-full min-w-0 max-w-full overflow-x-hidden lg:pl-[76px]">
         {/* Top Bar */}
-        <header className="sticky top-0 z-20 flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3.5 md:px-8 minimal-surface shadow-xs gap-2 sm:gap-4" style={{ backgroundColor: "var(--m-surface-solid)", borderBottom: "1px solid var(--m-border-light)" }}>
-          <div className="flex items-center gap-2 sm:gap-3 shrink-0 min-w-0">
-            <button className="lg:hidden p-2 rounded-xl hover:opacity-80 transition minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center shrink-0" onClick={() => setMobileOpen(true)} aria-label="Open menu">
+        <header className="sticky top-0 z-20 flex items-center justify-between px-3 sm:px-6 py-2.5 sm:py-3.5 md:px-8 minimal-surface shadow-xs gap-2 sm:gap-4 max-w-full min-w-0" style={{ backgroundColor: "var(--m-surface-solid)", borderBottom: "1px solid var(--m-border-light)" }}>
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+            <button className="lg:hidden p-2 rounded-xl hover:opacity-80 transition minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] flex items-center justify-center shrink-0" onClick={() => setMobileOpen(true)} aria-label="Open menu">
               <Menu size={18} />
             </button>
-            <div className="min-w-0">
-              <p className="text-xs sm:text-sm font-medium truncate max-w-[170px] sm:max-w-none" style={{ color: "var(--m-text-heading)" }}>
+            <div className="min-w-0 flex-1">
+              <p className="text-xs sm:text-sm font-semibold truncate" style={{ color: "var(--m-text-heading)" }}>
                 {new Date().toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
               </p>
-              <div className="flex items-center gap-2">
-                <p className="text-[10px] sm:text-xs truncate max-w-[170px] sm:max-w-none" style={{ color: "var(--m-text-muted)" }}>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <p className="text-[10px] sm:text-xs truncate" style={{ color: "var(--m-text-muted)" }}>
                   {dayGreeting}, {userNameDisplay}
                 </p>
                 <OfflineSyncIndicator onSync={handleForceSync} isSaving={isSaving} />
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-2 shrink-0">
             {/* ─── Global Command Palette Trigger ─── */}
             <button
               onClick={() => setCommandPaletteOpen(true)}
@@ -3958,33 +3994,40 @@ You can save notes and flashcards. When asked to save to notes or create flashca
             </button>
             <button
               onClick={() => setCommandPaletteOpen(true)}
-              className="flex md:hidden p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] items-center justify-center cursor-pointer"
+              className="flex md:hidden p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] items-center justify-center cursor-pointer shrink-0"
               title="Command Palette (Cmd + K)"
             >
-              <Command size={17} />
+              <Command size={16} />
             </button>
 
-            <button onClick={() => setFriendsModalOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Friends">
+            {/* Friends: shown on tablet/desktop, accessible via sidebar drawer on phones */}
+            <button onClick={() => setFriendsModalOpen(true)} className="hidden sm:flex p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] items-center justify-center shrink-0" title="Friends">
               <Users size={17} />
             </button>
-            <button onClick={() => { setChatModalOpen(true); checkInbox(); }} className="relative p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Messages">
-              <MessageCircle size={17} />
+
+            {/* Messages: shown on tablet/desktop, or on phone when there are unread messages */}
+            <button onClick={() => { setChatModalOpen(true); checkInbox(); }} className={`${unreadMessageCount > 0 ? "flex" : "hidden sm:flex"} relative p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] items-center justify-center shrink-0`} title="Messages">
+              <MessageCircle size={16} />
               {unreadMessageCount > 0 && (
                 <span className="absolute top-1 right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white shadow-sm ring-2 ring-[var(--m-header-bg)]">
                   {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
                 </span>
               )}
             </button>
-            <button onClick={() => setInboxOpen(true)} className="relative p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Inbox">
-              <Bell size={17} />
+
+            {/* Inbox & Notifications */}
+            <button onClick={() => setInboxOpen(true)} className="relative p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] flex items-center justify-center shrink-0" title="Inbox">
+              <Bell size={16} />
               {(pendingShares.length + pendingFriendRequests.length) > 0 && (
-                <span className="absolute top-1 right-1 flex h-3 w-3 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
+                <span className="absolute top-1 right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-red-500 text-[8px] font-bold text-white">
                   {pendingShares.length + pendingFriendRequests.length}
                 </span>
               )}
             </button>
-            <button onClick={() => setThemeSelectorOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface min-h-[38px] min-w-[38px] flex items-center justify-center" title="Change theme">
-              <Palette size={17} />
+
+            {/* Theme Selector */}
+            <button onClick={() => setThemeSelectorOpen(true)} className="p-2 rounded-xl transition hover:opacity-80 minimal-surface size-9 sm:min-h-[38px] sm:min-w-[38px] flex items-center justify-center shrink-0" title="Change theme">
+              <Palette size={16} />
             </button>
 
           </div>
@@ -4113,11 +4156,11 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                 )}
 
                 {/* Subject Filter */}
-                <section className="mb-5 rounded-xl p-4 minimal-inset feature-zoom w-full min-w-0">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5">
-                      <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Filter by project</p>
-                      <div className="flex items-center gap-1">
+                <section className="mb-5 rounded-xl p-3.5 sm:p-4 minimal-inset feature-zoom w-full min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+                      <p className="text-xs font-semibold truncate" style={{ color: "var(--m-text-muted)" }}>Filter by project</p>
+                      <div className="flex items-center gap-1 shrink-0">
                         <button
                           type="button"
                           onClick={() => scrollSubjectFilter("left")}
@@ -4148,8 +4191,8 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                         </button>
                       </div>
                     </div>
-                    <button onClick={() => setSubjectsOpen(true)} className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold transition hover:scale-105 cursor-pointer shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
-                      <FolderPlus size={14} /><span>Manage</span>
+                    <button onClick={() => setSubjectsOpen(true)} className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 sm:px-3 sm:py-1.5 text-xs font-bold shrink-0 transition hover:scale-105 cursor-pointer shadow-xs" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
+                      <FolderPlus size={13} /><span className="text-[11px] sm:text-xs">Manage</span>
                     </button>
                   </div>
                   <div
@@ -4202,30 +4245,30 @@ You can save notes and flashcards. When asked to save to notes or create flashca
 
                 {/* Progress & Timer */}
                 <div className="grid gap-4 sm:gap-5 md:grid-cols-[1.3fr_1fr]">
-                  <section className="overflow-hidden rounded-xl p-5 minimal-surface feature-zoom">
+                  <section className="overflow-hidden rounded-xl p-4 sm:p-5 minimal-surface feature-zoom min-w-0">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Progress</p>
-                        <h2 className="mt-0.5 text-lg font-semibold" style={{ color: "var(--m-text-heading)" }}>{completeCount} of {tasks.length} done</h2>
+                        <h2 className="mt-0.5 text-base sm:text-lg font-semibold" style={{ color: "var(--m-text-heading)" }}>{completeCount} of {tasks.length} done</h2>
                       </div>
                       <span className="rounded-lg px-2.5 py-0.5 text-xs font-medium minimal-inset" style={{ color: "var(--m-primary)" }}>{progress}%</span>
                     </div>
-                    <div className="mt-5 flex items-center gap-2">
+                    <div className="mt-4 sm:mt-5 flex items-center gap-2">
                       <div className="h-3 flex-1 overflow-hidden rounded-full" style={{ backgroundColor: "var(--m-surface-alt)" }}>
                         <div className="h-full rounded-full transition-all duration-500" style={{ width: `${progress}%`, backgroundColor: "var(--m-primary)" }} />
                       </div>
                     </div>
                     {/* Weekly bars */}
-                    <div className="mt-6">
+                    <div className="mt-5 sm:mt-6">
                       <div className="flex items-center justify-between text-[11px] mb-2" style={{ color: "var(--m-text-muted)" }}>
                         <span>This week</span>
                         <span style={{ color: "var(--m-primary)" }}>{formatStudyTime(weeklyStudyMinutes)} total</span>
                       </div>
-                      <div className="grid grid-cols-7 gap-2 items-end h-14 rounded-xl p-2" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
+                      <div className="grid grid-cols-7 gap-1 sm:gap-2 items-end h-14 rounded-xl p-1.5 sm:p-2 min-w-0" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
                         {graphData.map((d) => {
                           const heightPct = graphMaxMinutes > 0 ? Math.min(100, Math.max(15, (d.effectiveMinutes / graphMaxMinutes) * 100)) : 15;
                           return (
-                            <div key={d.dateKey} className="flex flex-col items-center gap-1 h-full justify-end" title={`${d.label}: ${d.minutes} mins`}>
+                            <div key={d.dateKey} className="flex flex-col items-center gap-1 h-full justify-end min-w-0" title={`${d.label}: ${d.minutes} mins`}>
                               <div
                                 className={`w-full rounded-md transition-all duration-300 ${d.isTimerActive ? "animate-pulse ring-1 ring-[var(--m-primary)]" : ""}`}
                                 style={{
@@ -4234,7 +4277,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                                   boxShadow: d.isTimerActive ? "0 0 10px var(--m-primary)" : undefined,
                                 }}
                               />
-                              <span className={`text-[9px] font-[DM_Mono] ${d.isToday ? "font-bold" : ""}`} style={{ color: d.isToday ? "var(--m-primary)" : "var(--m-text-sub)" }}>{d.label.split(" ")[0]}</span>
+                              <span className={`text-[8px] sm:text-[9px] font-[DM_Mono] truncate ${d.isToday ? "font-bold" : ""}`} style={{ color: d.isToday ? "var(--m-primary)" : "var(--m-text-sub)" }}>{d.label.split(" ")[0]}</span>
                             </div>
                           );
                         })}
@@ -4243,13 +4286,13 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                   </section>
 
                   {/* Pomodoro Widget */}
-                  <section className="rounded-xl p-5 minimal-surface feature-zoom" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", borderColor: "transparent" }}>
+                  <section className="rounded-xl p-4 sm:p-5 minimal-surface feature-zoom min-w-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", borderColor: "transparent" }}>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">
                           {isBreak ? "Break" : "Focus"}
                         </p>
-                        <h2 className="mt-1 text-lg font-semibold">
+                        <h2 className="mt-1 text-base sm:text-lg font-semibold">
                           {isBreak ? "Take a break." : "Stay focused."}
                         </h2>
                       </div>
@@ -4257,24 +4300,24 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                         <p>Session {pomodoroSession + 1}</p>
                       </div>
                     </div>
-                    <div className="mt-4 flex items-center gap-5">
-                      <div className="relative grid size-24 place-items-center shrink-0">
-                        <svg className="size-24 -rotate-90" viewBox="0 0 120 120">
+                    <div className="mt-4 flex items-center gap-3 sm:gap-5 min-w-0">
+                      <div className="relative grid size-20 sm:size-24 place-items-center shrink-0">
+                        <svg className="size-20 sm:size-24 -rotate-90" viewBox="0 0 120 120">
                           <circle cx="60" cy="60" r="50" fill="none" stroke="color-mix(in srgb, var(--m-primary-text) 25%, transparent)" strokeWidth="7" />
                           <circle cx="60" cy="60" r="50" fill="none" stroke="var(--m-accent)" strokeWidth="7" strokeLinecap="round" strokeDasharray="314" strokeDashoffset={circleDash} className="transition-all duration-300" />
                         </svg>
-                        <span className="absolute font-[DM_Mono] text-base font-bold">{formatTime(seconds)}</span>
+                        <span className="absolute font-[DM_Mono] text-sm sm:text-base font-bold">{formatTime(seconds)}</span>
                       </div>
-                      <div>
-                        <p className="text-xs font-medium transition-colors duration-300" style={{ color: "color-mix(in srgb, var(--m-primary-text) 90%, transparent)" }}>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium transition-colors duration-300 truncate" style={{ color: "color-mix(in srgb, var(--m-primary-text) 90%, transparent)" }}>
                           {isBreak ? "Break" : `${timerPreset}min Focus`}
                         </p>
-                        <div className="mt-2.5 flex items-center gap-2">
-                          <button onClick={() => setIsRunning((r) => !r)} className="inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-xs font-bold transition hover:scale-105 shadow-sm" style={{ backgroundColor: "var(--m-accent)", color: "var(--m-accent-text)" }}>
+                        <div className="mt-2.5 flex items-center gap-2 flex-wrap">
+                          <button onClick={() => setIsRunning((r) => !r)} className="inline-flex items-center gap-1.5 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 text-xs font-bold transition hover:scale-105 shadow-sm shrink-0" style={{ backgroundColor: "var(--m-accent)", color: "var(--m-accent-text)" }}>
                             {isRunning ? <Pause size={14} fill="currentColor" /> : <Play size={14} fill="currentColor" />}
                             <span>{isRunning ? "Pause" : "Start"}</span>
                           </button>
-                          <button onClick={handleResetTimer} className="p-2 rounded-full transition-colors duration-200 hover:opacity-100" style={{ color: "color-mix(in srgb, var(--m-primary-text) 80%, transparent)" }} title="Reset">
+                          <button onClick={handleResetTimer} className="p-1.5 sm:p-2 rounded-full transition-colors duration-200 hover:opacity-100 shrink-0" style={{ color: "color-mix(in srgb, var(--m-primary-text) 80%, transparent)" }} title="Reset">
                             <RotateCcw size={14} />
                           </button>
                         </div>
@@ -4358,8 +4401,8 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                     </div>
 
                     {/* Add Task Form */}
-                    <form onSubmit={addTask} className="flex flex-col sm:grid gap-3 sm:gap-2 px-4 py-4 sm:py-3.5 sm:grid-cols-[1fr_140px_100px_100px_auto]" style={{ borderTop: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
-                      <input id="new-task-input" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} placeholder="What needs to get done?" className="min-w-0 rounded-xl border px-3.5 py-2 text-sm outline-none transition focus:ring-2" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)", "--tw-ring-color": "var(--m-primary)" } as any} />
+                    <form onSubmit={addTask} className="flex flex-col sm:grid gap-2.5 sm:gap-2 px-3.5 sm:px-4 py-3.5 sm:grid-cols-[1fr_140px_100px_100px_auto]" style={{ borderTop: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
+                      <input id="new-task-input" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} placeholder="What needs to get done?" className="w-full min-w-0 rounded-xl border px-3.5 py-2 text-sm outline-none transition focus:ring-2" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)", "--tw-ring-color": "var(--m-primary)" } as any} />
                       <div className="flex items-center gap-1 min-w-0">
                         <select
                           value={taskCourse}
@@ -4370,7 +4413,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                               setTaskCourse(e.target.value);
                             }
                           }}
-                          className="w-full rounded-xl border px-2.5 py-2 text-xs font-medium outline-none cursor-pointer"
+                          className="w-full min-w-0 rounded-xl border px-2.5 py-2 text-xs font-medium outline-none cursor-pointer truncate"
                           style={{
                             borderColor: "var(--m-border)",
                             backgroundColor: "var(--m-input-bg)",
@@ -4397,40 +4440,42 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                           <Plus size={14} />
                         </button>
                       </div>
-                      <input type="date" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} className="min-w-0 rounded-xl border px-2 py-2 text-xs outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} title="Deadline" />
-                      <select value={taskPriority} onChange={(e) => setTaskPriority(e.target.value as any)} className="rounded-xl border px-2 py-2 text-xs outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}>
-                        <option value="low">Low</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                      </select>
-                      <button type="submit" disabled={!taskDraft.trim()} className="rounded-xl px-4 py-2 text-xs font-bold transition hover:scale-105 disabled:opacity-40" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Add</button>
+                      <div className="grid grid-cols-2 sm:contents gap-2">
+                        <input type="date" value={taskDeadline} onChange={(e) => setTaskDeadline(e.target.value)} className="w-full min-w-0 rounded-xl border px-2 py-2 text-xs outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} title="Deadline" />
+                        <select value={taskPriority} onChange={(e) => setTaskPriority(e.target.value as any)} className="w-full min-w-0 rounded-xl border px-2 py-2 text-xs outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }}>
+                          <option value="low">Low Priority</option>
+                          <option value="medium">Medium Priority</option>
+                          <option value="high">High Priority</option>
+                        </select>
+                      </div>
+                      <button type="submit" disabled={!taskDraft.trim()} className="w-full sm:w-auto rounded-xl px-4 py-2.5 sm:py-2 text-xs font-bold transition hover:scale-105 disabled:opacity-40" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Add Task</button>
                     </form>
                   </div>
                 </section>
 
                 {/* Autopilot Widget */}
-                <section id="autopilot-section" className="mt-5 rounded-xl p-5 minimal-surface feature-zoom" style={{ border: "1px solid var(--m-primary-transparent)" }}>
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <div className="grid size-7 place-items-center rounded-lg shadow-2xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                <section id="autopilot-section" className="mt-5 rounded-xl p-4 sm:p-5 minimal-surface feature-zoom w-full min-w-0" style={{ border: "1px solid var(--m-primary-transparent)" }}>
+                  <div className="flex flex-wrap items-start sm:items-center justify-between gap-2.5 mb-2">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="grid size-7 place-items-center rounded-lg shadow-2xs shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                         <Sparkles size={16} />
                       </div>
-                      <div>
-                        <h3 className="font-[Roboto_Slab] text-base font-semibold" style={{ color: "var(--m-text-heading)" }}>Autopilot Taskmaster</h3>
-                        <p className="text-[11px]" style={{ color: "var(--m-text-sub)" }}>Autonomous AI OS for syllabus scheduling, tasks & academic actions</p>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-[Roboto_Slab] text-sm sm:text-base font-semibold truncate" style={{ color: "var(--m-text-heading)" }}>Autopilot Taskmaster</h3>
+                        <p className="text-[10px] sm:text-[11px] truncate" style={{ color: "var(--m-text-sub)" }}>Autonomous AI OS for syllabus scheduling, tasks & academic actions</p>
                       </div>
                     </div>
-                    <span className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
-                      <Zap size={11} /> Spaced-Repetition Engine + Gemini 3.6
+                    <span className="flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[10px] font-bold shrink-0" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
+                      <Zap size={11} /> <span className="sm:hidden">Gemini 3.6</span><span className="hidden sm:inline">Spaced-Repetition Engine + Gemini 3.6</span>
                     </span>
                   </div>
 
                   {/* Mode Switcher: Quick Actions vs Syllabus & Exam Mode */}
-                  <div className="flex items-center gap-1.5 p-1 rounded-xl border my-3 w-fit" style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border-light)" }}>
+                  <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-xl border my-3 w-full sm:w-fit" style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border-light)" }}>
                     <button
                       type="button"
                       onClick={() => setAutopilotMode("quick")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                         autopilotMode === "quick" ? "shadow-xs" : "opacity-70 hover:opacity-100"
                       }`}
                       style={
@@ -4445,7 +4490,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                     <button
                       type="button"
                       onClick={() => setAutopilotMode("syllabus")}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                         autopilotMode === "syllabus" ? "shadow-xs" : "opacity-70 hover:opacity-100"
                       }`}
                       style={
@@ -4455,7 +4500,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                       }
                     >
                       <Calendar size={13} />
-                      <span>Syllabus & Exam Mode</span>
+                      <span>Syllabus & Exam</span>
                       <span className="px-1.5 py-0.2 rounded text-[9px] font-extrabold bg-amber-500/20 text-amber-300 border border-amber-500/30">AI</span>
                     </button>
                   </div>
@@ -4634,14 +4679,14 @@ Mathematics:
                         />
                       </div>
 
-                      <div className="flex items-center justify-between pt-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pt-1">
                         <p className="text-[10px] opacity-60">
                           Autopilot applies cognitive spaced-repetition: Theory ➔ Practice ➔ Mock Tests ➔ T-1 Rest Buffer.
                         </p>
                         <button
                           type="submit"
                           disabled={isSubmittingAutopilot || isExtractingSyllabus || (!syllabusText.trim() && !autopilotText.trim())}
-                          className="flex items-center gap-1.5 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:opacity-90 disabled:opacity-50 ml-auto shadow-md cursor-pointer"
+                          className="w-full sm:w-auto flex items-center justify-center gap-1.5 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:opacity-90 disabled:opacity-50 sm:ml-auto shadow-md cursor-pointer shrink-0"
                           style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
                         >
                           {isSubmittingAutopilot ? (
@@ -6418,7 +6463,7 @@ Mathematics:
 
       {/* ─── Mobile Bottom Navigation Dock (Optimized for 1-Thumb Reach) ─── */}
       <nav
-        className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around px-2 py-1.5 border-t lg:hidden pb-safe minimal-surface shadow-2xl"
+        className="fixed bottom-0 left-0 right-0 z-30 flex items-center justify-around px-1 sm:px-2 py-1 sm:py-1.5 border-t lg:hidden pb-safe minimal-surface shadow-2xl"
         style={{
           backgroundColor: "var(--m-surface-solid)",
           borderColor: "var(--m-border-light)",
@@ -6438,7 +6483,7 @@ Mathematics:
                 setActiveNav(label as any);
                 setMobileOpen(false);
               }}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-2.5 transition-all min-w-[50px] min-h-[44px] ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[68px] min-h-[44px] ${
                 isActive ? "font-bold" : "opacity-75"
               }`}
               style={{
@@ -6455,7 +6500,7 @@ Mathematics:
         {/* AI Tutor One-Tap Button */}
         <button
           onClick={() => setIsChatMaximized(true)}
-          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-2.5 transition-all min-w-[50px] min-h-[44px]"
+          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[68px] min-h-[44px]"
           style={{ color: "var(--m-primary)" }}
         >
           <div
@@ -6473,7 +6518,7 @@ Mathematics:
         {/* More / Menu Drawer Toggle */}
         <button
           onClick={() => setMobileOpen(true)}
-          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-2.5 transition-all min-w-[50px] min-h-[44px] opacity-75"
+          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[68px] min-h-[44px] opacity-75"
           style={{ color: "var(--m-text-sub)" }}
         >
           <Menu size={18} />
@@ -6872,11 +6917,11 @@ Mathematics:
         </div>
       )}
 
-      {/* ─── Floating AI Bot Button for Mobile & Narrow Screens (Bottom Right Corner) ─── */}
+      {/* ─── Floating AI Bot Button for Narrow Desktop/Tablet (Bottom Right Corner) ─── */}
       {!isChatMaximized && (
         <button
           onClick={() => setIsChatMaximized(true)}
-          className="xl:hidden fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 flex items-center gap-2.5 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 animate-in fade-in slide-in-from-bottom-3"
+          className="hidden lg:flex xl:hidden fixed bottom-6 right-6 z-40 items-center gap-2.5 rounded-2xl px-4 py-3 text-xs sm:text-sm font-bold shadow-2xl transition-all duration-300 hover:scale-105 active:scale-95 animate-in fade-in slide-in-from-bottom-3"
           style={{
             backgroundColor: "var(--m-primary)",
             color: "var(--m-primary-text)",
