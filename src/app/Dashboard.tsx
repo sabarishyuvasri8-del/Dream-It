@@ -499,8 +499,29 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   activeChatSessionIdRef.current = activeChatSessionId;
   const messagesRef = useRef<Message[]>([DEFAULT_WELCOME_MESSAGE]);
   messagesRef.current = messages;
-  const [showPastChatsDrawer, setShowPastChatsDrawer] = useState(false);
-  const [wideSidebarOpen, setWideSidebarOpen] = useState(true);
+  const [wideSidebarOpen, setWideSidebarOpen] = useState(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth >= 768;
+    }
+    return true;
+  });
+
+  // Ensure AI tutor chat sidebar is closed by default on smartphone screens
+  useEffect(() => {
+    if (isChatMaximized && typeof window !== "undefined" && window.innerWidth < 768) {
+      setWideSidebarOpen(false);
+    }
+  }, [isChatMaximized]);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (typeof window !== "undefined" && window.innerWidth < 768 && wideSidebarOpen) {
+        setWideSidebarOpen(false);
+      }
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [wideSidebarOpen]);
 
   // ─── AI Chat Message Actions (ChatGPT-style Copy, Share, Edit) ───
   const [copiedMessageIdx, setCopiedMessageIdx] = useState<number | null>(null);
@@ -7146,7 +7167,7 @@ Mathematics:
           onDragLeave={handleChatDragLeave}
           onDrop={handleChatDrop}
           onPaste={handleChatPaste}
-          className="fixed inset-0 z-50 flex flex-col w-full h-full p-0 m-0 overflow-hidden minimal-surface animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex flex-col w-full h-full h-[100dvh] p-0 m-0 overflow-hidden minimal-surface animate-in fade-in duration-200"
           style={{ backgroundColor: "var(--m-surface-solid)", color: "var(--m-text)" }}
         >
           {/* Fullscreen Drag & Drop Visual Overlay */}
@@ -7164,47 +7185,78 @@ Mathematics:
             </div>
           )}
 
-          {/* Fullscreen Header */}
-          <div className="flex items-center justify-between border-b px-4 sm:px-6 py-3 shrink-0" style={{ borderColor: "var(--m-border)" }}>
-            <div className="flex items-center gap-3">
+          {/* Fullscreen Header (Responsive: streamlined for smartphone, expansive for desktop) */}
+          <div className="flex items-center justify-between border-b px-3 sm:px-6 py-2.5 sm:py-3 shrink-0 gap-2" style={{ borderColor: "var(--m-border)" }}>
+            <div className="flex items-center gap-2 sm:gap-3 min-w-0">
               <button
                 type="button"
                 onClick={() => setWideSidebarOpen(!wideSidebarOpen)}
-                className="p-2 rounded-xl border transition hover:opacity-80 flex items-center justify-center shadow-xs"
-                style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-surface-alt)", color: "var(--m-text)" }}
+                className={`p-2 rounded-xl border transition hover:opacity-80 flex items-center justify-center shadow-xs shrink-0 ${
+                  wideSidebarOpen ? "bg-[var(--m-primary)]/15 border-[var(--m-primary)]/40 text-[var(--m-primary)]" : ""
+                }`}
+                style={{
+                  borderColor: wideSidebarOpen ? undefined : "var(--m-border)",
+                  backgroundColor: wideSidebarOpen ? undefined : "var(--m-surface-alt)",
+                  color: wideSidebarOpen ? undefined : "var(--m-text)",
+                }}
                 title={wideSidebarOpen ? "Hide chat history" : "Show chat history"}
-                aria-label="Toggle sidebar"
+                aria-label="Toggle chat history"
               >
                 <PanelLeft size={17} />
               </button>
-              <div className="flex size-9 items-center justify-center rounded-xl shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                <Brain size={20} />
+              <div className="flex size-8 sm:size-9 items-center justify-center rounded-xl shadow-xs shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                <Brain size={18} className="sm:hidden" />
+                <Brain size={20} className="hidden sm:block" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="font-[Roboto_Slab] text-base sm:text-lg font-bold" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
-                  <span className="rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 sm:gap-2">
+                  <h2 className="font-[Roboto_Slab] text-sm sm:text-base md:text-lg font-bold truncate leading-tight" style={{ color: "var(--m-text-heading)" }}>Dream It AI Tutor</h2>
+                  <span className="hidden md:inline-block rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-xs shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>Wide Screen</span>
+                  <span className="inline-flex md:hidden items-center gap-1 text-[10px] font-medium text-emerald-400 shrink-0">
+                    <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Online</span>
+                  </span>
                 </div>
-                <p className="text-[11px]" style={{ color: "var(--m-text-sub)" }}>
+                <p className="hidden sm:block text-[11px] truncate" style={{ color: "var(--m-text-sub)" }}>
                   Ready for full-screen study assistance
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              {/* Desktop New Chat button */}
               <button
                 type="button"
                 onClick={handleNewChat}
-                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:scale-102 shadow-xs"
+                className="hidden sm:flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition hover:scale-102 shadow-xs shrink-0"
                 style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
                 title="Start a new chat (Ctrl+N)"
               >
                 <Plus size={14} />
                 <span>New Chat</span>
               </button>
+
+              {/* Mobile New Chat icon button */}
+              <button
+                type="button"
+                onClick={() => {
+                  handleNewChat();
+                  if (typeof window !== "undefined" && window.innerWidth < 768) {
+                    setWideSidebarOpen(false);
+                  }
+                }}
+                className="sm:hidden flex items-center justify-center size-8 rounded-xl transition hover:opacity-85 shadow-xs shrink-0"
+                style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                title="Start a new chat"
+                aria-label="New Chat"
+              >
+                <Plus size={16} />
+              </button>
+
+              {/* Desktop Exit Wide button */}
               <button
                 type="button"
                 onClick={() => setIsChatMaximized(false)}
-                className="flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs"
+                className="hidden sm:flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-semibold transition hover:scale-105 minimal-surface shadow-xs shrink-0"
                 style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
                 title="Exit Wide View (Esc)"
               >
@@ -7212,25 +7264,74 @@ Mathematics:
                 <span>Exit Wide</span>
                 <span className="hidden sm:inline-block text-[10px] opacity-60 font-mono ml-0.5">(Esc)</span>
               </button>
+
+              {/* Mobile Close button */}
+              <button
+                type="button"
+                onClick={() => setIsChatMaximized(false)}
+                className="sm:hidden flex items-center justify-center size-8 rounded-xl border transition hover:opacity-80 shadow-xs shrink-0"
+                style={{
+                  color: "var(--m-text)",
+                  borderColor: "var(--m-border)",
+                  backgroundColor: "var(--m-surface-alt)",
+                }}
+                title="Close AI Tutor"
+                aria-label="Close AI Tutor"
+              >
+                <X size={16} />
+              </button>
             </div>
           </div>
 
           {/* Main Body: Left Chat History Sidebar + Right Message Canvas */}
           <div className="flex-1 flex overflow-hidden w-full relative">
-            {/* Left Sidebar (Chats & Tasks History - matching ChatGPT layout) */}
+            {/* Mobile Off-canvas Backdrop Overlay */}
+            {wideSidebarOpen && (
+              <div
+                onClick={() => setWideSidebarOpen(false)}
+                className="fixed inset-0 z-30 bg-black/60 backdrop-blur-xs md:hidden animate-in fade-in duration-150"
+                aria-hidden="true"
+              />
+            )}
+
+            {/* Left Sidebar (Chats & Tasks History - Overlay drawer on mobile, side-by-side on desktop) */}
             {wideSidebarOpen && (
               <aside
-                className="w-64 sm:w-72 md:w-80 shrink-0 border-r flex flex-col h-full z-20 animate-in slide-in-from-left-4 duration-150"
+                className="fixed inset-y-0 left-0 z-40 w-[84%] max-w-[320px] md:relative md:inset-auto md:z-20 md:w-72 lg:w-80 shrink-0 border-r flex flex-col h-full shadow-2xl md:shadow-none animate-in slide-in-from-left duration-200"
                 style={{
                   borderColor: "var(--m-border)",
                   backgroundColor: "var(--m-surface-solid)",
                 }}
               >
+                {/* Mobile Drawer Top Header */}
+                <div className="flex items-center justify-between p-3 border-b md:hidden" style={{ borderColor: "var(--m-border-light)" }}>
+                  <div className="flex items-center gap-2">
+                    <div className="size-6 rounded-lg grid place-items-center" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                      <Brain size={13} />
+                    </div>
+                    <span className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Chat History</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setWideSidebarOpen(false)}
+                    className="p-1.5 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 transition"
+                    style={{ color: "var(--m-text-sub)" }}
+                    aria-label="Close chat history drawer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
                 {/* Top Action */}
                 <div className="p-3 border-b" style={{ borderColor: "var(--m-border-light)" }}>
                   <button
                     type="button"
-                    onClick={handleNewChat}
+                    onClick={() => {
+                      handleNewChat();
+                      if (typeof window !== "undefined" && window.innerWidth < 768) {
+                        setWideSidebarOpen(false);
+                      }
+                    }}
                     className="flex items-center justify-between w-full rounded-xl px-3.5 py-2.5 text-xs font-bold transition hover:scale-[1.01] shadow-xs active:scale-98"
                     style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
                   >
@@ -7238,7 +7339,7 @@ Mathematics:
                       <Plus size={15} />
                       <span>New Chat</span>
                     </span>
-                    <span className="text-[10px] opacity-75 font-mono px-1.5 py-0.5 rounded bg-black/20">Ctrl+N</span>
+                    <span className="hidden sm:inline-block text-[10px] opacity-75 font-mono px-1.5 py-0.5 rounded bg-black/20">Ctrl+N</span>
                   </button>
                 </div>
 
@@ -7266,7 +7367,14 @@ Mathematics:
                           return (
                             <div
                               key={session.id}
-                              onClick={() => !isRenaming && handleSelectSession(session.id)}
+                              onClick={() => {
+                                if (!isRenaming) {
+                                  handleSelectSession(session.id);
+                                  if (typeof window !== "undefined" && window.innerWidth < 768) {
+                                    setWideSidebarOpen(false);
+                                  }
+                                }
+                              }}
                               className={`group relative flex items-center justify-between w-full px-3 py-2 rounded-xl text-xs transition cursor-pointer text-left ${
                                 isMenuOpen ? "z-30" : "z-0"
                               } ${
@@ -7451,7 +7559,12 @@ Mathematics:
                   </div>
                   <button
                     type="button"
-                    onClick={handleNewChat}
+                    onClick={() => {
+                      handleNewChat();
+                      if (typeof window !== "undefined" && window.innerWidth < 768) {
+                        setWideSidebarOpen(false);
+                      }
+                    }}
                     className="p-1.5 rounded-lg hover:bg-black/5 dark:hover:bg-white/5 transition opacity-75 hover:opacity-100"
                     title="New Chat"
                   >
@@ -7482,19 +7595,19 @@ Mathematics:
                 className="flex-1 overflow-y-auto custom-scrollbar w-full overscroll-contain"
                 style={{ scrollBehavior: "smooth" }}
               >
-                <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 md:px-8 py-8 space-y-7 sm:space-y-8">
+                <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-8 space-y-4 sm:space-y-7">
                 {messages.map((m, idx) => (
                   <div
                     key={idx}
                     className={`group flex flex-col ${
-                      m.role === "user" ? "items-end ml-auto max-w-[85%] sm:max-w-[75%]" : "items-start w-full max-w-full"
+                      m.role === "user" ? "items-end ml-auto max-w-[90%] sm:max-w-[75%]" : "items-start w-full max-w-full"
                     }`}
                   >
                     <div
                       className={`contain-chat transition ${
                         m.role === "user"
-                          ? `user-chat-bubble ${editingMessageIdx === idx ? "w-full min-w-[280px] sm:min-w-[420px] rounded-2xl p-4" : "w-fit rounded-[22px] px-4 py-2.5 sm:px-5 sm:py-3"} shadow-sm text-sm sm:text-[15px] leading-relaxed break-words`
-                          : "w-full py-1.5 sm:py-2 px-1 text-sm sm:text-[15px] leading-relaxed"
+                          ? `user-chat-bubble ${editingMessageIdx === idx ? "w-full min-w-[260px] sm:min-w-[420px] rounded-2xl p-3 sm:p-4" : "w-fit rounded-2xl sm:rounded-[22px] px-3.5 py-2 sm:px-5 sm:py-3"} shadow-xs text-xs sm:text-[15px] leading-relaxed break-words`
+                          : "w-full py-1 sm:py-2 px-0.5 sm:px-1 text-xs sm:text-[15px] leading-relaxed"
                       }`}
                       style={
                         m.role === "user"
@@ -7564,8 +7677,8 @@ Mathematics:
                     {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
                     {m.content && editingMessageIdx !== idx && (
                       <div
-                        className={`flex items-center gap-1.5 mt-1.5 text-xs opacity-70 group-hover:opacity-100 transition-opacity ${
-                          m.role === "user" ? "justify-end pr-2" : "justify-start pl-1"
+                        className={`flex items-center gap-1 sm:gap-1.5 mt-1 sm:mt-1.5 text-xs opacity-75 sm:opacity-70 group-hover:opacity-100 transition-opacity ${
+                          m.role === "user" ? "justify-end pr-1 sm:pr-2" : "justify-start pl-0.5 sm:pl-1"
                         }`}
                         style={{ color: "var(--m-text-sub)" }}
                       >
@@ -7621,19 +7734,60 @@ Mathematics:
                     <AIThinkingStatus size="lg" />
                   </div>
                 )}
+
+                {/* Quick Prompts when starting a chat */}
+                {messages.length <= 1 && (
+                  <div className="pt-2 sm:pt-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider mb-2 opacity-60 font-mono" style={{ color: "var(--m-text-sub)" }}>
+                      Suggested Prompts
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {[
+                        { title: "Explain a concept simply", desc: "Break down complex topics into clear steps", icon: Sparkles },
+                        { title: "Create practice quiz", desc: "Test my knowledge with active recall questions", icon: BookOpen },
+                        { title: "Debug & explain code", desc: "Find bugs and optimize algorithms", icon: Code },
+                        { title: "Create study schedule", desc: "Organize my exam prep and revision", icon: CalendarDays },
+                      ].map((starter, sIdx) => {
+                        const Icon = starter.icon;
+                        return (
+                          <button
+                            key={sIdx}
+                            type="button"
+                            onClick={() => {
+                              setChatDraft(starter.title);
+                            }}
+                            className="flex items-start gap-2.5 p-2.5 sm:p-3 rounded-2xl border text-left transition hover:scale-[1.01] active:scale-98 shadow-xs group"
+                            style={{
+                              borderColor: "var(--m-border)",
+                              backgroundColor: "var(--m-surface-alt)",
+                            }}
+                          >
+                            <div className="size-7 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                              <Icon size={14} />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold leading-snug" style={{ color: "var(--m-text-heading)" }}>{starter.title}</p>
+                              <p className="text-[10.5px] opacity-70 leading-tight mt-0.5" style={{ color: "var(--m-text-sub)" }}>{starter.desc}</p>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
-              {/* Fullscreen Input Bar */}
-              <form onSubmit={askCoach} onPaste={handleChatPaste} className="w-full max-w-5xl mx-auto px-4 sm:px-6 pb-4 sm:pb-6 pt-2 shrink-0">
+              {/* Fullscreen Input Bar (Responsive: safe-area padding and mobile-optimized buttons) */}
+              <form onSubmit={askCoach} onPaste={handleChatPaste} className="w-full max-w-5xl mx-auto px-2.5 sm:px-6 pb-[max(0.6rem,env(safe-area-inset-bottom))] sm:pb-6 pt-1.5 sm:pt-2 shrink-0">
                 {isExtractingChatFile && (
-                  <div className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                  <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-medium mb-1.5 sm:mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
                     <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
                     <span>Reading &amp; extracting text from document...</span>
                   </div>
                 )}
                 {chatFile && !isExtractingChatFile && (
-                  <div className="flex items-center justify-between rounded-xl px-3 py-2 text-xs font-medium mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                  <div className="flex items-center justify-between rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-medium mb-1.5 sm:mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
                     <span className="flex items-center gap-2 truncate">
                       {chatFile.isImage && chatFile.dataUrl ? (
                         <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
@@ -7653,23 +7807,46 @@ Mathematics:
                     <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
                   </div>
                 )}
-                <div className="flex items-center gap-3 rounded-2xl p-2.5 pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
-                  <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file (PDF / image)">
-                    <Paperclip size={18} />
+                <div className="flex items-center gap-1.5 sm:gap-3 rounded-2xl p-1.5 pl-2 sm:p-2.5 sm:pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
+                  <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file (PDF / image)">
+                    <Paperclip size={16} className="sm:hidden" />
+                    <Paperclip size={18} className="hidden sm:block" />
                   </button>
-                  <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
-                    <Camera size={18} />
+                  <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
+                    <Camera size={16} className="sm:hidden" />
+                    <Camera size={18} className="hidden sm:block" />
                   </button>
 
-                  <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-2 text-xs sm:text-sm outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or paste / drag & drop PDFs / images... (Press Enter to send)" />
+                  <input
+                    value={chatDraft}
+                    onChange={(e) => setChatDraft(e.target.value)}
+                    onPaste={handleChatPaste}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        askCoach();
+                      }
+                    }}
+                    className="flex-1 bg-transparent py-1.5 sm:py-2 text-xs sm:text-sm outline-none min-w-0"
+                    style={{ color: "var(--m-text)" }}
+                    placeholder="Ask Dream It AI anything..."
+                  />
                   <VoiceInputButton
                     value={chatDraft}
                     onChange={setChatDraft}
                     disabled={isAsking}
                     size={15}
                   />
-                  <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="flex items-center gap-2 rounded-xl px-5 py-2.5 text-xs font-bold transition hover:scale-105 disabled:opacity-40 shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                    <Send size={15} /><span>Send</span>
+                  <button
+                    type="submit"
+                    disabled={(!chatDraft.trim() && !chatFile) || isAsking}
+                    className="flex items-center justify-center size-8 sm:size-auto sm:gap-2 rounded-xl sm:px-5 sm:py-2.5 text-xs font-bold transition hover:scale-105 active:scale-95 disabled:opacity-40 shrink-0 shadow-xs"
+                    style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                    aria-label="Send message"
+                  >
+                    <Send size={14} className="sm:hidden" />
+                    <Send size={15} className="hidden sm:inline-block" />
+                    <span className="hidden sm:inline">Send</span>
                   </button>
                 </div>
               </form>
