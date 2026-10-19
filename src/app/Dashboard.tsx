@@ -6533,7 +6533,6 @@ Mathematics:
         {[
           { label: "Today", icon: Sun, display: "Today" },
           { label: "Planner", icon: CalendarDays, display: "Plan" },
-          { label: "Focus", icon: Target, display: "Focus" },
           { label: "Notes", icon: Notebook, display: "Notes" },
         ].map(({ label, icon: Icon, display }) => {
           const isActive = activeNav === label;
@@ -6544,7 +6543,7 @@ Mathematics:
                 setActiveNav(label as any);
                 setMobileOpen(false);
               }}
-              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[68px] min-h-[44px] ${
+              className={`flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[76px] min-h-[44px] ${
                 isActive ? "font-bold" : "opacity-75"
               }`}
               style={{
@@ -6561,7 +6560,7 @@ Mathematics:
         {/* AI Tutor One-Tap Button */}
         <button
           onClick={() => setIsChatMaximized(true)}
-          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[68px] min-h-[44px]"
+          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[76px] min-h-[44px]"
           style={{ color: "var(--m-primary)" }}
         >
           <div
@@ -6579,7 +6578,7 @@ Mathematics:
         {/* More / Menu Drawer Toggle */}
         <button
           onClick={() => setMobileOpen(true)}
-          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[68px] min-h-[44px] opacity-75"
+          className="flex flex-col items-center justify-center gap-0.5 rounded-xl py-1 px-1 sm:px-2.5 transition-all min-w-0 flex-1 max-w-[76px] min-h-[44px] opacity-75"
           style={{ color: "var(--m-text-sub)" }}
         >
           <Menu size={18} />
