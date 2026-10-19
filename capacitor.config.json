@@ -1,0 +1,13 @@
+{
+  "appId": "com.dreamit.studyassistant",
+  "appName": "Dream It",
+  "webDir": "dist",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "ios": {
+    "contentInset": "always",
+    "preferredContentMode": "mobile"
+  }
+}
