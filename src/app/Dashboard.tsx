@@ -3695,7 +3695,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
 
   // ═══════════════════════════════════ RENDER ═══════════════════════════════════
   return (
-    <main className={`dreamit-dash min-h-screen font-[DM_Sans] ${themeConfig.cssClass}`} style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)" }}>
+    <main className={`dreamit-dash min-h-screen w-full min-w-0 max-w-full overflow-x-hidden font-[DM_Sans] ${themeConfig.cssClass}`} style={{ backgroundColor: "var(--m-bg)", color: "var(--m-text)" }}>
       {/* ─── Sidebar ─── */}
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex flex-col border-r transition-all duration-300 overflow-x-hidden ${
@@ -4033,7 +4033,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           </div>
         </header>
 
-        <div className="px-3 sm:px-6 md:px-8 pb-28 lg:pb-10 pt-3 sm:pt-6 min-w-0 max-w-full">
+        <div className="w-full min-w-0 max-w-full px-3 sm:px-6 md:px-8 pb-28 lg:pb-10 pt-3 sm:pt-6">
 
           {/* ═══ Welcome Onboarding ═══ */}
           {showOnboarding && (
@@ -4110,8 +4110,8 @@ You can save notes and flashcards. When asked to save to notes or create flashca
 
           {/* ═══════════ TODAY VIEW ═══════════ */}
           {activeNav === "Today" && (
-            <div className="grid gap-5 sm:gap-7 xl:grid-cols-[1fr_380px] items-start">
-              <div>
+            <div className="grid gap-5 sm:gap-7 xl:grid-cols-[1fr_380px] items-start w-full min-w-0 max-w-full">
+              <div className="w-full min-w-0 max-w-full">
                 {/* Greeting */}
                 <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
                   <div>
@@ -4129,7 +4129,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
 
                 {/* Deadline Countdown Widget */}
                 {upcomingDeadlines.length > 0 && (
-                  <section className="mb-5 rounded-xl p-4 minimal-surface feature-zoom">
+                  <section className="mb-5 rounded-xl p-3.5 sm:p-4 minimal-surface feature-zoom w-full min-w-0 max-w-full overflow-hidden">
                     <div className="flex items-center gap-2 mb-3">
                       <AlarmClock size={15} style={{ color: "var(--m-danger)" }} />
                       <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Upcoming deadlines</p>
@@ -4244,8 +4244,8 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                 </section>
 
                 {/* Progress & Timer */}
-                <div className="grid gap-4 sm:gap-5 md:grid-cols-[1.3fr_1fr]">
-                  <section className="overflow-hidden rounded-xl p-4 sm:p-5 minimal-surface feature-zoom min-w-0">
+                <div className="grid gap-4 sm:gap-5 md:grid-cols-[1.3fr_1fr] w-full min-w-0 max-w-full">
+                  <section className="overflow-hidden rounded-xl p-4 sm:p-5 minimal-surface feature-zoom w-full min-w-0 max-w-full">
                     <div className="flex items-start justify-between">
                       <div>
                         <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Progress</p>
@@ -4264,7 +4264,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                         <span>This week</span>
                         <span style={{ color: "var(--m-primary)" }}>{formatStudyTime(weeklyStudyMinutes)} total</span>
                       </div>
-                      <div className="grid grid-cols-7 gap-1 sm:gap-2 items-end h-14 rounded-xl p-1.5 sm:p-2 min-w-0" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
+                      <div className="grid grid-cols-7 gap-1 sm:gap-2 items-end h-14 rounded-xl p-1.5 sm:p-2 w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
                         {graphData.map((d) => {
                           const heightPct = graphMaxMinutes > 0 ? Math.min(100, Math.max(15, (d.effectiveMinutes / graphMaxMinutes) * 100)) : 15;
                           return (
@@ -4286,7 +4286,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                   </section>
 
                   {/* Pomodoro Widget */}
-                  <section className="rounded-xl p-4 sm:p-5 minimal-surface feature-zoom min-w-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", borderColor: "transparent" }}>
+                  <section className="rounded-xl p-4 sm:p-5 minimal-surface feature-zoom w-full min-w-0 max-w-full overflow-hidden" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)", borderColor: "transparent" }}>
                     <div className="flex items-center justify-between">
                       <div>
                         <p className="text-[10px] font-medium uppercase tracking-wider opacity-70">
@@ -4300,7 +4300,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                         <p>Session {pomodoroSession + 1}</p>
                       </div>
                     </div>
-                    <div className="mt-4 flex items-center gap-3 sm:gap-5 min-w-0">
+                    <div className="mt-4 flex items-center gap-3 sm:gap-5 w-full min-w-0 max-w-full">
                       <div className="relative grid size-20 sm:size-24 place-items-center shrink-0">
                         <svg className="size-20 sm:size-24 -rotate-90" viewBox="0 0 120 120">
                           <circle cx="60" cy="60" r="50" fill="none" stroke="color-mix(in srgb, var(--m-primary-text) 25%, transparent)" strokeWidth="7" />
@@ -4332,7 +4332,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                 </div>
 
                 {/* Tasks List */}
-                <section className="mt-7">
+                <section className="mt-7 w-full min-w-0 max-w-full">
                   <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                     <h2 className="text-lg font-semibold" style={{ color: "var(--m-text-heading)" }}>Tasks</h2>
                     <div className="flex rounded-xl p-1 text-xs font-semibold" style={{ backgroundColor: "var(--m-surface-alt)" }}>
@@ -4344,30 +4344,30 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                     </div>
                   </div>
 
-                  <div className="overflow-hidden rounded-xl minimal-surface feature-zoom">
-                    <div className="divide-y" style={{ borderColor: "var(--m-border-light)" }}>
+                  <div className="overflow-hidden rounded-xl minimal-surface feature-zoom w-full min-w-0 max-w-full">
+                    <div className="divide-y w-full min-w-0" style={{ borderColor: "var(--m-border-light)" }}>
                       {filteredTasks.length ? (
                         filteredTasks.map((task) => (
-                          <div key={task.id} className={`group flex items-center gap-3.5 px-5 py-3.5 transition duration-200 hover:opacity-90 contain-task ${task.done ? "opacity-60" : ""}`}>
+                          <div key={task.id} className={`group flex items-center gap-2.5 sm:gap-3.5 px-3.5 sm:px-5 py-3 sm:py-3.5 transition duration-200 hover:opacity-90 contain-task w-full min-w-0 max-w-full ${task.done ? "opacity-60" : ""}`}>
                             <button onClick={() => toggleTask(task.id)} className="grid size-5 shrink-0 place-items-center rounded-full border transition" style={task.done ? { borderColor: "var(--m-primary)", backgroundColor: "var(--m-primary)", color: "white" } : { borderColor: "var(--m-border)", backgroundColor: "var(--m-surface)" }}>
                               {task.done && <Check size={13} strokeWidth={3} />}
                             </button>
-                            <div className="min-w-0 flex-1">
-                              <p className={`text-sm font-medium ${task.done ? "line-through" : ""}`} style={{ color: task.done ? "var(--m-text-muted)" : "var(--m-text)" }}>{task.title}</p>
-                              <div className="mt-0.5 flex items-center gap-2 text-xs" style={{ color: "var(--m-text-sub)" }}>
-                                <span className="font-semibold">{task.course}</span>
+                            <div className="min-w-0 flex-1 overflow-hidden">
+                              <p className={`text-sm font-medium truncate ${task.done ? "line-through" : ""}`} style={{ color: task.done ? "var(--m-text-muted)" : "var(--m-text)" }}>{task.title}</p>
+                              <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs" style={{ color: "var(--m-text-sub)" }}>
+                                <span className="font-semibold truncate max-w-[110px] sm:max-w-none">{task.course}</span>
                                 <span>•</span>
-                                <span className="font-[DM_Mono] text-[10px]">{task.time}</span>
+                                <span className="font-[DM_Mono] text-[10px] shrink-0">{task.time}</span>
                                 {task.priority && (
-                                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase ${task.priority === "high" ? "bg-[#fff0e9] text-[#9a463f]" : task.priority === "medium" ? "bg-[#fff3d8] text-[#8a6523]" : "bg-[#eef4ec] text-[#35523e]"}`}>{task.priority}</span>
+                                  <span className={`rounded-full px-2 py-0.5 text-[9px] font-bold uppercase shrink-0 ${task.priority === "high" ? "bg-[#fff0e9] text-[#9a463f]" : task.priority === "medium" ? "bg-[#fff3d8] text-[#8a6523]" : "bg-[#eef4ec] text-[#35523e]"}`}>{task.priority}</span>
                                 )}
                                 {task.deadline && (
-                                  <span className="font-[DM_Mono] text-[10px] font-bold" style={{ color: deadlineColor(daysUntil(task.deadline)) }}>
+                                  <span className="font-[DM_Mono] text-[10px] font-bold shrink-0" style={{ color: deadlineColor(daysUntil(task.deadline)) }}>
                                     {daysUntil(task.deadline) <= 0 ? "⚠️ Due!" : `📅 ${daysUntil(task.deadline)}d`}
                                   </span>
                                 )}
                                 {task.createdBy === "agent" && (
-                                  <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase" style={{ backgroundColor: "var(--m-primary-transparent)", color: "var(--m-primary)", border: "1px solid var(--m-primary)" }}>
+                                  <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold uppercase shrink-0" style={{ backgroundColor: "var(--m-primary-transparent)", color: "var(--m-primary)", border: "1px solid var(--m-primary)" }}>
                                     <Sparkles size={9} /> Autopilot
                                   </span>
                                 )}
@@ -4375,7 +4375,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                             </div>
                             <button
                               onClick={() => openNoteForTask(task.course, task.title)}
-                              className="opacity-80 hover:opacity-100 flex items-center gap-1 rounded-full px-2.5 py-1 text-[10px] font-semibold transition hover:scale-105 shrink-0 cursor-pointer"
+                              className="opacity-80 hover:opacity-100 flex items-center gap-1 rounded-full px-2 sm:px-2.5 py-1 text-[10px] font-semibold transition hover:scale-105 shrink-0 cursor-pointer"
                               style={{
                                 backgroundColor: "var(--m-surface-alt)",
                                 color: "var(--m-primary)",
@@ -4386,7 +4386,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                               <FileText size={11} />
                               <span className="hidden sm:inline">Note</span>
                             </button>
-                            <button onClick={() => deleteTask(task.id)} className="opacity-0 group-hover:opacity-100 p-1 rounded-lg transition" style={{ color: "var(--m-danger)" }} title="Delete"><Trash2 size={16} /></button>
+                            <button onClick={() => deleteTask(task.id)} className="opacity-70 sm:opacity-0 group-hover:opacity-100 p-1 rounded-lg transition shrink-0" style={{ color: "var(--m-danger)" }} title="Delete"><Trash2 size={16} /></button>
                           </div>
                         ))
                       ) : (
@@ -4401,7 +4401,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                     </div>
 
                     {/* Add Task Form */}
-                    <form onSubmit={addTask} className="flex flex-col sm:grid gap-2.5 sm:gap-2 px-3.5 sm:px-4 py-3.5 sm:grid-cols-[1fr_140px_100px_100px_auto]" style={{ borderTop: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
+                    <form onSubmit={addTask} className="flex flex-col sm:grid gap-2.5 sm:gap-2 px-3 sm:px-4 py-3.5 sm:grid-cols-[1fr_140px_100px_100px_auto] w-full min-w-0 max-w-full" style={{ borderTop: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
                       <input id="new-task-input" value={taskDraft} onChange={(e) => setTaskDraft(e.target.value)} placeholder="What needs to get done?" className="w-full min-w-0 rounded-xl border px-3.5 py-2 text-sm outline-none transition focus:ring-2" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)", "--tw-ring-color": "var(--m-primary)" } as any} />
                       <div className="flex items-center gap-1 min-w-0">
                         <select
@@ -4454,7 +4454,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                 </section>
 
                 {/* Autopilot Widget */}
-                <section id="autopilot-section" className="mt-5 rounded-xl p-4 sm:p-5 minimal-surface feature-zoom w-full min-w-0" style={{ border: "1px solid var(--m-primary-transparent)" }}>
+                <section id="autopilot-section" className="mt-5 rounded-xl p-4 sm:p-5 minimal-surface feature-zoom w-full min-w-0 max-w-full overflow-hidden" style={{ border: "1px solid var(--m-primary-transparent)" }}>
                   <div className="flex flex-wrap items-start sm:items-center justify-between gap-2.5 mb-2">
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <div className="grid size-7 place-items-center rounded-lg shadow-2xs shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
@@ -4785,19 +4785,19 @@ Mathematics:
                           (run.createdFinance?.length || 0);
 
                         return (
-                          <div key={run.id} className="overflow-hidden rounded-xl border shadow-sm transition" style={{ borderColor: "var(--m-border-light)" }}>
+                          <div key={run.id} className="overflow-hidden rounded-xl border shadow-sm transition w-full min-w-0 max-w-full" style={{ borderColor: "var(--m-border-light)" }}>
                             {/* Run Header */}
-                            <div className="flex items-center justify-between border-b px-4 py-2.5" style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-surface-alt)" }}>
-                              <div className="flex items-center gap-2">
-                                <div className="grid size-6 place-items-center rounded-md" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                            <div className="flex flex-wrap items-center justify-between gap-2 border-b px-3.5 sm:px-4 py-2.5 w-full min-w-0" style={{ borderColor: "var(--m-border-light)", backgroundColor: "var(--m-surface-alt)" }}>
+                              <div className="flex items-center gap-2 min-w-0">
+                                <div className="grid size-6 place-items-center rounded-md shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                                   <Bot size={13} />
                                 </div>
-                                <div>
-                                  <p className="text-[11px] font-bold" style={{ color: "var(--m-text-heading)" }}>Autopilot Run</p>
-                                  <p className="text-[9px]" style={{ color: "var(--m-text-sub)" }}>{new Date(run.timestamp).toLocaleTimeString()}</p>
+                                <div className="min-w-0">
+                                  <p className="text-[11px] font-bold truncate" style={{ color: "var(--m-text-heading)" }}>Autopilot Run</p>
+                                  <p className="text-[9px] truncate" style={{ color: "var(--m-text-sub)" }}>{new Date(run.timestamp).toLocaleTimeString()}</p>
                                 </div>
                               </div>
-                              <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold" style={{
+                              <span className="flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-bold shrink-0 max-w-full truncate" style={{
                                 backgroundColor: "var(--m-surface)",
                                 color: run.status === "done" ? "var(--m-success)" : run.status === "error" ? "var(--m-danger)" : run.status === "pending_approval" ? "#f59e0b" : "var(--m-primary)",
                                 border: "1px solid var(--m-border)",
@@ -4833,11 +4833,11 @@ Mathematics:
                                     </div>
 
                                     {run.status === "pending_approval" && (
-                                      <div className="flex items-center gap-1.5">
+                                      <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
                                         <button
                                           type="button"
                                           onClick={() => handleApproveSyllabusRun(run.id)}
-                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black text-white shadow-md transition hover:scale-105 active:scale-95 cursor-pointer"
+                                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-black text-white shadow-md transition hover:scale-105 active:scale-95 cursor-pointer shrink-0"
                                           style={{
                                             background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
                                           }}
@@ -4847,7 +4847,7 @@ Mathematics:
                                         <button
                                           type="button"
                                           onClick={() => setAutopilotRuns(prev => prev.filter(r => r.id !== run.id))}
-                                          className="px-2 py-1.5 rounded-lg text-[10px] font-medium border transition hover:bg-red-500/10 hover:border-red-500/30 cursor-pointer"
+                                          className="px-2 py-1.5 rounded-lg text-[10px] font-medium border transition hover:bg-red-500/10 hover:border-red-500/30 cursor-pointer shrink-0"
                                           style={{ borderColor: "var(--m-border)", color: "var(--m-text-sub)" }}
                                           title="Dismiss plan"
                                         >
@@ -5581,7 +5581,7 @@ Mathematics:
 
           {/* ═══════════ PLANNER VIEW (ZERO-SETUP MULTI-VIEWS) ═══════════ */}
           {activeNav === "Planner" && (
-            <div className="space-y-6">
+            <div className="space-y-6 w-full min-w-0 max-w-full">
               {/* Multi-View Header & Switcher */}
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4" style={{ borderBottom: "1px solid var(--m-border)" }}>
                 <div>
@@ -5667,12 +5667,12 @@ Mathematics:
 
               {/* 1. TIMELINE VIEW */}
               {plannerViewMode === "timeline" && (
-                <section className="grid gap-5 sm:gap-7 xl:grid-cols-[0.95fr_1.05fr]">
-                  <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                <section className="grid gap-5 sm:gap-7 xl:grid-cols-[0.95fr_1.05fr] w-full min-w-0 max-w-full">
+                  <div className="rounded-[1.5rem] p-4 sm:p-6 shadow-xs feature-zoom w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                     <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Build a Doable Day</p>
                     <h3 className="mt-1 font-[Roboto_Slab] text-2xl font-semibold" style={{ color: "var(--m-text-heading)" }}>Plan your study blocks.</h3>
 
-                    <form onSubmit={addScheduleItem} className="mt-6 space-y-4 rounded-2xl p-4.5" style={{ backgroundColor: "var(--m-surface-alt)" }}>
+                    <form onSubmit={addScheduleItem} className="mt-6 space-y-4 rounded-2xl p-4 sm:p-4.5" style={{ backgroundColor: "var(--m-surface-alt)" }}>
                       <label className="block text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>
                         What needs a place?
                         <input value={planTitle} onChange={(e) => setPlanTitle(e.target.value)} className="mt-1.5 w-full rounded-xl border px-3.5 py-2.5 text-sm font-normal outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} placeholder="e.g. Solve Linear Algebra Set #3" required />
@@ -5721,7 +5721,7 @@ Mathematics:
                   </div>
 
                   {/* Timeline Blocks */}
-                  <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                  <div className="rounded-[1.5rem] p-4 sm:p-6 shadow-xs feature-zoom w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                     <div className="flex items-end justify-between pb-4" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                       <div>
                         <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Timeline</p>
@@ -5731,11 +5731,11 @@ Mathematics:
                     </div>
                     <div className="mt-6 space-y-3">
                       {scheduleItems.length ? scheduleItems.map((item, idx) => (
-                        <div key={item.id || idx} className={`group flex items-center gap-3.5 rounded-2xl p-4 transition feature-chip contain-schedule ${item.done ? "opacity-60" : ""}`} style={{ border: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
+                        <div key={item.id || idx} className={`group flex items-center gap-2.5 sm:gap-3.5 rounded-2xl p-3 sm:p-4 transition feature-chip contain-schedule w-full min-w-0 max-w-full ${item.done ? "opacity-60" : ""}`} style={{ border: "1px solid var(--m-border-light)", backgroundColor: "var(--m-surface-hover)" }}>
                           <button onClick={() => toggleScheduleDone(item.id, item.title)} className="grid size-6 shrink-0 place-items-center rounded-full border transition cursor-pointer" style={item.done ? { borderColor: "var(--m-primary)", backgroundColor: "var(--m-primary)", color: "white" } : { borderColor: "var(--m-border)", backgroundColor: "var(--m-surface)" }}>
                             {item.done && <Check size={14} strokeWidth={3} />}
                           </button>
-                          <span className="w-16 font-[DM_Mono] text-xs font-bold" style={{ color: "var(--m-primary)" }}>{item.time}</span>
+                          <span className="w-14 sm:w-16 shrink-0 font-[DM_Mono] text-xs font-bold" style={{ color: "var(--m-primary)" }}>{item.time}</span>
                           <span className={`h-10 w-1 shrink-0 rounded-full ${item.tone}`} />
                           <div className="min-w-0 flex-1">
                             <b className={`block text-sm ${item.done ? "line-through" : ""}`} style={{ color: "var(--m-text-heading)" }}>
@@ -5763,7 +5763,7 @@ Mathematics:
                             <FileText size={11} />
                             <span className="hidden sm:inline">Note</span>
                           </button>
-                          <button onClick={() => deleteScheduleItem(item.id, item.title)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition cursor-pointer" style={{ color: "var(--m-danger)" }}><Trash2 size={16} /></button>
+                          <button onClick={() => deleteScheduleItem(item.id, item.title)} className="opacity-70 sm:opacity-0 group-hover:opacity-100 p-1.5 rounded-lg transition cursor-pointer shrink-0" style={{ color: "var(--m-danger)" }}><Trash2 size={16} /></button>
                         </div>
                       )) : (
                         <div className="rounded-2xl border border-dashed p-8 text-center" style={{ borderColor: "var(--m-border)" }}>
@@ -6073,7 +6073,7 @@ Mathematics:
 
           {/* ═══════════ PROJECTS VIEW ═══════════ */}
           {activeNav === "Projects" && (
-            <section className="space-y-6">
+            <section className="space-y-6 w-full min-w-0 max-w-full">
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4" style={{ borderBottom: "1px solid var(--m-border)" }}>
                 <div>
                   <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Course Workspaces</p>
@@ -6083,7 +6083,7 @@ Mathematics:
                   <Plus size={16} /><span>Create Project</span>
                 </button>
               </div>
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 w-full min-w-0 max-w-full">
                 {subjects.length ? subjects.map((sub) => {
                   const stats = projectStatsByCourse.get(sub.name) || { total: 0, open: 0, done: 0, pct: 0 };
                   const openCount = stats.open;
@@ -6094,7 +6094,7 @@ Mathematics:
                   const gpa = subjectGPAs[sub.id];
 
                   return (
-                    <div key={sub.id} className="group flex flex-col justify-between rounded-[1.5rem] p-5 shadow-xs transition hover:shadow-md feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+                    <div key={sub.id} className="group flex flex-col justify-between rounded-[1.5rem] p-4 sm:p-5 shadow-xs transition hover:shadow-md feature-zoom w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                       <div>
                         <div className="flex items-start justify-between">
                           <span className="grid size-12 place-items-center rounded-2xl shadow-xs" style={{ backgroundColor: sub.color }}><Folder size={22} style={{ color: "var(--m-primary)" }} /></span>
@@ -6143,8 +6143,8 @@ Mathematics:
 
           {/* ═══════════ FOCUS VIEW ═══════════ */}
           {activeNav === "Focus" && (
-            <section className="grid gap-5 sm:gap-7 xl:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-[1.5rem] p-6 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+            <section className="grid gap-5 sm:gap-7 xl:grid-cols-[1.2fr_0.8fr] w-full min-w-0 max-w-full">
+              <div className="rounded-[1.5rem] p-4 sm:p-6 shadow-xs feature-zoom w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                 <div className="flex flex-wrap items-center justify-between gap-4 pb-5" style={{ borderBottom: "1px solid var(--m-border-light)" }}>
                   <div>
                     <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>7-Day Focus Graph</p>
@@ -6155,18 +6155,18 @@ Mathematics:
                     <span className="rounded-full px-3 py-1 font-[DM_Mono] text-xs font-bold" style={{ backgroundColor: "var(--m-sidebar-pill-bg)", color: "var(--m-primary)" }}>{totalSessions} sessions</span>
                   </div>
                 </div>
-                <div className="mt-6 grid h-48 grid-cols-7 items-end gap-3 rounded-2xl p-5" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
+                <div className="mt-6 grid h-48 grid-cols-7 items-end gap-1.5 sm:gap-3 rounded-2xl p-3 sm:p-5 w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
                   {graphData.map((d) => {
                     const barPct = graphMaxMinutes > 0 ? (d.effectiveMinutes / graphMaxMinutes) * 100 : 0;
                     return (
-                      <div key={d.dateKey} className="group relative flex h-full flex-col justify-end items-center gap-2" title={`${d.label}: ${d.minutes}m`}>
+                      <div key={d.dateKey} className="group relative flex h-full flex-col justify-end items-center gap-2 min-w-0" title={`${d.label}: ${d.minutes}m`}>
                         {d.isTimerActive ? (
-                          <span className="text-[10px] font-bold font-[DM_Mono] flex items-center gap-1 animate-pulse" style={{ color: "var(--m-primary)" }}>
-                            <span className="size-1.5 rounded-full bg-emerald-500 animate-ping" />
+                          <span className="text-[10px] font-bold font-[DM_Mono] flex items-center gap-1 animate-pulse truncate" style={{ color: "var(--m-primary)" }}>
+                            <span className="size-1.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
                             {d.minutes > 0 ? `${d.minutes}m` : `${activeFocusSeconds}s`}
                           </span>
                         ) : d.minutes > 0 ? (
-                          <span className="text-[10px] font-bold font-[DM_Mono]" style={{ color: "var(--m-primary)" }}>{d.minutes}m</span>
+                          <span className="text-[10px] font-bold font-[DM_Mono] truncate" style={{ color: "var(--m-primary)" }}>{d.minutes}m</span>
                         ) : null}
                         <div
                           className={`w-full max-w-[38px] rounded-t-xl transition-all duration-300 ${
@@ -6179,7 +6179,7 @@ Mathematics:
                             boxShadow: d.isTimerActive ? "0 0 16px var(--m-primary)" : undefined,
                           }}
                         />
-                        <span className={`text-[11px] font-[DM_Mono] ${d.isToday ? "font-bold" : ""}`} style={{ color: d.isToday ? "var(--m-primary)" : "var(--m-text-sub)" }}>{d.label}</span>
+                        <span className={`text-[11px] font-[DM_Mono] truncate ${d.isToday ? "font-bold" : ""}`} style={{ color: d.isToday ? "var(--m-primary)" : "var(--m-text-sub)" }}>{d.label}</span>
                       </div>
                     );
                   })}
@@ -6190,9 +6190,9 @@ Mathematics:
                 </div>
               </div>
 
-              <div className="space-y-5">
+              <div className="space-y-5 w-full min-w-0 max-w-full">
                 {/* Goal Card */}
-                <div className="rounded-[1.5rem] p-6 shadow-md feature-zoom" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                <div className="rounded-[1.5rem] p-4 sm:p-6 shadow-md feature-zoom w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2"><Target size={20} style={{ color: "var(--m-accent)" }} /><span className="font-[DM_Mono] text-[10px] uppercase tracking-[0.14em] opacity-90">Weekly Goal</span></div>
                     <span className="font-[DM_Mono] text-xs font-bold px-2 py-0.5 rounded-md" style={{ backgroundColor: "rgba(0,0,0,0.2)" }}>{targetProgress}%</span>
@@ -6283,7 +6283,7 @@ Mathematics:
 
           {/* ═══════════ GRADES VIEW ═══════════ */}
           {activeNav === "Grades" && (
-            <section className="space-y-7">
+            <section className="space-y-7 w-full min-w-0 max-w-full">
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4" style={{ borderBottom: "1px solid var(--m-border)" }}>
                 <div>
                   <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Academic Performance</p>
@@ -6298,7 +6298,7 @@ Mathematics:
               </div>
 
               {/* Add Grade Form */}
-              <form onSubmit={addGrade} className="rounded-[1.5rem] p-5 shadow-xs feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
+              <form onSubmit={addGrade} className="rounded-[1.5rem] p-4 sm:p-5 shadow-xs feature-zoom w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
                 <p className="text-xs font-bold mb-3" style={{ color: "var(--m-text-heading)" }}>Record New Grade</p>
                 <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 md:grid-cols-5">
                   <select value={gradeForm.subjectId} onChange={(e) => setGradeForm({ ...gradeForm, subjectId: Number(e.target.value) })} className="rounded-xl border px-3 py-2 text-xs outline-none" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-input-bg)", color: "var(--m-text)" }} required>
@@ -6351,7 +6351,7 @@ Mathematics:
 
           {/* ═══════════ FLASHCARDS VIEW ═══════════ */}
           {activeNav === "Cards" && (
-            <section className="space-y-7">
+            <section className="space-y-7 w-full min-w-0 max-w-full">
               <div className="flex flex-wrap items-center justify-between gap-4 pb-4" style={{ borderBottom: "1px solid var(--m-border)" }}>
                 <div>
                   <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.16em]" style={{ color: "var(--m-text-sub)" }}>Spaced Repetition</p>

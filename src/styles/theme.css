@@ -1096,20 +1096,35 @@
 
 /* ═══════════════════════════════════════════════════════════════════════════
    GLOBAL RESPONSIVE BASE & SMARTPHONE VIEWPORT ADAPTATION
+   - Universal border-box to prevent padding from expanding containers beyond 100%
    - Prevents horizontal blowouts across the entire site
    - Ensures responsive container scaling
    ═══════════════════════════════════════════════════════════════════════════ */
-html, body, #root {
-  width: 100%;
-  max-width: 100vw;
-  overflow-x: hidden;
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
   position: relative;
+  box-sizing: border-box;
+}
+
+#root, .dreamit-dash {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  position: relative;
+  box-sizing: border-box;
 }
 
 @media (max-width: 768px) {
   html, body {
-    overflow-x: hidden;
-    max-width: 100vw;
+    overflow-x: hidden !important;
+    width: 100% !important;
+    max-width: 100% !important;
     -webkit-text-size-adjust: 100%;
     -webkit-overflow-scrolling: touch;
   }
