@@ -1,4 +1,4 @@
-# 🎓 Dream It — The Student Life Operating System & AI Study Companion
+# Dream It — The Student Life Operating System & AI Study Companion
 
 [![React](https://img.shields.io/badge/React-18.3.1-61DAFB?logo=react&logoColor=black)](https://react.dev/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -12,47 +12,47 @@
 
 ---
 
-## 🌟 Key Features
+## Key Features
 
-### 🧠 1. Focus & Study Station
+### 1. Focus & Study Station
 * **Smart Pomodoro & Focus Timers:** Customizable work and break intervals with ambient study soundscapes (binaural beats, rain, café ambience).
 * **Live Habit & Streak Tracking:** Visual progress metrics, daily consistency streaks, and task management.
 * **Snap & Solve:** Quick capture and solution breakdowns for difficult homework problems.
 
-### 📝 2. Markdown Notes & KaTeX Math
+### 2. Markdown Notes & KaTeX Math
 * **Rich Markdown Editing:** LaTeX math equation rendering via `KaTeX` (`remark-math` and `rehype-katex`).
 * **Auto-Generated Flashcards:** Convert lecture notes into interactive flashcards with one click.
 * **Topic-Based Organization:** Categorized notebook hierarchy with search and quick reference tags.
 
-### 🗂️ 3. Spaced Repetition & Exam Simulator
+### 3. Spaced Repetition & Exam Simulator
 * **Active Recall Flashcards:** 3D interactive flip cards with spaced repetition intervals.
 * **Mock Exam Engine:** Generates practice exams, multiple-choice quizzes, timers, and automatic score breakdowns.
 
-### 💰 4. Student Finance & Budget Tracker
+### 4. Student Finance & Budget Tracker
 * **Cash Flow Analytics:** Track monthly income, study expenses, savings rate, and account balances.
 * **Budget Allocations & Goals:** Set savings targets for textbooks, tech gear, or tuition.
 * **Financial Simulator & Coaching:** Predictive balance forecasting based on current spending habits.
 
-### 🎙️ 5. Cadence — AI Voice Study Companion
+### 5. Cadence — AI Voice Study Companion
 * **Voice-First Tutoring:** Real-time conversational AI tutor for quick concept explanations and memory retention checks.
 * **Speech-to-Text Notes:** Convert spoken study summaries directly into structured notes.
 
-### 📞 6. Peer-to-Peer Study Rooms & Calling
+### 6. Peer-to-Peer Study Rooms & Calling
 * **Ultra-Low Latency WebRTC Calls:** Peer-to-peer 1-on-1 audio and video study sessions.
 * **Audio Mixing & Screen Sharing:** Share lecture slides or code with synchronized screen audio and voice.
 * **Interactive Reactions:** Floating emojis and in-call text chat powered by Supabase Realtime channels.
 
-### 👨‍👩‍👧 7. Parental Oversight Portal
+### 7. Parental Oversight Portal
 * **Parent-Child Link:** Transparent study progress tracking without compromising student privacy.
 * **Focus Analytics:** Weekly study hour distribution, subject engagement graphs, and completed milestones.
 
-### 📴 8. High-Performance Offline-First Engine
+### 8. High-Performance Offline-First Engine
 * **IndexedDB Local Engine:** Native browser offline storage (`dreamit_offline_db`) ensures zero interruptions during spotty Wi-Fi.
 * **Automatic Mutation Queue:** Edits made offline are queued and seamlessly synchronized to Supabase the moment you reconnect.
 
 ---
 
-## 🏗️ Technology Stack
+## Technology Stack
 
 | Domain | Technology | Description |
 | :--- | :--- | :--- |
@@ -70,7 +70,7 @@
 
 ---
 
-## 📐 Architecture & Data Flow
+## Architecture & Data Flow
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -96,7 +96,7 @@
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 * **Node.js**: v18.0.0 or higher
@@ -131,7 +131,7 @@
 
 ---
 
-## 📱 Mobile (iOS) Build
+## Mobile (iOS) Build
 
 Dream It is configured with **Capacitor** to run natively on iOS devices:
 
@@ -148,7 +148,7 @@ npx cap open ios
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 ├── public/                 # Static assets and icons
@@ -180,7 +180,7 @@ npx cap open ios
 
 ---
 
-## 🔒 Security & Privacy
+## Security & Privacy
 
 * **Zero Training on Student Data:** Audio streams and private notes are never used for AI model training.
 * **Row-Level Security (RLS):** All database operations in PostgreSQL are strictly partitioned by Clerk user IDs.
@@ -188,6 +188,6 @@ npx cap open ios
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the [MIT License](LICENSE).
