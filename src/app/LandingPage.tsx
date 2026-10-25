@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import ParticleField from "./components/ParticleField";
 import ThemeSelector from "./components/ThemeSelector";
+import { useTheme } from "../lib/ThemeContext";
 
 /* ─── HOOKS ─── */
 
@@ -247,6 +248,7 @@ export default function LandingPage({
 }: {
   onGetStarted?: () => void;
 }) {
+  const { themeConfig } = useTheme();
   const prefersReducedMotion = usePrefersReducedMotion();
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -295,7 +297,7 @@ export default function LandingPage({
 
   return (
     <div
-      className="min-h-screen font-[DM_Sans] selection:bg-black/10"
+      className={`dreamit-dash min-h-screen font-[DM_Sans] selection:bg-black/10 transition-colors duration-500 ${themeConfig.cssClass}`}
       style={{
         backgroundColor: "var(--m-bg)",
         color: "var(--m-text)",
@@ -353,18 +355,29 @@ export default function LandingPage({
             ))}
           </nav>
 
-          <div className="hidden md:flex items-center gap-4">
+          <div className="hidden md:flex items-center gap-3">
             <button
               onClick={() => setIsThemeSelectorOpen(true)}
-              className="p-2 rounded-xl transition-all duration-200 hover:scale-105"
+              className="px-3 py-2 rounded-xl transition-all duration-200 hover:scale-105 flex items-center gap-2 group text-xs font-semibold cursor-pointer"
               style={{
                 backgroundColor: "var(--m-surface-alt)",
-                color: "var(--m-text-sub)",
+                color: "var(--m-text-heading)",
                 border: "1px solid var(--m-border-light)",
               }}
-              title="Change Theme"
+              title={`Active Theme: ${themeConfig.name} (${themeConfig.sector === "common" ? "Default" : "Cool Theme"}). Click to customize.`}
+              aria-label="Change Theme"
             >
-              <Palette size={18} />
+              <Palette size={15} style={{ color: "var(--m-primary)" }} />
+              <span className="hidden lg:inline">{themeConfig.name}</span>
+              <div className="flex items-center -space-x-1 ml-0.5">
+                {themeConfig.swatches.slice(0, 3).map((color, idx) => (
+                  <span
+                    key={idx}
+                    className="w-2.5 h-2.5 rounded-full border border-black/10 dark:border-white/10 shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
             </button>
             <button
               onClick={onGetStarted}
@@ -434,6 +447,32 @@ export default function LandingPage({
                 {link.name}
               </a>
             ))}
+            <button
+              onClick={() => {
+                closeMobileMenu();
+                setIsThemeSelectorOpen(true);
+              }}
+              className="flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+              style={{
+                backgroundColor: "var(--m-surface-alt)",
+                color: "var(--m-text-heading)",
+                border: "1px solid var(--m-border-light)",
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <Palette size={18} style={{ color: "var(--m-primary)" }} />
+                <span>Theme: {themeConfig.name}</span>
+              </div>
+              <div className="flex items-center -space-x-1">
+                {themeConfig.swatches.slice(0, 3).map((color, idx) => (
+                  <span
+                    key={idx}
+                    className="w-3.5 h-3.5 rounded-full border border-black/10 dark:border-white/10 shrink-0"
+                    style={{ backgroundColor: color }}
+                  />
+                ))}
+              </div>
+            </button>
             <button
               onClick={() => {
                 closeMobileMenu();

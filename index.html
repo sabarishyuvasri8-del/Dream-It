@@ -22,7 +22,8 @@
               theme = prefersDark ? "mono-dark" : "mono-light";
             }
           }
-          document.documentElement.className = "theme-" + theme;
+          var isDark = theme === "mono-dark" || theme === "midnight-void" || theme === "arctic-dusk";
+          document.documentElement.className = "theme-" + theme + (isDark ? " dark" : "");
         } catch (e) {
           document.documentElement.className = "theme-mono-light";
         }

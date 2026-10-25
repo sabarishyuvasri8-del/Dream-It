@@ -273,6 +273,13 @@ export function ThemeProvider({ children, accessToken }: ThemeProviderProps) {
     // Add current theme class
     html.classList.add(themeConfig.cssClass);
 
+    // Toggle dark class for Tailwind dark: variants
+    if (themeConfig.isDark) {
+      html.classList.add("dark");
+    } else {
+      html.classList.remove("dark");
+    }
+
     // Transition class
     if (isTransitioning) {
       html.classList.add("theme-transition");
