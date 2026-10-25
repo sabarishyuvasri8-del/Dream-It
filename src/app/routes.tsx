@@ -11,6 +11,9 @@ import {
   Sparkles,
   Eye,
   EyeOff,
+  User,
+  Trash2,
+  ArrowRightLeft,
 } from "lucide-react";
 const Dashboard = lazy(() => import("./Dashboard"));
 const ParentDashboard = lazy(() => import("./ParentDashboard"));
@@ -21,6 +24,7 @@ import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
 import { fetchParentLinks, upsertUserProfile, setSupabaseAuthToken } from "../lib/supabase";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
+import { getSavedAccounts, popPendingSwitchAccount, removeSavedAccount, saveAccount, SavedAccount } from "../lib/account-vault";
 const CadenceApp = lazy(() => import("./cadence/CadenceApp"));
 const PrivacyPolicy = lazy(() => import("./PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./TermsOfService"));
@@ -40,7 +44,7 @@ function PageLoader() {
   );
 }
 
-/* ─────────────── Custom Auth Form ─────────────── */
+/* ─────────────── Custom Auth Form with Saved Accounts Support ─────────────── */
 function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
   const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
   const { isLoaded: isSignUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
@@ -49,6 +53,45 @@ function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>([]);
+  const [selectedAccount, setSelectedAccount] = useState<SavedAccount | null>(null);
+  const [showManualInput, setShowManualInput] = useState(false);
+
+  useEffect(() => {
+    const list = getSavedAccounts();
+    setSavedAccounts(list);
+
+    const pending = popPendingSwitchAccount();
+    if (pending) {
+      const match = list.find((a) => a.identifier.toLowerCase() === pending.toLowerCase());
+      if (match) {
+        setSelectedAccount(match);
+        setUsername(match.identifier);
+      } else {
+        setUsername(pending);
+        setShowManualInput(true);
+      }
+    }
+  }, [mode]);
+
+  const handleSelectAccount = (account: SavedAccount) => {
+    setSelectedAccount(account);
+    setUsername(account.identifier);
+    setPassword("");
+    setError("");
+    setShowManualInput(false);
+  };
+
+  const handleRemoveAccount = (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    removeSavedAccount(id);
+    const updated = getSavedAccounts();
+    setSavedAccounts(updated);
+    if (selectedAccount?.id === id) {
+      setSelectedAccount(null);
+      setUsername("");
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,78 +134,225 @@ function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
     }
   };
 
-
-
   return (
     <div className="w-full flex flex-col gap-4">
       <div className="flex items-center gap-2 text-xs" style={{ color: "var(--m-text-sub)" }}>
         <div className="flex-1 border-t" style={{ borderColor: "var(--m-border-light)" }}></div>
-        <span>Sign in with your username</span>
+        <span>{mode === "signin" ? "Sign in to Dream It" : "Create your account"}</span>
         <div className="flex-1 border-t" style={{ borderColor: "var(--m-border-light)" }}></div>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Username</label>
-          <input
-            type="text"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            required
-            placeholder="Unique username"
-            className="rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border"
-            style={{
-              backgroundColor: "transparent",
-              borderColor: "var(--m-border)",
-              color: "var(--m-text)",
+      {/* If signing in and has saved accounts and user hasn't selected an account or manually opted for new input */}
+      {mode === "signin" && savedAccounts.length > 0 && !selectedAccount && !showManualInput && (
+        <div className="flex flex-col gap-2.5">
+          <p className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>
+            Choose a saved account on this device:
+          </p>
+          <div className="flex flex-col gap-2 max-h-56 overflow-y-auto custom-scrollbar">
+            {savedAccounts.map((account) => (
+              <div
+                key={account.id}
+                onClick={() => handleSelectAccount(account)}
+                className="group flex items-center justify-between p-3 rounded-2xl border transition-all cursor-pointer hover:scale-[1.01]"
+                style={{
+                  backgroundColor: "var(--m-surface)",
+                  borderColor: "var(--m-border)",
+                }}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  {account.imageUrl ? (
+                    <img
+                      src={account.imageUrl}
+                      alt={account.name}
+                      className="size-9 rounded-full object-cover shrink-0 ring-1 ring-[var(--m-border)]"
+                    />
+                  ) : (
+                    <div
+                      className="size-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0"
+                      style={{
+                        backgroundColor: "color-mix(in srgb, var(--m-primary) 15%, transparent)",
+                        color: "var(--m-primary)",
+                      }}
+                    >
+                      {account.name.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold truncate" style={{ color: "var(--m-text-heading)" }}>
+                      {account.name}
+                    </p>
+                    <p className="text-[11px] truncate" style={{ color: "var(--m-text-muted)" }}>
+                      @{account.identifier}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <span
+                    className="text-[11px] font-bold px-2.5 py-1 rounded-xl transition"
+                    style={{
+                      backgroundColor: "var(--m-primary)",
+                      color: "var(--m-primary-text)",
+                    }}
+                  >
+                    Select
+                  </span>
+                  <button
+                    type="button"
+                    onClick={(e) => handleRemoveAccount(e, account.id)}
+                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-500/10 transition opacity-50 hover:opacity-100"
+                    title="Remove from this device"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowManualInput(true);
+              setUsername("");
             }}
-          />
+            className="text-xs font-bold py-2 hover:opacity-80 transition text-center"
+            style={{ color: "var(--m-primary)" }}
+          >
+            + Use another username / account
+          </button>
         </div>
-        
-        <div className="flex flex-col gap-1.5 relative">
-          <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Password</label>
-          <div className="relative flex items-center">
-            <input
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-xl py-2.5 pl-3.5 pr-10 text-sm transition outline-none focus:ring-2 border"
-              style={{
-                backgroundColor: "transparent",
-                borderColor: "var(--m-border)",
-                color: "var(--m-text)",
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 opacity-60 hover:opacity-100 transition"
-              style={{ color: "var(--m-text)" }}
-            >
-              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-            </button>
-          </div>
-        </div>
+      )}
 
-        {error && (
-          <div className="text-xs font-semibold p-3 rounded-lg bg-red-500/10 text-red-500">
-            {error}
-          </div>
-        )}
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md mt-2 disabled:opacity-50 disabled:hover:scale-100"
+      {/* Selected Account Banner when user picked a saved account */}
+      {mode === "signin" && selectedAccount && (
+        <div
+          className="flex items-center justify-between p-3 rounded-2xl border"
           style={{
-            backgroundColor: "var(--m-primary)",
-            color: "var(--m-primary-text)",
+            backgroundColor: "color-mix(in srgb, var(--m-primary) 10%, transparent)",
+            borderColor: "color-mix(in srgb, var(--m-primary) 30%, transparent)",
           }}
         >
-          {loading ? "Loading..." : mode === "signin" ? "Sign In" : "Sign Up"}
-        </button>
-      </form>
+          <div className="flex items-center gap-2.5 min-w-0">
+            {selectedAccount.imageUrl ? (
+              <img src={selectedAccount.imageUrl} alt={selectedAccount.name} className="size-8 rounded-full object-cover shrink-0" />
+            ) : (
+              <div
+                className="size-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0"
+                style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+              >
+                {selectedAccount.name.slice(0, 1).toUpperCase()}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-xs font-bold truncate" style={{ color: "var(--m-text-heading)" }}>
+                {selectedAccount.name}
+              </p>
+              <p className="text-[10px] truncate" style={{ color: "var(--m-text-muted)" }}>
+                @{selectedAccount.identifier}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedAccount(null);
+              setUsername("");
+            }}
+            className="text-[11px] font-bold px-2 py-1 rounded-lg transition hover:opacity-80"
+            style={{ color: "var(--m-primary)" }}
+          >
+            Switch
+          </button>
+        </div>
+      )}
+
+      {/* Form: shown when (not signin) OR (no saved accounts) OR (user clicked use another) OR (an account was selected and needs password) */}
+      {(mode === "signup" || !savedAccounts.length || showManualInput || selectedAccount) && (
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {(!selectedAccount || mode === "signup") && (
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>Username</label>
+                {savedAccounts.length > 0 && mode === "signin" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowManualInput(false);
+                      setSelectedAccount(null);
+                    }}
+                    className="text-[11px] font-semibold hover:opacity-80 transition"
+                    style={{ color: "var(--m-primary)" }}
+                  >
+                    Saved accounts ({savedAccounts.length})
+                  </button>
+                )}
+              </div>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                required
+                placeholder="Unique username"
+                className="rounded-xl py-2.5 px-3.5 text-sm transition outline-none focus:ring-2 border"
+                style={{
+                  backgroundColor: "transparent",
+                  borderColor: "var(--m-border)",
+                  color: "var(--m-text)",
+                }}
+              />
+            </div>
+          )}
+          
+          <div className="flex flex-col gap-1.5 relative">
+            <label className="text-xs font-bold" style={{ color: "var(--m-text-heading)" }}>
+              {selectedAccount ? `Password for @${selectedAccount.identifier}` : "Password"}
+            </label>
+            <div className="relative flex items-center">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                autoFocus={Boolean(selectedAccount)}
+                placeholder="Enter your password"
+                className="w-full rounded-xl py-2.5 pl-3.5 pr-10 text-sm transition outline-none focus:ring-2 border"
+                style={{
+                  backgroundColor: "transparent",
+                  borderColor: "var(--m-border)",
+                  color: "var(--m-text)",
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 opacity-60 hover:opacity-100 transition"
+                style={{ color: "var(--m-text)" }}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div className="text-xs font-semibold p-3 rounded-lg bg-red-500/10 text-red-500">
+              {error}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="rounded-xl py-3 text-sm font-bold transition hover:scale-[1.02] shadow-md mt-2 disabled:opacity-50 disabled:hover:scale-100"
+            style={{
+              backgroundColor: "var(--m-primary)",
+              color: "var(--m-primary-text)",
+            }}
+          >
+            {loading ? "Loading..." : mode === "signin" ? "Sign In" : "Sign Up"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }
@@ -424,6 +614,15 @@ function Root() {
       const checkParent = async () => {
         // Upsert profile for the user
         await upsertUserProfile(user.id, user.username || user.firstName || "User", user.imageUrl);
+
+        // Remember account in device vault for multi-account switching
+        saveAccount({
+          id: user.id,
+          identifier: user.username || user.primaryEmailAddress?.emailAddress || user.id,
+          name: user.fullName || user.firstName || user.username || "Student",
+          imageUrl: user.imageUrl,
+          lastActiveAt: Date.now(),
+        });
 
         // Bind telemetry user context
         setUserContext({

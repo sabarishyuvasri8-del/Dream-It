@@ -4,6 +4,7 @@ import {
   Activity,
   AlarmClock,
   AlertCircle,
+  ArrowRightLeft,
   ArrowUpRight,
   Award,
   Bell,
@@ -154,6 +155,7 @@ const PDFFlashcardModal = lazy(() =>
 );
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const UserProfileModal = lazy(() => import("./components/UserProfileModal"));
+const AccountSwitcherModal = lazy(() => import("./components/AccountSwitcherModal"));
 const NotesTab = lazy(() => import("./components/tabs/NotesTab"));
 const SnapAndSolveModal = lazy(() => import("./components/SnapAndSolveModal"));
 import CommandPalette from "./components/CommandPalette";
@@ -607,6 +609,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+  const [accountSwitcherOpen, setAccountSwitcherOpen] = useState(false);
 
   // ─── Grades State ───
   const [gradeForm, setGradeForm] = useState({ subjectId: 0, name: "", score: "", total: "", weight: "" });
@@ -4030,6 +4033,24 @@ You can save notes and flashcards. When asked to save to notes or create flashca
             </span>
           </button>
 
+          <button
+            onClick={() => setAccountSwitcherOpen(true)}
+            className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip ${
+              isExpanded ? "w-full px-3 py-2 justify-start" : "w-10 h-10 justify-center"
+            }`}
+            style={{ color: "var(--m-primary)" }}
+            title={!isExpanded ? "Switch Account" : undefined}
+          >
+            <ArrowRightLeft size={14} className="shrink-0" />
+            <span
+              className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${
+                isExpanded ? "max-w-[120px] opacity-100 ml-2" : "max-w-0 opacity-0 ml-0"
+              }`}
+            >
+              Switch account
+            </span>
+          </button>
+
           <button onClick={() => setShowSignOutConfirm(true)} className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip ${isExpanded ? "w-full px-3 py-2 justify-center" : "w-10 h-10 justify-center"}`} style={{ color: "var(--m-danger)" }} title={!isExpanded ? "Sign Out" : undefined}>
             <LogOut size={14} className="shrink-0" />
             <span className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${isExpanded ? "max-w-[100px] opacity-100 ml-2" : "max-w-0 opacity-0 ml-0"}`}>Sign out</span>
@@ -7066,6 +7087,19 @@ Mathematics:
         <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       </Suspense>
 
+      {/* ─── Account Switcher Modal ─── */}
+      <Suspense fallback={null}>
+        <AccountSwitcherModal
+          isOpen={accountSwitcherOpen}
+          onClose={() => setAccountSwitcherOpen(false)}
+          currentUserId={userId}
+          currentUserName={userNameDisplay}
+          currentUserEmail={userEmail}
+          currentUserImageUrl={userImageUrl}
+          onSignOut={onSignOut}
+        />
+      </Suspense>
+
       {/* ─── Sign Out Confirmation Modal ─── */}
       {showSignOutConfirm && (
         <div 
@@ -7141,6 +7175,23 @@ Mathematics:
                 Sign out
               </button>
             </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowSignOutConfirm(false);
+                setAccountSwitcherOpen(true);
+              }}
+              className="w-full mt-3 py-2.5 px-3 rounded-xl border text-xs font-semibold transition hover:opacity-90 flex items-center justify-center gap-1.5 cursor-pointer"
+              style={{
+                borderColor: "var(--m-border)",
+                color: "var(--m-primary)",
+                backgroundColor: "color-mix(in srgb, var(--m-primary) 8%, transparent)",
+              }}
+            >
+              <ArrowRightLeft size={13} />
+              <span>Switch to another account instead</span>
+            </button>
           </div>
         </div>
       )}
