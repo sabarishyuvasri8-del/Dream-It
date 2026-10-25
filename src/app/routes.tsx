@@ -24,7 +24,7 @@ import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
 import { fetchParentLinks, upsertUserProfile, setSupabaseAuthToken } from "../lib/supabase";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
-import { getSavedAccounts, popPendingSwitchAccount, removeSavedAccount, saveAccount, SavedAccount } from "../lib/account-vault";
+import { getSavedAccounts, popPendingSwitchAccount, peekPendingSwitchAccount, removeSavedAccount, saveAccount, SavedAccount } from "../lib/account-vault";
 const CadenceApp = lazy(() => import("./cadence/CadenceApp"));
 const PrivacyPolicy = lazy(() => import("./PrivacyPolicy"));
 const TermsOfService = lazy(() => import("./TermsOfService"));
@@ -63,13 +63,19 @@ function CustomAuthForm({ mode }: { mode: "signin" | "signup" }) {
 
     const pending = popPendingSwitchAccount();
     if (pending) {
-      const match = list.find((a) => a.identifier.toLowerCase() === pending.toLowerCase());
-      if (match) {
-        setSelectedAccount(match);
-        setUsername(match.identifier);
-      } else {
-        setUsername(pending);
+      if (pending === "__new__") {
         setShowManualInput(true);
+        setSelectedAccount(null);
+        setUsername("");
+      } else {
+        const match = list.find((a) => a.identifier.toLowerCase() === pending.toLowerCase());
+        if (match) {
+          setSelectedAccount(match);
+          setUsername(match.identifier);
+        } else {
+          setUsername(pending);
+          setShowManualInput(true);
+        }
       }
     }
   }, [mode]);
@@ -570,7 +576,12 @@ function Root() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { session } = useSession();
   const { signOut } = useClerk();
-  const [screen, setScreen] = useState<AppScreen>("landing");
+  const [screen, setScreen] = useState<AppScreen>(() => {
+    if (typeof window !== "undefined" && peekPendingSwitchAccount()) {
+      return "auth";
+    }
+    return "landing";
+  });
   const [isParentMode, setIsParentMode] = useState(false);
   const [childUserId, setChildUserId] = useState("");
   const [childUsername, setChildUsername] = useState("");
@@ -659,6 +670,9 @@ function Root() {
       clearUserContext();
       setParentCheckDone(false);
       setAuthorizedChildIds(new Set());
+      if (peekPendingSwitchAccount()) {
+        setScreen("auth");
+      }
     }
   }, [isSignedIn, user, parentCheckDone, isParentMode, childUserId]);
 
@@ -742,7 +756,14 @@ function Root() {
         </Suspense>
       );
     case "auth":
-      return <ClerkAuthCard onBack={() => setScreen("role-select")} />;
+      return (
+        <ClerkAuthCard
+          onBack={() => {
+            popPendingSwitchAccount();
+            setScreen("landing");
+          }}
+        />
+      );
     case "parent-auth":
       return (
         <Suspense fallback={<PageLoader />}>

@@ -40,6 +40,7 @@ export default function AccountSwitcherModal({
   };
 
   const handleAddNewAccount = () => {
+    setPendingSwitchAccount("__new__");
     onClose();
     onSignOut();
   };
