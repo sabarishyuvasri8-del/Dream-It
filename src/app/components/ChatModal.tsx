@@ -23,6 +23,7 @@ import {
   pushMessageNotification,
   playNotificationChime,
 } from "../../lib/desktopNotifications";
+import { registerPushNotifications, isPushSupported } from "../../lib/pushNotifications";
 import ChatMessageContent from "./ChatMessageContent";
 import LinkPreviewCard from "./LinkPreviewCard";
 import VoiceMessagePlayer from "./VoiceMessagePlayer";
@@ -74,12 +75,35 @@ export default function ChatModal({
   const [convoMeta, setConvoMeta] = useState<Record<string, FriendConversationMeta>>({});
   const [isWide, setIsWide] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(getNotificationPermission());
+  const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null);
+
+  // Silently sync push subscription on mount if permission was previously granted
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && userId) {
+      registerPushNotifications(userId).catch(() => {});
+    }
+  }, [userId]);
 
   const handleToggleNotification = async () => {
-    const res = await requestNotificationPermission();
-    setNotifPermission(res);
-    if (res === "granted") {
-      playNotificationChime();
+    if (isPushSupported()) {
+      const res = await registerPushNotifications(userId);
+      setNotifPermission(res.permission);
+      if (res.success) {
+        playNotificationChime();
+        setPushStatusMessage("🔔 Lock screen & background notifications activated for your device!");
+        setTimeout(() => setPushStatusMessage(null), 4500);
+      } else {
+        setPushStatusMessage(res.error || "Notification permission was not granted.");
+        setTimeout(() => setPushStatusMessage(null), 4500);
+      }
+    } else {
+      const res = await requestNotificationPermission();
+      setNotifPermission(res);
+      if (res === "granted") {
+        playNotificationChime();
+        setPushStatusMessage("🔔 Desktop notifications activated!");
+        setTimeout(() => setPushStatusMessage(null), 4500);
+      }
     }
   };
   
@@ -570,7 +594,7 @@ export default function ChatModal({
         }
 
         const fileMeta = await uploadChatFile(userId, voiceFile);
-        const newMsg = await sendDirectMessage(userId, friendId, "", fileMeta);
+        const newMsg = await sendDirectMessage(userId, friendId, "", fileMeta, userNameDisplay);
         if (newMsg) {
           setMessages((prev) => {
             if (prev.find((m) => m.id === newMsg.id)) return prev;
@@ -638,7 +662,7 @@ export default function ChatModal({
     setDismissedDraftUrl(null);
     setSelectedFile(null);
 
-    const newMsg = await sendDirectMessage(userId, friendId, content, fileMeta);
+    const newMsg = await sendDirectMessage(userId, friendId, content, fileMeta, userNameDisplay);
     if (newMsg) {
       setMessages((prev) => {
         if (prev.find((m) => m.id === newMsg.id)) return prev;
@@ -736,9 +760,14 @@ export default function ChatModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-0 md:p-4 sm:p-6">
       <div 
-        className={`w-full h-full md:h-[85vh] rounded-none md:rounded-3xl shadow-2xl flex overflow-hidden transition-all duration-300 ${isWide ? 'max-w-full md:max-w-[95vw]' : 'max-w-4xl'}`} 
+        className={`w-full h-full md:h-[85vh] rounded-none md:rounded-3xl shadow-2xl flex flex-col md:flex-row relative overflow-hidden transition-all duration-300 ${isWide ? 'max-w-full md:max-w-[95vw]' : 'max-w-4xl'}`} 
         style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}
       >
+        {pushStatusMessage && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-full bg-emerald-600/95 text-white text-xs font-medium shadow-xl backdrop-blur-md flex items-center gap-2 animate-in fade-in slide-in-from-top duration-200">
+            <span>{pushStatusMessage}</span>
+          </div>
+        )}
         {/* Left Sidebar: Friends List */}
         <div className={`w-full md:w-80 flex-col border-r-0 md:border-r ${activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ borderColor: "var(--m-border)" }}>
           <div className="p-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--m-border)" }}>
@@ -750,8 +779,8 @@ export default function ChatModal({
                 className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit"
                 title={
                   notifPermission === "granted"
-                    ? "Outside desktop notifications active (alerts pop up in other tabs)"
-                    : "Enable outside notifications to get alerted in other tabs"
+                    ? "Lock-screen & background notifications active (Android, Windows, macOS)"
+                    : "Enable lock-screen & background push notifications (Android, Windows, macOS)"
                 }
               >
                 {notifPermission === "granted" ? (
@@ -953,10 +982,10 @@ export default function ChatModal({
                   className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit opacity-75 hover:opacity-100"
                   title={
                     notifPermission === "granted"
-                      ? "Outside notifications active (you'll get alerts in other tabs)"
-                      : "Enable outside notifications to get alerted in other tabs"
+                      ? "Lock-screen & background notifications active (Android, Windows, macOS)"
+                      : "Enable lock-screen & background push notifications (Android, Windows, macOS)"
                   }
-                  aria-label="Desktop Notifications"
+                  aria-label="Lock-screen & Background Notifications"
                 >
                   {notifPermission === "granted" ? (
                     <span className="relative flex items-center justify-center">

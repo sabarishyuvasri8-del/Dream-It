@@ -26,37 +26,13 @@ export function registerServiceWorker() {
     return;
   }
 
-  const isLocalhost =
-    window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1' ||
-    window.location.hostname.endsWith('.local');
-
-  // In local development, proactively unregister workers and clear old cache to prevent blank screens
-  if (isLocalhost) {
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-      for (const reg of registrations) {
-        reg.unregister().then(() => {
-          console.log('[PWA] Unregistered stale service worker on localhost');
-        });
-      }
-    });
-    if ('caches' in window) {
-      caches.keys().then((keys) => {
-        for (const key of keys) {
-          caches.delete(key);
-        }
-      });
-    }
-    return;
-  }
-
-  window.addEventListener('load', () => {
+  // Register Service Worker on load so Web Push and offline shell function smoothly
+  const registerWorker = () => {
     navigator.serviceWorker
       .register('/sw.js')
       .then((reg) => {
         console.log('[PWA] Service Worker registered with scope:', reg.scope);
 
-        // Check for updates
         reg.onupdatefound = () => {
           const installingWorker = reg.installing;
           if (installingWorker) {
@@ -71,7 +47,13 @@ export function registerServiceWorker() {
       .catch((err) => {
         console.warn('[PWA] Service Worker registration failed:', err);
       });
-  });
+  };
+
+  if (document.readyState === 'complete') {
+    registerWorker();
+  } else {
+    window.addEventListener('load', registerWorker);
+  }
 
   // Capture beforeinstallprompt for Android, Chrome, Edge, Chromebooks
   window.addEventListener('beforeinstallprompt', (e) => {

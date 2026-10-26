@@ -3,6 +3,7 @@ import { projectId, publicAnonKey } from "../../utils/supabase/info";
 import type { FinanceData } from "./finance-types";
 import { saveWorkspaceOffline, getWorkspaceOffline, recordOfflineMutation } from "./offline-storage";
 export { saveWorkspaceOffline, getWorkspaceOffline } from "./offline-storage";
+import { dispatchChatPushNotification } from "./pushNotifications";
 
 export const supabase = createClient(`https://${projectId}.supabase.co`, publicAnonKey);
 
@@ -942,7 +943,8 @@ export async function sendDirectMessage(
   senderId: string,
   receiverId: string,
   content: string,
-  fileMeta?: { url: string; name: string; type: string; size: number }
+  fileMeta?: { url: string; name: string; type: string; size: number },
+  senderName?: string
 ): Promise<DirectMessage | null> {
   if (!senderId || !receiverId || (!content.trim() && !fileMeta)) return null;
   try {
@@ -969,6 +971,16 @@ export async function sendDirectMessage(
       console.error("Error sending message:", error);
       return null;
     }
+
+    // Dispatch background/lock-screen push notification to recipient's phone/desktop
+    dispatchChatPushNotification({
+      recipientId: receiverId,
+      senderId,
+      senderName: senderName || "Friend",
+      content: content.trim(),
+      fileMeta,
+    }).catch(() => {});
+
     return data;
   } catch (err) {
     console.error("Exception sending message:", err);

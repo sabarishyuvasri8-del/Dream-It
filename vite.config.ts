@@ -2,6 +2,8 @@ import { defineConfig, loadEnv } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import webpush from 'web-push'
+import { createClient } from '@supabase/supabase-js'
 
 function figmaAssetResolver() {
   return {
@@ -298,6 +300,92 @@ function localAiProxyPlugin(env: Record<string, string>) {
               mediaType: youtubeId ? 'video' : undefined,
             }));
           }
+        } else if (req.url === '/api/send-push' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: any) => { body += chunk; });
+          req.on('end', async () => {
+            try {
+              const parsed = JSON.parse(body || '{}');
+              const { recipientId, senderId, senderName, bodySnippet } = parsed;
+
+              const SUPABASE_PROJECT_ID = env.SUPABASE_PROJECT_ID || 'ogukrtsucsnxvrudvobv';
+              const SUPABASE_URL = env.SUPABASE_URL || `https://${SUPABASE_PROJECT_ID}.supabase.co`;
+              const SUPABASE_KEY =
+                env.SUPABASE_SERVICE_ROLE_KEY ||
+                env.SUPABASE_ANON_KEY ||
+                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndWtydHN1Y3NueHZydWR2b2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2MDQ2MTksImV4cCI6MjEwMTE4MDYxOX0.cI7kzHbsSOYbiO3izp-sXhDinBMTCV5vmQXcllAfqy0';
+
+              const VAPID_PUBLIC_KEY =
+                env.VAPID_PUBLIC_KEY ||
+                env.VITE_VAPID_PUBLIC_KEY ||
+                'BMKEHNDgWBUAaPiWvn753OXxngSbuIFN2obnsGzYl4MeHDIDbFoPnf-NdpSMnA6VUfnRwR-8clEfK4RyRLPAleE';
+
+              const VAPID_PRIVATE_KEY =
+                env.VAPID_PRIVATE_KEY ||
+                '9pXFfA-hfNMemTlefmPci2uKaRsWDT53knGkvO-ajQs';
+
+              const VAPID_SUBJECT = env.VAPID_SUBJECT || 'mailto:support@dreamit.app';
+
+              try {
+                webpush.setVapidDetails(VAPID_SUBJECT, VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY);
+              } catch {}
+
+              const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
+              const { data: subscriptions } = await supabaseClient
+                .from('push_subscriptions')
+                .select('*')
+                .eq('user_id', recipientId);
+
+              if (!subscriptions || subscriptions.length === 0) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: true, sentCount: 0, message: 'No subscriptions found' }));
+                return;
+              }
+
+              const payload = JSON.stringify({
+                title: `${senderName || 'Friend'} • Dream It`,
+                body: bodySnippet || 'Sent you a message',
+                icon: '/icons/icon-192.png',
+                badge: '/icons/icon-192.png',
+                tag: `dreamit-dm-${senderId}`,
+                friendId: senderId,
+                url: `/?openChat=${encodeURIComponent(senderId)}`,
+              });
+
+              let sentCount = 0;
+              const expiredEndpoints: string[] = [];
+
+              await Promise.all(
+                subscriptions.map(async (sub: any) => {
+                  try {
+                    await webpush.sendNotification(
+                      { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                      payload,
+                      { TTL: 60 * 60 * 24, urgency: 'high' }
+                    );
+                    sentCount++;
+                  } catch (err: any) {
+                    if (err?.statusCode === 410 || err?.statusCode === 404) {
+                      expiredEndpoints.push(sub.endpoint);
+                    }
+                  }
+                })
+              );
+
+              if (expiredEndpoints.length > 0) {
+                await supabaseClient.from('push_subscriptions').delete().in('endpoint', expiredEndpoints).catch(() => {});
+              }
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, sentCount, total: subscriptions.length }));
+            } catch (pushErr: any) {
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: pushErr?.message || 'Push dispatch failed' }));
+            }
+          });
         } else {
           next();
         }

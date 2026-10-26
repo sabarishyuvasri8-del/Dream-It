@@ -147,10 +147,65 @@ self.addEventListener('fetch', (event) => {
   );
 });
 
+// Push Event: Triggered by OS Push Service (Google FCM / WNS / Apple APNs)
+// Wakes up background service worker even when phone is locked or browser is closed!
+self.addEventListener('push', (event) => {
+  let payload = {
+    title: 'Dream It • New Message',
+    body: 'You received a new message.',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/icon-192.png',
+    tag: 'dreamit-chat-alert',
+    data: {},
+  };
+
+  if (event.data) {
+    try {
+      const parsed = event.data.json();
+      payload = { ...payload, ...parsed };
+    } catch {
+      payload.body = event.data.text() || payload.body;
+    }
+  }
+
+  const notificationOptions = {
+    body: payload.body,
+    icon: payload.icon || '/icons/icon-192.png',
+    badge: payload.badge || '/icons/icon-192.png',
+    tag: payload.tag || 'dreamit-chat-alert',
+    renotify: true,
+    // Vibration pattern for Android phone in pocket/locked screen: vibrate-pause-vibrate
+    vibrate: [250, 100, 250, 100, 250],
+    timestamp: Date.now(),
+    requireInteraction: false,
+    data: {
+      url: payload.url || (payload.data && payload.data.url) || '/',
+      friendId: payload.friendId || (payload.data && payload.data.friendId),
+      messageId: payload.messageId || (payload.data && payload.data.messageId),
+      ...(payload.data || {}),
+    },
+    actions: [
+      { action: 'open_chat', title: '💬 Open Chat' },
+      { action: 'dismiss', title: 'Dismiss' },
+    ],
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, notificationOptions)
+  );
+});
+
 // Notification Click Event: Focus existing window or open new one
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const friendId = event.notification.data && event.notification.data.friendId;
+
+  if (event.action === 'dismiss') {
+    return;
+  }
+
+  const data = event.notification.data || {};
+  const friendId = data.friendId;
+  const targetUrl = friendId ? `/?openChat=${encodeURIComponent(friendId)}` : (data.url || '/');
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
@@ -161,7 +216,7 @@ self.addEventListener('notificationclick', (event) => {
           if (friendId) {
             client.postMessage({
               type: 'DREAMIT_OPEN_CHAT',
-              friendId: friendId
+              friendId: friendId,
             });
           }
           return;
@@ -169,7 +224,6 @@ self.addEventListener('notificationclick', (event) => {
       }
       // 2. Otherwise open a new window
       if (self.clients.openWindow) {
-        const targetUrl = friendId ? `/?openChat=${encodeURIComponent(friendId)}` : '/';
         return self.clients.openWindow(targetUrl);
       }
     })

@@ -143,6 +143,7 @@ import {
   pushMessageNotification,
   playNotificationChime,
 } from "../lib/desktopNotifications";
+import { registerPushNotifications, isPushSupported } from "../lib/pushNotifications";
 import { useWebRTCCall } from "./components/calls/useWebRTCCall";
 import IncomingCallModal from "./components/calls/IncomingCallModal";
 import ActiveCallOverlay from "./components/calls/ActiveCallOverlay";
@@ -945,7 +946,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     return () => window.removeEventListener("dreamit:open-chat", handleOpenChat);
   }, []);
 
-  // ─── Desktop Outside Notification Permission Prompt Check ───
+  // ─── Desktop & Lock-Screen Notification Permission Prompt & Auto-Sync ───
   useEffect(() => {
     if (isNotificationSupported() && getNotificationPermission() === "default") {
       const dismissed = localStorage.getItem("dreamit_notif_banner_dismissed");
@@ -953,17 +954,29 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
         const timer = setTimeout(() => setShowNotifBanner(true), 3000);
         return () => clearTimeout(timer);
       }
+    } else if (isNotificationSupported() && getNotificationPermission() === "granted" && activeAccount?.id) {
+      registerPushNotifications(activeAccount.id).catch(() => {});
     }
-  }, []);
+  }, [activeAccount?.id]);
 
   const handleEnableNotifications = async () => {
-    const res = await requestNotificationPermission();
     setShowNotifBanner(false);
-    if (res === "granted") {
-      showToast("🎉 Desktop notifications enabled! You'll get alerts in other tabs.", "success");
-      playNotificationChime();
+    if (isPushSupported() && activeAccount?.id) {
+      const res = await registerPushNotifications(activeAccount.id);
+      if (res.success) {
+        showToast("🔔 Lock-screen & background notifications enabled for this device!", "success");
+        playNotificationChime();
+      } else {
+        showToast("Notifications not enabled. You can enable them anytime from Messages.", "info");
+      }
     } else {
-      showToast("Notifications not enabled. You can enable them anytime from Messages.", "info");
+      const res = await requestNotificationPermission();
+      if (res === "granted") {
+        showToast("🎉 Desktop notifications enabled! You'll get alerts in other tabs.", "success");
+        playNotificationChime();
+      } else {
+        showToast("Notifications not enabled. You can enable them anytime from Messages.", "info");
+      }
     }
   };
 
@@ -6990,9 +7003,9 @@ Mathematics:
             <Bell size={20} className="animate-bounce" />
           </div>
           <div className="flex-1 min-w-0">
-            <h4 className="text-xs font-bold font-[Roboto_Slab]">Get alerts in other tabs?</h4>
+            <h4 className="text-xs font-bold font-[Roboto_Slab]">Get alerts when phone is locked?</h4>
             <p className="text-[11px] opacity-75 mt-0.5 leading-snug">
-              Turn on notifications so you can see when friends message you while you're in another tab or app.
+              Turn on notifications to get instant message alerts on your lock screen (Android, Windows, or macOS).
             </p>
             <div className="flex items-center gap-2 mt-2.5">
               <button
