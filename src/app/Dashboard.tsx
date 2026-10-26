@@ -954,15 +954,15 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
         const timer = setTimeout(() => setShowNotifBanner(true), 3000);
         return () => clearTimeout(timer);
       }
-    } else if (isNotificationSupported() && getNotificationPermission() === "granted" && activeAccount?.id) {
-      registerPushNotifications(activeAccount.id).catch(() => {});
+    } else if (isNotificationSupported() && getNotificationPermission() === "granted" && userId) {
+      registerPushNotifications(userId).catch(() => {});
     }
-  }, [activeAccount?.id]);
+  }, [userId]);
 
   const handleEnableNotifications = async () => {
     setShowNotifBanner(false);
-    if (isPushSupported() && activeAccount?.id) {
-      const res = await registerPushNotifications(activeAccount.id);
+    if (isPushSupported() && userId) {
+      const res = await registerPushNotifications(userId);
       if (res.success) {
         showToast("🔔 Lock-screen & background notifications enabled for this device!", "success");
         playNotificationChime();
