@@ -142,6 +142,7 @@ import {
   isTabInactive,
   pushMessageNotification,
   playNotificationChime,
+  isNotificationsMuted,
 } from "../lib/desktopNotifications";
 import { registerPushNotifications, isPushSupported } from "../lib/pushNotifications";
 import { useWebRTCCall } from "./components/calls/useWebRTCCall";
@@ -906,7 +907,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
                 setChatModalOpen(true);
               },
             });
-          } else if (!chatModalOpenRef.current) {
+          } else if (!chatModalOpenRef.current && !isNotificationsMuted()) {
             // User is in Dream It on this tab, but chat modal is closed
             playNotificationChime();
             showToast(`💬 ${senderName}: ${newMsg.content || "Sent an attachment"}`, "info");
@@ -955,7 +956,9 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
         return () => clearTimeout(timer);
       }
     } else if (isNotificationSupported() && getNotificationPermission() === "granted" && userId) {
-      registerPushNotifications(userId).catch(() => {});
+      if (!isNotificationsMuted()) {
+        registerPushNotifications(userId).catch(() => {});
+      }
     }
   }, [userId]);
 

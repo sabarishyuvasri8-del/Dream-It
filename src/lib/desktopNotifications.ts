@@ -42,6 +42,29 @@ export async function requestNotificationPermission(): Promise<NotificationPermi
   }
 }
 
+const NOTIF_MUTED_STORAGE_KEY = "dreamit_notifications_muted_v1";
+
+/**
+ * Checks if notifications are muted by user preference
+ */
+export function isNotificationsMuted(): boolean {
+  if (typeof window === "undefined" || !window.localStorage) return false;
+  return localStorage.getItem(NOTIF_MUTED_STORAGE_KEY) === "true";
+}
+
+/**
+ * Mutes or unmutes notifications and notifies all components across the app
+ */
+export function setNotificationsMuted(muted: boolean): void {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  if (muted) {
+    localStorage.setItem(NOTIF_MUTED_STORAGE_KEY, "true");
+  } else {
+    localStorage.removeItem(NOTIF_MUTED_STORAGE_KEY);
+  }
+  window.dispatchEvent(new CustomEvent("dreamit:notif-mute-change", { detail: { muted } }));
+}
+
 /**
  * Plays a pleasant, non-jarring synthesized audio chime via Web Audio API.
  * Requires zero external audio files and has zero network latency.
@@ -50,6 +73,7 @@ let audioCtx: AudioContext | null = null;
 export function playNotificationChime(): void {
   try {
     if (typeof window === "undefined") return;
+    if (isNotificationsMuted()) return;
     const AudioCtxClass = window.AudioContext || (window as any).webkitAudioContext;
     if (!AudioCtxClass) return;
 
@@ -112,6 +136,7 @@ export function isTabInactive(): boolean {
  */
 export function startTabTitleAlert(senderName: string, snippet?: string): void {
   if (typeof document === "undefined") return;
+  if (isNotificationsMuted()) return;
 
   if (!originalDocumentTitle) {
     originalDocumentTitle = document.title || "Dream It";
@@ -203,6 +228,8 @@ export async function pushMessageNotification({
       if (first) seenMessageIds.delete(first);
     }
   }
+
+  if (isNotificationsMuted()) return;
 
   const inactive = isTabInactive();
 

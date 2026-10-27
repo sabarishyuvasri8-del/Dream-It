@@ -23,8 +23,10 @@ import {
   isTabInactive,
   pushMessageNotification,
   playNotificationChime,
+  isNotificationsMuted,
+  setNotificationsMuted,
 } from "../../lib/desktopNotifications";
-import { registerPushNotifications, isPushSupported } from "../../lib/pushNotifications";
+import { registerPushNotifications, unregisterPushNotifications, isPushSupported } from "../../lib/pushNotifications";
 import ChatMessageContent from "./ChatMessageContent";
 import LinkPreviewCard from "./LinkPreviewCard";
 import VoiceMessagePlayer from "./VoiceMessagePlayer";
@@ -76,34 +78,75 @@ export default function ChatModal({
   const [convoMeta, setConvoMeta] = useState<Record<string, FriendConversationMeta>>({});
   const [isWide, setIsWide] = useState(false);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(getNotificationPermission());
+  const [isMuted, setIsMuted] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const perm = getNotificationPermission();
+    if (perm !== "granted") return true;
+    return isNotificationsMuted();
+  });
   const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null);
 
-  // Silently sync push subscription on mount if permission was previously granted
+  // Sync push subscription on mount if permission was granted and not muted
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted" && userId) {
-      registerPushNotifications(userId).catch(() => {});
+      if (!isNotificationsMuted()) {
+        registerPushNotifications(userId).catch(() => {});
+      }
     }
   }, [userId]);
 
+  // Listen for global mute state changes
+  useEffect(() => {
+    const handleMuteChange = (e: any) => {
+      const muted = e.detail?.muted ?? isNotificationsMuted();
+      setIsMuted(muted);
+    };
+    window.addEventListener("dreamit:notif-mute-change", handleMuteChange);
+    return () => window.removeEventListener("dreamit:notif-mute-change", handleMuteChange);
+  }, []);
+
   const handleToggleNotification = async () => {
-    if (isPushSupported()) {
-      const res = await registerPushNotifications(userId);
-      setNotifPermission(res.permission);
-      if (res.success) {
-        playNotificationChime();
-        setPushStatusMessage("🔔 Lock screen & background notifications activated for your device!");
-        setTimeout(() => setPushStatusMessage(null), 4500);
-      } else {
-        setPushStatusMessage(res.error || "Notification permission was not granted.");
-        setTimeout(() => setPushStatusMessage(null), 4500);
+    const currentPermission = getNotificationPermission();
+    const currentlyActive = !isMuted && currentPermission === "granted";
+
+    if (currentlyActive) {
+      // ─── ACTION: MUTE ───
+      setNotificationsMuted(true);
+      setIsMuted(true);
+      if (userId) {
+        unregisterPushNotifications(userId).catch(() => {});
       }
+      setPushStatusMessage("🔕 Notifications muted");
+      setTimeout(() => setPushStatusMessage(null), 3000);
     } else {
-      const res = await requestNotificationPermission();
-      setNotifPermission(res);
-      if (res === "granted") {
-        playNotificationChime();
-        setPushStatusMessage("🔔 Desktop notifications activated!");
-        setTimeout(() => setPushStatusMessage(null), 4500);
+      // ─── ACTION: UNMUTE / ACTIVATE ───
+      setNotificationsMuted(false);
+      setIsMuted(false);
+
+      if (isPushSupported() && userId) {
+        const res = await registerPushNotifications(userId);
+        setNotifPermission(res.permission);
+        if (res.success) {
+          playNotificationChime();
+          setPushStatusMessage("🔔 Notifications active (Lock screen & sound on)");
+          setTimeout(() => setPushStatusMessage(null), 3500);
+        } else {
+          setIsMuted(true);
+          setNotificationsMuted(true);
+          setPushStatusMessage(res.error || "Permission not granted.");
+          setTimeout(() => setPushStatusMessage(null), 3500);
+        }
+      } else {
+        const res = await requestNotificationPermission();
+        setNotifPermission(res);
+        if (res === "granted") {
+          playNotificationChime();
+          setPushStatusMessage("🔔 Notifications active");
+          setTimeout(() => setPushStatusMessage(null), 3500);
+        } else {
+          setIsMuted(true);
+          setNotificationsMuted(true);
+        }
       }
     }
   };
@@ -774,28 +817,6 @@ export default function ChatModal({
           <div className="p-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--m-border)" }}>
             <h3 className="font-bold font-[Roboto_Slab] text-lg truncate flex-1">{userNameDisplay}</h3>
             <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={handleToggleNotification}
-                className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit"
-                title={
-                  notifPermission === "granted"
-                    ? "Lock-screen & background notifications active (Android, Windows, macOS)"
-                    : "Enable lock-screen & background push notifications (Android, Windows, macOS)"
-                }
-              >
-                {notifPermission === "granted" ? (
-                  <span className="relative flex items-center justify-center">
-                    <Bell size={17} className="opacity-80 hover:opacity-100 text-emerald-500" />
-                    <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-[var(--m-surface)]" />
-                  </span>
-                ) : (
-                  <span className="relative flex items-center justify-center">
-                    <BellOff size={17} className="text-amber-500 hover:text-amber-400" />
-                    <span className="absolute -top-1 -right-1 size-2 rounded-full bg-amber-500 animate-ping" />
-                  </span>
-                )}
-              </button>
               <button onClick={onClose} className="md:hidden p-2 -mr-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0 ml-1">
                 <X size={20} />
               </button>
@@ -980,23 +1001,24 @@ export default function ChatModal({
                 <button
                   type="button"
                   onClick={handleToggleNotification}
-                  className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit opacity-75 hover:opacity-100"
+                  className={`p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit ${
+                    !isMuted && notifPermission === "granted" ? "opacity-100" : "opacity-60 hover:opacity-100"
+                  }`}
                   title={
-                    notifPermission === "granted"
-                      ? "Lock-screen & background notifications active (Android, Windows, macOS)"
-                      : "Enable lock-screen & background push notifications (Android, Windows, macOS)"
+                    !isMuted && notifPermission === "granted"
+                      ? "Notifications active • Click to mute"
+                      : "Notifications muted • Click to unmute"
                   }
-                  aria-label="Lock-screen & Background Notifications"
+                  aria-label={!isMuted && notifPermission === "granted" ? "Mute Notifications" : "Unmute Notifications"}
                 >
-                  {notifPermission === "granted" ? (
+                  {!isMuted && notifPermission === "granted" ? (
                     <span className="relative flex items-center justify-center">
                       <Bell size={17} className="text-emerald-500" />
-                      <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-emerald-500" />
+                      <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-emerald-500 ring-2 ring-[var(--m-surface)]" />
                     </span>
                   ) : (
                     <span className="relative flex items-center justify-center">
-                      <BellOff size={17} className="text-amber-500" />
-                      <span className="absolute -top-0.5 -right-0.5 size-2 rounded-full bg-amber-500 animate-ping" />
+                      <BellOff size={17} className="text-zinc-400 dark:text-zinc-400" />
                     </span>
                   )}
                 </button>
