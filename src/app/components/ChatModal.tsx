@@ -14,7 +14,8 @@ import {
   UserProfileData,
   fetchFriendsConversationMeta,
   FriendConversationMeta,
-  formatMessageSnippet
+  formatMessageSnippet,
+  ENABLE_24HR_CHAT_EXPIRY
 } from "../../lib/supabase";
 import {
   getNotificationPermission,
@@ -1016,7 +1017,9 @@ export default function ChatModal({
           >
             <div className="text-center w-full py-1">
               <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest">
-                Chats are securely auto-deleted every 24 hours.
+                {ENABLE_24HR_CHAT_EXPIRY
+                  ? "Chats are securely auto-deleted every 24 hours."
+                  : "Direct Messages • Chat history preserved"}
               </span>
             </div>
             {!activeFriend ? (

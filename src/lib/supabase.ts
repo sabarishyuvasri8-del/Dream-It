@@ -988,19 +988,28 @@ export async function sendDirectMessage(
   }
 }
 
+/**
+ * Configuration: Set to true to re-enable 24-hour disappearing chats.
+ * Currently paused so chat history is preserved across days.
+ */
+export const ENABLE_24HR_CHAT_EXPIRY = false;
+
 export async function fetchDirectMessages(
   userId1: string, // Current user
   userId2: string  // Friend
 ): Promise<DirectMessage[]> {
   try {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-    
-    const { data, error } = await supabase
+    let query = supabase
       .from('direct_messages')
       .select('*')
-      .or(`and(sender_id.eq.${userId1},receiver_id.eq.${userId2}),and(sender_id.eq.${userId2},receiver_id.eq.${userId1})`)
-      .gte('created_at', twentyFourHoursAgo)
-      .order('created_at', { ascending: true });
+      .or(`and(sender_id.eq.${userId1},receiver_id.eq.${userId2}),and(sender_id.eq.${userId2},receiver_id.eq.${userId1})`);
+
+    if (ENABLE_24HR_CHAT_EXPIRY) {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      query = query.gte('created_at', twentyFourHoursAgo);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: true });
 
     if (error) {
       console.error("Error fetching messages:", error);
@@ -1208,14 +1217,17 @@ export async function fetchParentLinks(parentUserId: string): Promise<ParentLink
 /** Fetch all chat messages for a child user (full transparency for parents) */
 export async function fetchChildChatMessages(childUserId: string): Promise<DirectMessage[]> {
   try {
-    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-
-    const { data, error } = await supabase
+    let query = supabase
       .from("direct_messages")
       .select("*")
-      .or(`sender_id.eq.${childUserId},receiver_id.eq.${childUserId}`)
-      .gte("created_at", twentyFourHoursAgo)
-      .order("created_at", { ascending: false });
+      .or(`sender_id.eq.${childUserId},receiver_id.eq.${childUserId}`);
+
+    if (ENABLE_24HR_CHAT_EXPIRY) {
+      const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      query = query.gte("created_at", twentyFourHoursAgo);
+    }
+
+    const { data, error } = await query.order("created_at", { ascending: false });
 
     if (error) {
       console.error("Error fetching child messages:", error);
