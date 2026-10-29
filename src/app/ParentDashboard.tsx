@@ -516,7 +516,7 @@ function OverviewSection({
         <StatCard label="Task Completion" value={`${completionRate}%`} icon={CheckCircle2} />
         <StatCard label="Average Grade" value={`${avgGrade}%`} icon={GraduationCap} />
         <StatCard label="Focus Minutes" value={`${totalFocusMinutes}m`} icon={Timer} />
-        <StatCard label="Messages (24h)" value={totalMessages} icon={MessageCircle} />
+        <StatCard label="Total Messages" value={totalMessages} icon={MessageCircle} />
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1116,7 +1116,7 @@ function ChatSection({
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <StatCard label="Total Conversations" value={chatActivity.length} icon={Users} />
-        <StatCard label="Total Messages (24h)" value={totalMessages} icon={MessageCircle} />
+        <StatCard label="Total Messages" value={totalMessages} icon={MessageCircle} />
         <StatCard
           label="Most Active With"
           value={chatActivity.length > 0 ? chatActivity[0].friendUsername : "—"}
@@ -1127,7 +1127,7 @@ function ChatSection({
       <SectionCard title="Chat Conversations (Full Transparency)" icon={MessageCircle}>
         {chatActivity.length === 0 ? (
           <p className="text-xs" style={{ color: "var(--m-text-sub)" }}>
-            No chat activity in the last 24 hours.
+            No chat activity recorded.
           </p>
         ) : (
           <div className="space-y-3">

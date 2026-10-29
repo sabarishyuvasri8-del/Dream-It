@@ -3789,13 +3789,24 @@ You can save notes and flashcards. When asked to save to notes or create flashca
             safeSaveSessionsToStorage(storageKey, valid);
           }
           setChatSessions(valid);
+
+          // Restore user's most recent active chat conversation so chat history stays persistent across reloads
+          const latest = valid[0];
+          setActiveChatSessionId(latest.id);
+          activeChatSessionIdRef.current = latest.id;
+          setMessages(latest.messages && latest.messages.length > 0 ? latest.messages : [DEFAULT_WELCOME_MESSAGE]);
+          messagesRef.current = latest.messages && latest.messages.length > 0 ? latest.messages : [DEFAULT_WELCOME_MESSAGE];
+          if (latest.subjectId !== undefined) {
+            setChatSubjectId(latest.subjectId);
+          }
+          return;
         }
       }
     } catch (e) {
       console.warn("Failed loading AI chat sessions from localStorage:", e);
     }
 
-    // Always start with a fresh new chatbox on page load / reload (past chats stay in history sidebar)
+    // If no previous chats exist, initialize with a fresh welcome session
     const freshId = "session_" + Date.now();
     setActiveChatSessionId(freshId);
     activeChatSessionIdRef.current = freshId;

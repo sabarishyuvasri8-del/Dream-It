@@ -32,6 +32,8 @@ export function registerServiceWorker() {
       .register('/sw.js')
       .then((reg) => {
         console.log('[PWA] Service Worker registered with scope:', reg.scope);
+        // Prompt immediate check for any updated service worker
+        reg.update().catch(() => {});
 
         reg.onupdatefound = () => {
           const installingWorker = reg.installing;

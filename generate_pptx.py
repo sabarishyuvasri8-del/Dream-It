@@ -291,7 +291,7 @@ def create_presentation():
     sp.font.color.rgb = ACCENT_VIOLET
     soc_pts = [
         "• Direct peer-to-peer sharing of rich KaTeX notes and study material.",
-        "• Encrypted study messaging with optional 24-hour self-deletion.",
+        "• Encrypted study messaging with persistent direct messaging history.",
         "• Zero public feeds, zero like counts, zero toxic algorithmic scroll.",
         "• 100% focused on academic cooperation and mutual growth.",
         "• Verified dual-auth: safe digital environment protected by design."
