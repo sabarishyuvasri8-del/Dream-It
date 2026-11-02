@@ -114,13 +114,13 @@ export default function VoiceMessagePlayer({
   const WAVE_BARS = [35, 60, 45, 90, 75, 40, 65, 85, 50, 95, 70, 40, 80, 60, 45, 70, 90, 50, 35, 65, 80, 40, 60, 75];
 
   return (
-    <div className="flex flex-col gap-1.5 w-64 sm:w-72 select-none py-0.5">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-1.5 w-full max-w-[280px] min-w-[190px] sm:w-72 select-none py-0.5">
+      <div className="flex items-center gap-2 sm:gap-3">
         {/* Play/Pause Button */}
         <button
           type="button"
           onClick={togglePlay}
-          className="size-10 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-90 shadow-xs"
+          className="size-9 sm:size-10 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-90 shadow-xs cursor-pointer"
           style={{
             backgroundColor: isMe ? "rgba(255, 255, 255, 0.2)" : "var(--m-primary)",
             color: isMe ? "white" : "var(--m-primary-text)",
@@ -128,9 +128,9 @@ export default function VoiceMessagePlayer({
           aria-label={isPlaying ? "Pause voice message" : "Play voice message"}
         >
           {isPlaying ? (
-            <Pause size={17} className="fill-current" />
+            <Pause size={16} className="fill-current" />
           ) : (
-            <Play size={17} className="fill-current translate-x-0.5" />
+            <Play size={16} className="fill-current translate-x-0.5" />
           )}
         </button>
 
@@ -139,7 +139,7 @@ export default function VoiceMessagePlayer({
           <div
             ref={progressContainerRef}
             onClick={handleSeek}
-            className="h-8 flex items-center gap-[3px] cursor-pointer group px-0.5"
+            className="h-8 flex items-center gap-[2px] sm:gap-[3px] cursor-pointer group px-0.5"
             title="Click to seek"
           >
             {WAVE_BARS.map((heightPct, idx) => {

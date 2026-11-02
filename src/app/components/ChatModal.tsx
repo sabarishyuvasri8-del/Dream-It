@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useLayoutEffect, useRef } from "react";
-import { X, Send, MessageCircle, Paperclip, Loader2, File as FileIcon, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic, Phone, Video, Bell, BellOff } from "lucide-react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo } from "react";
+import { X, Send, MessageCircle, Paperclip, Loader2, File as FileIcon, Download, MoreHorizontal, Trash2, EyeOff, Maximize2, Minimize2, ArrowLeft, UploadCloud, Mic, Phone, Video, Bell, BellOff, Smile, Search } from "lucide-react";
 import {
   Friendship,
   DirectMessage,
@@ -49,6 +49,160 @@ function formatChatTime(isoString?: string | null): string {
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
+function formatMessageTime(isoString?: string | null): string {
+  if (!isoString) return "";
+  try {
+    const d = new Date(isoString);
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
+
+function getMessageDateKey(isoString?: string | null): string {
+  if (!isoString) return "";
+  try {
+    const d = new Date(isoString);
+    return d.toDateString();
+  } catch {
+    return "";
+  }
+}
+
+function formatMessageDateDivider(isoString?: string | null): string {
+  if (!isoString) return "";
+  try {
+    const d = new Date(isoString);
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return "Today";
+    const yesterday = new Date();
+    yesterday.setDate(now.getDate() - 1);
+    if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+    return d.toLocaleDateString([], {
+      month: "short",
+      day: "numeric",
+      year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined,
+    });
+  } catch {
+    return "";
+  }
+}
+
+interface EmojiCategory {
+  id: string;
+  name: string;
+  icon: string;
+  emojis: string[];
+}
+
+const EMOJI_CATEGORIES: EmojiCategory[] = [
+  {
+    id: "smileys",
+    name: "Smileys & Emotion",
+    icon: "😀",
+    emojis: [
+      "😀", "😃", "😄", "😁", "😆", "😅", "😂", "🤣", "🥲", "🥹", "☺️", "😊", "😇", "🙂", "🙃", "😉",
+      "😌", "😍", "🥰", "😘", "😗", "😙", "😚", "😋", "😛", "😝", "😜", "🤪", "🤨", "🧐", "🤓", "😎",
+      "🥸", "🤩", "🥳", "😏", "😒", "😞", "😔", "😟", "😕", "🙁", "☹️", "😣", "😖", "😫", "😩", "🥺",
+      "😢", "😭", "😮‍💨", "😤", "😠", "😡", "🤬", "🤯", "😳", "🥵", "🥶", "😱", "😨", "😰", "😥", "😓",
+      "🫣", "🤗", "🫡", "🤔", "🫢", "🤫", "🤥", "😶", "😐", "😑", "😬", "🫨", "🫠", "🙄", "😯", "😦",
+      "😧", "😮", "😲", "🥱", "😴", "🤤", "😪", "😵", "😵‍💫", "🤐", "🥴", "🤢", "🤮", "🤧", "😷", "🤒",
+      "🤕", "🤑", "🤠", "😈", "👿", "💀", "☠️", "🤡", "💩", "👻", "👽", "🤖", "🎃"
+    ],
+  },
+  {
+    id: "gestures",
+    name: "People & Gestures",
+    icon: "👋",
+    emojis: [
+      "👋", "🤚", "🖐️", "✋", "🖖", "🫱", "🫲", "🫸", "🫷", "🫳", "🫴", "👌", "🤌", "🤏", "✌️", "🤞",
+      "🫰", "🤟", "🤘", "🤙", "👈", "👉", "👆", "🖕", "👇", "☝️", "🫵", "👍", "👎", "✊", "👊", "🤛",
+      "🤜", "👏", "🙌", "🫶", "👐", "🤲", "🤝", "🙏", "✍️", "💅", "🤳", "💪", "🦾", "🦿", "🦵", "🦶",
+      "👂", "🦻", "👃", "🫀", "🫁", "🧠", "👀", "👁️", "👅", "👄", "🫦"
+    ],
+  },
+  {
+    id: "hearts",
+    name: "Hearts & Love",
+    icon: "❤️",
+    emojis: [
+      "❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "❤️‍🔥", "❤️‍🩹", "❣️", "💕", "💞", "💓",
+      "💗", "💖", "💘", "💝", "💟", "💌", "💋", "💐", "🌹", "🥀", "🌺", "🌸", "🌷", "🪷"
+    ],
+  },
+  {
+    id: "popular",
+    name: "Celebration & Sparks",
+    icon: "🔥",
+    emojis: [
+      "🔥", "✨", "💯", "🎉", "🎊", "🎈", "🎁", "🏆", "🥇", "🥈", "🥉", "🏅", "🎖️", "🌟", "⭐", "💫",
+      "💥", "⚡", "☀️", "🌙", "🌈", "🌸", "🍀", "💎", "💰", "💵", "💸", "💳", "👑", "🔮", "🪄", "🎯",
+      "🎲", "🎮", "🕹️", "🚀", "🛸", "🚁", "✈️", "🚗", "🏎️", "🏍️", "🛵", "🚲"
+    ],
+  },
+  {
+    id: "food",
+    name: "Food & Drinks",
+    icon: "🍕",
+    emojis: [
+      "🍕", "🍔", "🍟", "🌭", "🍿", "🧈", "🥓", "🍳", "🥞", "🧇", "🧀", "🥗", "🥪", "🌮", "🌯", "🫔",
+      "🍱", "🍙", "🍚", "🍜", "🍝", "🍠", "🍢", "🍣", "🍤", "🍥", "🥮", "🍦", "🍧", "🍨", "🍩", "🍪",
+      "🎂", "🍰", "🧁", "🍫", "🍬", "🍭", "☕", "🫖", "🍵", "🥤", "🧃", "🧋", "🍺", "🍻", "🥂", "🍷"
+    ],
+  },
+  {
+    id: "symbols",
+    name: "Symbols & Objects",
+    icon: "💡",
+    emojis: [
+      "💡", "🔔", "🔕", "📢", "📣", "⏰", "⏳", "⌛", "🔑", "🗝️", "🔒", "🔓", "🛡️", "✉️", "📧", "📦",
+      "📬", "📝", "📄", "📁", "📂", "📅", "📆", "📊", "📈", "📉", "📌", "📍", "📎", "📏", "📐", "✂️",
+      "🔍", "🔎", "📱", "💻", "⌨️", "🖥️", "📷", "📸", "📹", "🎥", "🔋", "🔌", "⚙️", "🔧", "🔨"
+    ],
+  },
+];
+
+const QUICK_EMOJIS = [
+  "😂", "❤️", "👍", "🔥", "🎉", "😍", "🙏", "😭", "✨", "💯", "👏", "😮", "🥳", "😎", "🥺", "🚀", "💀", "😴", "🤣", "💖"
+];
+
+const EMOJI_KEYWORD_MAP: Record<string, string[]> = {
+  laugh: ["😂", "🤣", "😆", "😅", "😹"],
+  lol: ["😂", "🤣", "😆"],
+  smile: ["😀", "😃", "😄", "😁", "😊", "😇", "🙂", "😉", "🥰", "😍"],
+  happy: ["😀", "😃", "😄", "😁", "😊", "🥳", "✨"],
+  heart: ["❤️", "🧡", "💛", "💚", "💙", "💜", "🖤", "🤍", "🤎", "💔", "💕", "💞", "💓", "💗", "💖", "💘"],
+  love: ["❤️", "🥰", "😍", "😘", "💖", "💕", "💓", "💗", "💘", "💌"],
+  fire: ["🔥", "💥"],
+  thumb: ["👍", "👎"],
+  yes: ["👍", "✅", "👌"],
+  no: ["👎", "❌", "🚫"],
+  ok: ["👌", "👍"],
+  cool: ["😎", "🕶️"],
+  cry: ["😢", "😭", "🥺", "😿", "💧"],
+  sad: ["😢", "😭", "😞", "😔", "😟", "😕", "🙁", "☹️", "🥺"],
+  party: ["🎉", "🥳", "🎊", "🎈", "🍾", "🥂"],
+  celebrate: ["🎉", "🥳", "🎊", "🍾", "🏆"],
+  clap: ["👏", "🙌"],
+  pray: ["🙏", "🤲"],
+  thanks: ["🙏", "🙌", "💖"],
+  star: ["⭐", "🌟", "✨", "💫"],
+  magic: ["✨", "🪄", "🔮"],
+  money: ["💰", "💵", "💸", "💳", "🤑"],
+  sleep: ["😴", "🥱", "💤", "🤤"],
+  angry: ["😠", "😡", "🤬", "😤"],
+  food: ["🍕", "🍔", "🍟", "🌭", "🍿", "🥗", "🍣", "🍦", "🍩", "🍰", "🍫", "☕", "🍺"],
+  cat: ["🐱", "😸", "😹", "😻"],
+  dog: ["🐶", "🐕", "🦮"],
+  rocket: ["🚀", "🛸"],
+  skull: ["💀", "☠️"],
+  music: ["🎵", "🎶", "🎧", "🎤"],
+  kiss: ["😘", "😗", "😙", "😚", "💋"],
+  hug: ["🤗"],
+  thinking: ["🤔", "🧐"],
+  shock: ["😱", "🤯", "😳", "😮", "😲"],
+};
+
 interface ChatModalProps {
   userId: string;
   userNameDisplay: string;
@@ -84,6 +238,52 @@ export default function ChatModal({
     return isNotificationsMuted();
   });
   const [pushStatusMessage, setPushStatusMessage] = useState<string | null>(null);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
+  const [emojiSearch, setEmojiSearch] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("smileys");
+
+  const filteredEmojis = useMemo(() => {
+    const q = emojiSearch.trim().toLowerCase();
+    if (!q) {
+      const cat = EMOJI_CATEGORIES.find(c => c.id === selectedCategory);
+      return cat ? cat.emojis : EMOJI_CATEGORIES[0].emojis;
+    }
+    const matched = new Set<string>();
+    for (const [key, list] of Object.entries(EMOJI_KEYWORD_MAP)) {
+      if (key.includes(q) || q.includes(key)) {
+        list.forEach(e => matched.add(e));
+      }
+    }
+    const matchedCategories = EMOJI_CATEGORIES.filter(c => c.name.toLowerCase().includes(q) || c.id.toLowerCase().includes(q));
+    matchedCategories.forEach(c => c.emojis.forEach(e => matched.add(e)));
+
+    if (matched.size > 0) {
+      return Array.from(matched);
+    }
+
+    const all = EMOJI_CATEGORIES.flatMap(c => c.emojis);
+    const directMatches = all.filter(e => e.includes(q));
+    return directMatches.length > 0 ? directMatches : EMOJI_CATEGORIES[0].emojis;
+  }, [emojiSearch, selectedCategory]);
+
+  const handleInsertEmoji = (emoji: string) => {
+    const input = chatInputRef.current;
+    if (!input) {
+      setDraft(prev => prev + emoji);
+      return;
+    }
+
+    const start = input.selectionStart ?? draft.length;
+    const end = input.selectionEnd ?? draft.length;
+    const nextDraft = draft.substring(0, start) + emoji + draft.substring(end);
+    setDraft(nextDraft);
+
+    requestAnimationFrame(() => {
+      input.focus();
+      const nextPos = start + emoji.length;
+      input.setSelectionRange(nextPos, nextPos);
+    });
+  };
 
   // Sync push subscription on mount if permission was granted and not muted
   useEffect(() => {
@@ -704,6 +904,7 @@ export default function ChatModal({
     setDraft(""); // Optimistic clear
     setDismissedDraftUrl(null);
     setSelectedFile(null);
+    setIsEmojiPickerOpen(false);
 
     const newMsg = await sendDirectMessage(userId, friendId, content, fileMeta, userNameDisplay);
     if (newMsg) {
@@ -801,9 +1002,9 @@ export default function ChatModal({
   const activeFriendName = activeFriend ? getFriendName(activeFriend) : "";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-0 md:p-4 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-0 md:p-4 overflow-hidden">
       <div 
-        className={`w-full h-full md:h-[85vh] rounded-none md:rounded-3xl shadow-2xl flex flex-col md:flex-row relative overflow-hidden transition-all duration-300 ${isWide ? 'max-w-full md:max-w-[95vw]' : 'max-w-4xl'}`} 
+        className={`w-full h-full md:h-[85vh] max-h-full md:max-h-[85vh] rounded-none md:rounded-3xl shadow-2xl flex flex-col md:flex-row relative overflow-hidden transition-all duration-300 min-h-0 ${isWide ? 'max-w-full md:max-w-[95vw]' : 'max-w-4xl'}`} 
         style={{ backgroundColor: "var(--m-surface)", color: "var(--m-text)", border: "1px solid var(--m-border)" }}
       >
         {pushStatusMessage && (
@@ -812,7 +1013,7 @@ export default function ChatModal({
           </div>
         )}
         {/* Left Sidebar: Friends List */}
-        <div className={`w-full md:w-80 flex-col border-r-0 md:border-r ${activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ borderColor: "var(--m-border)" }}>
+        <div className={`w-full md:w-80 flex-col border-r-0 md:border-r h-full max-h-full min-h-0 overflow-hidden shrink-0 ${activeFriend ? 'hidden md:flex' : 'flex'}`} style={{ borderColor: "var(--m-border)" }}>
           <div className="p-4 border-b flex items-center justify-between shrink-0" style={{ borderColor: "var(--m-border)" }}>
             <h3 className="font-bold font-[Roboto_Slab] text-lg truncate flex-1">{userNameDisplay}</h3>
             <div className="flex items-center gap-1">
@@ -926,8 +1127,8 @@ export default function ChatModal({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`flex-1 flex-col relative w-full md:w-auto min-w-0 ${!activeFriend ? 'hidden md:flex' : 'flex'}`}
-          style={{ backgroundColor: "var(--m-bg)" }}
+          className={`flex-1 flex flex-col relative w-full md:w-auto min-w-0 min-h-0 h-full max-h-full overflow-hidden ${!activeFriend ? 'hidden md:flex' : 'flex'}`}
+          style={{ backgroundColor: "var(--m-bg)", minHeight: 0 }}
         >
           {isDragging && (
             <div className="absolute inset-0 z-50 flex flex-col items-center justify-center p-6 text-center bg-black/80 backdrop-blur-md border-4 border-dashed border-indigo-500 rounded-none animate-in fade-in duration-150 pointer-events-none">
@@ -937,14 +1138,17 @@ export default function ChatModal({
             </div>
           )}
           {/* Header */}
-          <div className="flex flex-col min-w-0" style={{ backgroundColor: "var(--m-surface)" }}>
-            <div className="p-4 flex items-center justify-between border-b shrink-0" style={{ borderColor: "var(--m-border)" }}>
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex flex-col min-w-0 shrink-0 select-none" style={{ backgroundColor: "var(--m-surface)" }}>
+            <div className="p-3 sm:p-4 flex items-center justify-between border-b shrink-0" style={{ borderColor: "var(--m-border)" }}>
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                 <button 
+                  type="button"
                   onClick={() => setActiveFriend(null)}
-                  className="md:hidden p-2 -ml-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0"
+                  className="md:hidden p-1.5 -ml-1 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition shrink-0 cursor-pointer"
+                  title="Back to conversations"
+                  aria-label="Back to conversations"
                 >
-                  <ArrowLeft size={20} />
+                  <ArrowLeft size={19} />
                 </button>
                 {activeFriend ? (
                   <>
@@ -952,20 +1156,20 @@ export default function ChatModal({
                       const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
                       const friendProfile = friendId ? profiles[friendId] : null;
                       return friendProfile?.image_url ? (
-                        <img src={friendProfile.image_url} alt={activeFriendName} className="size-10 rounded-full object-cover shadow-sm shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
+                        <img src={friendProfile.image_url} alt={activeFriendName} className="size-9 sm:size-10 rounded-full object-cover shadow-xs shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
                       ) : (
-                        <div className="size-10 rounded-full flex items-center justify-center text-lg font-bold shadow-sm shrink-0" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border-light)" }}>
+                        <div className="size-9 sm:size-10 rounded-full flex items-center justify-center text-sm sm:text-base font-bold shadow-xs shrink-0" style={{ backgroundColor: "var(--m-bg)", border: "1px solid var(--m-border-light)" }}>
                           {activeFriendName.charAt(0).toUpperCase()}
                         </div>
                       );
                     })()}
-                    <h3 className="font-bold font-[Roboto_Slab] text-base truncate">{activeFriendName}</h3>
+                    <h3 className="font-bold font-[Roboto_Slab] text-sm sm:text-base truncate">{activeFriendName}</h3>
                   </>
                 ) : (
-                  <h3 className="font-bold font-[Roboto_Slab] text-base opacity-60 truncate">Select a chat</h3>
+                  <h3 className="font-bold font-[Roboto_Slab] text-sm sm:text-base opacity-60 truncate">Select a chat</h3>
                 )}
               </div>
-              <div className="flex items-center gap-1 shrink-0 ml-2">
+              <div className="flex items-center gap-0.5 sm:gap-1 shrink-0 ml-2">
                 {activeFriend && onStartCall && (
                   <>
                     <button
@@ -975,7 +1179,7 @@ export default function ChatModal({
                         const friendProfile = friendId ? profiles[friendId] : null;
                         onStartCall(friendId, activeFriendName, friendProfile?.image_url, "audio");
                       }}
-                      className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-75 hover:opacity-100 hover:text-emerald-400"
+                      className="p-1.5 sm:p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-75 hover:opacity-100 hover:text-emerald-400 cursor-pointer"
                       title={`Start Voice Call with ${activeFriendName}`}
                       aria-label="Voice Call"
                     >
@@ -989,7 +1193,7 @@ export default function ChatModal({
                         const friendProfile = friendId ? profiles[friendId] : null;
                         onStartCall(friendId, activeFriendName, friendProfile?.image_url, "video");
                       }}
-                      className="p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-75 hover:opacity-100 hover:text-indigo-400"
+                      className="p-1.5 sm:p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-75 hover:opacity-100 hover:text-indigo-400 cursor-pointer"
                       title={`Start Video Call with ${activeFriendName}`}
                       aria-label="Video Call"
                     >
@@ -1000,7 +1204,7 @@ export default function ChatModal({
                 <button
                   type="button"
                   onClick={handleToggleNotification}
-                  className={`p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit ${
+                  className={`p-1.5 sm:p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition relative cursor-pointer text-inherit ${
                     !isMuted && notifPermission === "granted" ? "opacity-100" : "opacity-60 hover:opacity-100"
                   }`}
                   title={
@@ -1021,11 +1225,11 @@ export default function ChatModal({
                     </span>
                   )}
                 </button>
-                <button onClick={() => setIsWide(!isWide)} className="hidden md:block p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100">
+                <button onClick={() => setIsWide(!isWide)} className="hidden md:block p-1.5 sm:p-2 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100 cursor-pointer">
                   {isWide ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                 </button>
-                <button onClick={onClose} className="p-2 -mr-2 md:mr-0 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100 shrink-0">
-                  <X size={20} />
+                <button onClick={onClose} className="p-1.5 sm:p-2 -mr-1 md:mr-0 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition text-inherit opacity-70 hover:opacity-100 shrink-0 cursor-pointer" title="Close" aria-label="Close">
+                  <X size={19} />
                 </button>
               </div>
             </div>
@@ -1034,7 +1238,13 @@ export default function ChatModal({
           {/* Chat Messages */}
           <div 
             ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto custom-scrollbar p-4 flex flex-col gap-4 min-h-0 relative"
+            className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 sm:p-4 flex flex-col gap-2 sm:gap-2.5 min-h-0 min-w-0 relative select-text"
+            style={{
+              WebkitOverflowScrolling: "touch",
+              overscrollBehaviorY: "contain",
+              minHeight: 0,
+              flex: "1 1 0%",
+            }}
           >
             {!activeFriend ? (
               <div className="h-full flex flex-col items-center justify-center opacity-50 gap-4">
@@ -1052,27 +1262,74 @@ export default function ChatModal({
                 <p className="text-[10px]">Send a message to start the conversation!</p>
               </div>
             ) : (
-              messages.map(msg => {
+              messages.map((msg, idx) => {
                 const isMe = msg.sender_id === userId;
                 const isHovered = hoveredMessageId === msg.id;
                 const isMenuOpen = menuOpenId === msg.id;
-                
+
+                const currentDateKey = getMessageDateKey(msg.created_at);
+                const prevDateKey = idx > 0 ? getMessageDateKey(messages[idx - 1].created_at) : null;
+                const showDateDivider = Boolean(currentDateKey && currentDateKey !== prevDateKey);
+
+                const nextMsg = idx < messages.length - 1 ? messages[idx + 1] : null;
+                const isNextSameSender = nextMsg?.sender_id === msg.sender_id && getMessageDateKey(nextMsg.created_at) === currentDateKey;
+
+                const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+                const friendProfile = friendId ? profiles[friendId] : null;
+
                 return (
-                  <div 
-                    key={msg.id} 
-                    className={`flex ${isMe ? 'justify-end' : 'justify-start'} group relative`}
-                    onMouseEnter={() => setHoveredMessageId(msg.id)}
-                    onMouseLeave={() => setHoveredMessageId(null)}
-                  >
-                    <div className="relative flex items-center max-w-[70%]">
+                  <div key={msg.id} className="w-full flex flex-col">
+                    {/* Date Divider */}
+                    {showDateDivider && (
+                      <div className="flex items-center justify-center my-2.5 select-none">
+                        <span className="text-[10px] font-semibold px-2.5 py-0.5 rounded-full bg-black/5 dark:bg-white/10 opacity-60 uppercase tracking-wider">
+                          {formatMessageDateDivider(msg.created_at)}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Message Row */}
+                    <div 
+                      className={`w-full flex ${isMe ? 'justify-end' : 'justify-start'} items-end gap-1.5 sm:gap-2 group relative`}
+                      onMouseEnter={() => setHoveredMessageId(msg.id)}
+                      onMouseLeave={() => setHoveredMessageId(null)}
+                    >
+                      {/* Incoming Friend Avatar (shown on received messages) */}
+                      {!isMe && (
+                        <div 
+                          className={`size-7 sm:size-8 rounded-full shrink-0 mb-0.5 select-none overflow-hidden flex items-center justify-center text-xs font-bold shadow-xs border ${
+                            isNextSameSender ? 'opacity-0 pointer-events-none' : 'opacity-100'
+                          }`}
+                          style={{ 
+                            backgroundColor: "var(--m-surface-alt)", 
+                            color: "var(--m-text)", 
+                            borderColor: "var(--m-border-light)" 
+                          }}
+                          title={activeFriendName}
+                        >
+                          {friendProfile?.image_url ? (
+                            <img src={friendProfile.image_url} alt={activeFriendName} className="size-full object-cover" />
+                          ) : (
+                            activeFriendName?.charAt(0).toUpperCase()
+                          )}
+                        </div>
+                      )}
+
+                      {/* Action Menu Trigger (for My Messages: left of bubble) */}
                       {isMe && (
-                        <div className={`absolute right-full mr-2 transition-opacity duration-200 ${(isHovered || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <div className={`relative shrink-0 mb-1 transition-opacity duration-150 ${isMenuOpen ? 'opacity-100' : 'opacity-0 sm:group-hover:opacity-100'}`}>
                           <button 
-                            onClick={() => setMenuOpenId(isMenuOpen ? null : msg.id)}
-                            className="p-1.5 rounded-full hover:bg-black/10 transition opacity-50 hover:opacity-100"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(isMenuOpen ? null : msg.id);
+                            }}
+                            className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition opacity-50 hover:opacity-100 cursor-pointer"
+                            title="Message options"
                           >
                             <MoreHorizontal size={14} />
                           </button>
+
                           {isMenuOpen && (
                             <>
                               <div 
@@ -1082,22 +1339,40 @@ export default function ChatModal({
                                   setMenuOpenId(null);
                                 }} 
                               />
-                              <div className="absolute right-0 top-full mt-1 z-50 rounded-xl shadow-lg border p-1 w-40 overflow-hidden" 
-                                   style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>
-                                <button onClick={() => handleDeleteForEveryone(msg.id)} className="w-full flex items-center gap-2 p-2 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition">
-                                  <Trash2 size={12} /> Delete for everyone
+                              <div 
+                                className="absolute right-0 bottom-full mb-1 z-50 rounded-xl shadow-xl border p-1 w-36 sm:w-40 overflow-hidden animate-in fade-in zoom-in-95 duration-150" 
+                                style={{ backgroundColor: "var(--m-surface-solid)", borderColor: "var(--m-border)" }}
+                              >
+                                <button 
+                                  type="button"
+                                  onClick={() => handleDeleteForEveryone(msg.id)} 
+                                  className="w-full flex items-center gap-2 p-2 text-xs font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition text-left cursor-pointer"
+                                >
+                                  <Trash2 size={13} className="shrink-0" /> 
+                                  <span>Delete for all</span>
                                 </button>
-                                <button onClick={() => handleDeleteForMe(msg.id, isMe)} className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 rounded-lg transition" style={{ color: "var(--m-text)" }}>
-                                  <EyeOff size={12} /> Delete for me
+                                <button 
+                                  type="button"
+                                  onClick={() => handleDeleteForMe(msg.id, isMe)} 
+                                  className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition text-left cursor-pointer" 
+                                  style={{ color: "var(--m-text)" }}
+                                >
+                                  <EyeOff size={13} className="shrink-0" /> 
+                                  <span>Delete for me</span>
                                 </button>
                               </div>
                             </>
                           )}
                         </div>
                       )}
-                      
+
+                      {/* The Message Bubble */}
                       <div 
-                        className={`rounded-2xl px-4 py-2.5 text-sm shadow-sm flex flex-col gap-2 w-max max-w-full break-words whitespace-pre-wrap ${isMe ? 'rounded-tr-sm' : 'rounded-tl-sm'}`}
+                        className={`rounded-2xl px-3.5 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm shadow-xs flex flex-col gap-1.5 w-fit max-w-[85%] sm:max-w-[78%] md:max-w-[70%] break-words [overflow-wrap:anywhere] ${
+                          isMe 
+                            ? (isNextSameSender ? 'rounded-br-md' : 'rounded-br-xs') 
+                            : (isNextSameSender ? 'rounded-bl-md' : 'rounded-bl-xs')
+                        }`}
                         style={{ 
                           backgroundColor: isMe ? "var(--m-primary)" : "var(--m-surface-solid)", 
                           color: isMe ? "var(--m-primary-text)" : "var(--m-text)",
@@ -1128,11 +1403,11 @@ export default function ChatModal({
 
                             if (msg.file_type?.startsWith('image/')) {
                               return (
-                                <a href={msg.file_url} target="_blank" rel="noreferrer">
+                                <a href={msg.file_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-xl">
                                   <img 
                                     src={msg.file_url} 
                                     alt="Attachment" 
-                                    className="max-w-full rounded-xl object-contain max-h-64 cursor-pointer"
+                                    className="max-w-full rounded-xl object-contain max-h-60 sm:max-h-72 cursor-pointer transition hover:opacity-95"
                                     onLoad={() => {
                                       if (isInitialLoadRef.current && messagesContainerRef.current) {
                                         messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
@@ -1148,16 +1423,21 @@ export default function ChatModal({
                                 href={msg.file_url} 
                                 target="_blank" 
                                 rel="noreferrer"
-                                className="flex items-center gap-2 p-2 rounded-lg transition hover:opacity-80"
-                                style={{ backgroundColor: "black", color: "white" }}
+                                className="flex items-center gap-2.5 p-2 sm:p-2.5 rounded-xl transition hover:opacity-85 max-w-full overflow-hidden"
+                                style={{ 
+                                  backgroundColor: isMe ? "rgba(0,0,0,0.22)" : "var(--m-surface-alt)", 
+                                  color: "inherit",
+                                  border: isMe ? "1px solid rgba(255,255,255,0.2)" : "1px solid var(--m-border)"
+                                }}
                               >
-                                <FileIcon size={16} />
-                                <span className="text-xs font-bold truncate flex-1">{msg.file_name}</span>
-                                <Download size={14} />
+                                <FileIcon size={16} className="shrink-0" />
+                                <span className="text-xs font-semibold truncate flex-1 min-w-0">{msg.file_name}</span>
+                                <Download size={14} className="shrink-0 opacity-70" />
                               </a>
                             );
                           })()
                         )}
+
                         {msg.content && (
                           <ChatMessageContent
                             content={msg.content}
@@ -1165,16 +1445,30 @@ export default function ChatModal({
                             createdAt={msg.created_at}
                           />
                         )}
+
+                        {/* Fallback timestamp for attachment-only messages */}
+                        {!msg.content && msg.created_at && (
+                          <div className="text-[10px] self-end mt-0.5 opacity-65 font-medium select-none tracking-tight leading-none">
+                            {formatMessageTime(msg.created_at)}
+                          </div>
+                        )}
                       </div>
-                      
+
+                      {/* Action Menu Trigger (for Friend Messages: right of bubble) */}
                       {!isMe && (
-                        <div className={`absolute left-full ml-2 transition-opacity duration-200 ${(isHovered || isMenuOpen) ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+                        <div className={`relative shrink-0 mb-1 transition-opacity duration-150 ${isMenuOpen ? 'opacity-100' : 'opacity-0 sm:group-hover:opacity-100'}`}>
                           <button 
-                            onClick={() => setMenuOpenId(isMenuOpen ? null : msg.id)}
-                            className="p-1.5 rounded-full hover:bg-black/10 transition opacity-50 hover:opacity-100"
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(isMenuOpen ? null : msg.id);
+                            }}
+                            className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition opacity-50 hover:opacity-100 cursor-pointer"
+                            title="Message options"
                           >
                             <MoreHorizontal size={14} />
                           </button>
+
                           {isMenuOpen && (
                             <>
                               <div 
@@ -1184,10 +1478,18 @@ export default function ChatModal({
                                   setMenuOpenId(null);
                                 }} 
                               />
-                              <div className="absolute left-0 top-full mt-1 z-50 rounded-xl shadow-lg border p-1 w-32 overflow-hidden" 
-                                   style={{ backgroundColor: "var(--m-surface)", borderColor: "var(--m-border)" }}>
-                                <button onClick={() => handleDeleteForMe(msg.id, isMe)} className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 rounded-lg transition" style={{ color: "var(--m-text)" }}>
-                                  <EyeOff size={12} /> Delete for me
+                              <div 
+                                className="absolute left-0 bottom-full mb-1 z-50 rounded-xl shadow-xl border p-1 w-32 overflow-hidden animate-in fade-in zoom-in-95 duration-150" 
+                                style={{ backgroundColor: "var(--m-surface-solid)", borderColor: "var(--m-border)" }}
+                              >
+                                <button 
+                                  type="button"
+                                  onClick={() => handleDeleteForMe(msg.id, isMe)} 
+                                  className="w-full flex items-center gap-2 p-2 text-xs font-bold hover:bg-black/5 dark:hover:bg-white/5 rounded-lg transition text-left cursor-pointer" 
+                                  style={{ color: "var(--m-text)" }}
+                                >
+                                  <EyeOff size={13} className="shrink-0" /> 
+                                  <span>Delete for me</span>
                                 </button>
                               </div>
                             </>
@@ -1196,7 +1498,7 @@ export default function ChatModal({
                       )}
                     </div>
                   </div>
-                )
+                );
               })
             )}
             <div ref={messagesEndRef} />
@@ -1204,30 +1506,33 @@ export default function ChatModal({
 
           {/* Input Area */}
           {activeFriend && (
-            <div className="p-3 sm:p-4 bg-inherit border-t flex flex-col gap-2 w-full" style={{ borderColor: "var(--m-border)" }}>
+            <div 
+              className="p-2.5 sm:p-4 border-t flex flex-col gap-2 w-full shrink-0 z-20 pb-[max(0.75rem,env(safe-area-inset-bottom))]" 
+              style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-surface)", flexShrink: 0 }}
+            >
               {selectedFile && (
-                <div className="flex items-center justify-between p-2.5 rounded-2xl text-xs font-bold w-full border animate-in fade-in zoom-in-95 duration-200" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text)", borderColor: "var(--m-border)" }}>
-                  <div className="flex items-center gap-2.5 overflow-hidden">
+                <div className="flex items-center justify-between p-2 sm:p-2.5 rounded-2xl text-xs font-bold w-full border animate-in fade-in zoom-in-95 duration-200" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-text)", borderColor: "var(--m-border)" }}>
+                  <div className="flex items-center gap-2.5 overflow-hidden min-w-0">
                     {selectedFilePreviewUrl ? (
                       <img 
                         src={selectedFilePreviewUrl} 
                         alt="Preview" 
-                        className="size-11 rounded-xl object-cover border shrink-0 shadow-xs" 
+                        className="size-10 sm:size-11 rounded-xl object-cover border shrink-0 shadow-xs" 
                         style={{ borderColor: "var(--m-border)" }}
                       />
                     ) : (
-                      <div className="size-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                        <FileIcon size={18} />
+                      <div className="size-9 sm:size-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                        <FileIcon size={17} />
                       </div>
                     )}
-                    <div className="flex flex-col truncate">
+                    <div className="flex flex-col truncate min-w-0">
                       <span className="truncate text-xs font-bold">{selectedFile.name}</span>
                       <span className="text-[10px] opacity-60">
                         {(selectedFile.size / 1024 / 1024).toFixed(2)} MB • {selectedFile.type.startsWith("image/") ? "Image ready to send" : "Document ready to send"}
                       </span>
                     </div>
                   </div>
-                  <button type="button" onClick={() => setSelectedFile(null)} className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition shrink-0" title="Remove attachment">
+                  <button type="button" onClick={() => setSelectedFile(null)} className="p-1.5 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition shrink-0 ml-2 cursor-pointer" title="Remove attachment">
                     <X size={16} />
                   </button>
                 </div>
@@ -1251,7 +1556,7 @@ export default function ChatModal({
               })()}
               
               {finderNotice && (
-                <div className="flex items-center justify-between gap-2 p-2.5 mb-2 rounded-2xl text-xs border border-amber-500/30 bg-amber-500/10 text-amber-300 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between gap-2 p-2 sm:p-2.5 mb-1 rounded-2xl text-xs border border-amber-500/30 bg-amber-500/10 text-amber-300 animate-in fade-in duration-200">
                   <div className="flex items-center gap-2 truncate">
                     <span className="shrink-0 text-base">⚠️</span>
                     <span className="truncate">
@@ -1265,14 +1570,14 @@ export default function ChatModal({
                         setFinderNotice(null);
                         fileInputRef.current?.click();
                       }}
-                      className="px-2.5 py-1 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-[11px] transition shadow-xs"
+                      className="px-2.5 py-1 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-[11px] transition shadow-xs cursor-pointer"
                     >
-                      Browse File
+                      Browse
                     </button>
                     <button
                       type="button"
                       onClick={() => setFinderNotice(null)}
-                      className="p-1 rounded-lg hover:bg-white/10 opacity-70 hover:opacity-100 transition"
+                      className="p-1 rounded-lg hover:bg-white/10 opacity-70 hover:opacity-100 transition cursor-pointer"
                       title="Dismiss"
                     >
                       <X size={14} />
@@ -1283,7 +1588,7 @@ export default function ChatModal({
 
               {isRecordingVoice ? (
                 <div 
-                  className="flex items-center gap-3 w-full rounded-full px-4 py-2.5 animate-in fade-in duration-200 border"
+                  className="flex items-center gap-2 sm:gap-3 w-full rounded-full px-3.5 sm:px-4 py-2 sm:py-2.5 animate-in fade-in duration-200 border"
                   style={{ 
                     backgroundColor: "rgba(239, 68, 68, 0.08)", 
                     borderColor: "rgba(239, 68, 68, 0.3)" 
@@ -1291,9 +1596,9 @@ export default function ChatModal({
                 >
                   {/* Red recording pulse indicator & elapsed time */}
                   <div className="flex items-center gap-2 shrink-0">
-                    <span className="relative flex size-3">
+                    <span className="relative flex size-2.5 sm:size-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full size-3 bg-red-500"></span>
+                      <span className="relative inline-flex rounded-full size-2.5 sm:size-3 bg-red-500"></span>
                     </span>
                     <span className="text-xs font-mono font-bold text-red-500 select-none">
                       {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, "0")}
@@ -1301,11 +1606,11 @@ export default function ChatModal({
                   </div>
 
                   {/* Animated sound waves */}
-                  <div className="flex-1 flex items-center justify-center gap-1 h-5 overflow-hidden px-2 select-none">
+                  <div className="flex-1 flex items-center justify-center gap-0.5 sm:gap-1 h-5 overflow-hidden px-1 sm:px-2 select-none">
                     {[35, 75, 45, 90, 60, 100, 70, 40, 85, 60, 95, 50, 70, 40, 80].map((h, i) => (
                       <div
                         key={i}
-                        className="w-1 bg-red-500 rounded-full transition-all duration-150 animate-pulse"
+                        className="w-0.5 sm:w-1 bg-red-500 rounded-full transition-all duration-150 animate-pulse"
                         style={{
                           height: `${Math.max(25, (h * ((recordingDuration % 3) + 1)) / 3)}%`,
                           animationDelay: `${(i % 5) * 120}ms`,
@@ -1318,11 +1623,11 @@ export default function ChatModal({
                   <button
                     type="button"
                     onClick={cancelVoiceRecording}
-                    className="p-2 rounded-full hover:bg-red-500/20 text-red-500 transition shrink-0"
+                    className="p-1.5 sm:p-2 rounded-full hover:bg-red-500/20 text-red-500 transition shrink-0 cursor-pointer"
                     title="Cancel recording"
                     aria-label="Cancel recording"
                   >
-                    <Trash2 size={18} />
+                    <Trash2 size={17} />
                   </button>
 
                   {/* Send Voice */}
@@ -1330,62 +1635,202 @@ export default function ChatModal({
                     type="button"
                     onClick={stopAndSendVoice}
                     disabled={isSendingVoice}
-                    className="size-9 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition shrink-0 shadow-md disabled:opacity-50"
+                    className="size-8 sm:size-9 rounded-full bg-red-500 hover:bg-red-600 text-white flex items-center justify-center transition shrink-0 shadow-md disabled:opacity-50 cursor-pointer"
                     title="Send voice message"
                     aria-label="Send voice message"
                   >
-                    {isSendingVoice ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} className="translate-x-0.5" />}
+                    {isSendingVoice ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} className="translate-x-0.5" />}
                   </button>
                 </div>
               ) : (
-                <form onSubmit={handleSend} onPaste={handlePaste} className="flex items-center gap-2 w-full min-w-0">
-                  <input 
-                    type="file" 
-                    ref={fileInputRef} 
-                    className="hidden" 
-                    onChange={handleFileSelect} 
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="p-3 rounded-full transition hover:opacity-80 shadow-sm shrink-0 flex items-center justify-center"
-                    style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text)" }}
-                    title="Attach File (Max 25MB)"
-                  >
-                    <Paperclip size={18} />
-                  </button>
-                  <input
-                    ref={chatInputRef}
-                    type="text"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onPaste={handlePaste}
-                    placeholder={selectedFile ? "Add a message..." : "Message..."}
-                    className="flex-1 min-w-0 rounded-full px-4 sm:px-5 py-3 text-sm focus:outline-none focus:ring-2 bg-transparent border"
-                    style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
-                  />
+                <>
+                  {/* Emoji Bar Drawer */}
+                  {isEmojiPickerOpen && (
+                    <div 
+                      className="w-full flex flex-col rounded-2xl border p-2 sm:p-2.5 shadow-xl animate-in fade-in slide-in-from-bottom-2 duration-150 mb-1 select-none"
+                      style={{ 
+                        backgroundColor: "var(--m-surface-solid)", 
+                        borderColor: "var(--m-border)" 
+                      }}
+                    >
+                      {/* Quick Emoji Bar (horizontal scrollable row) */}
+                      <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar pb-1.5 border-b" style={{ borderColor: "var(--m-border-light)" }}>
+                        <span className="text-[10px] font-bold uppercase tracking-wider opacity-50 px-1 shrink-0">Quick</span>
+                        {QUICK_EMOJIS.map(emoji => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => handleInsertEmoji(emoji)}
+                            className="size-7 sm:size-8 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 active:scale-90 transition-transform flex items-center justify-center text-base sm:text-lg shrink-0 cursor-pointer"
+                            title={`Insert ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
 
-                  {/* Voice recording button */}
-                  <button
-                    type="button"
-                    onClick={startVoiceRecording}
-                    className="p-3 rounded-full transition hover:opacity-80 shadow-sm shrink-0 flex items-center justify-center"
-                    style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text)" }}
-                    title="Record voice message"
-                    aria-label="Record voice message"
-                  >
-                    <Mic size={18} />
-                  </button>
+                      {/* Category Tabs & Close Button */}
+                      <div className="flex items-center justify-between gap-1 pt-1.5 pb-1">
+                        <div className="flex items-center gap-1 overflow-x-auto custom-scrollbar min-w-0 flex-1">
+                          {EMOJI_CATEGORIES.map(cat => (
+                            <button
+                              key={cat.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedCategory(cat.id);
+                                setEmojiSearch("");
+                              }}
+                              className={`px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition shrink-0 cursor-pointer ${
+                                selectedCategory === cat.id && !emojiSearch
+                                  ? "bg-black/15 dark:bg-white/15 opacity-100"
+                                  : "opacity-60 hover:opacity-100"
+                              }`}
+                              title={cat.name}
+                            >
+                              <span>{cat.icon}</span>
+                              <span className="hidden sm:inline text-[11px]">{cat.name.split(" ")[0]}</span>
+                            </button>
+                          ))}
+                        </div>
 
-                  <button
-                    type="submit"
-                    disabled={(!draft.trim() && !selectedFile) || isUploading}
-                    className="rounded-full px-4 sm:px-5 py-3 text-sm font-bold transition flex items-center justify-center gap-2 shadow-sm disabled:opacity-50 shrink-0 min-w-[70px] sm:min-w-[80px]"
-                    style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
-                  >
-                    {isUploading ? <Loader2 size={16} className="animate-spin" /> : "Send"}
-                  </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsEmojiPickerOpen(false)}
+                          className="p-1 rounded-full hover:bg-black/10 dark:hover:bg-white/10 transition opacity-60 hover:opacity-100 shrink-0 cursor-pointer ml-1"
+                          title="Close emoji bar"
+                          aria-label="Close emoji bar"
+                        >
+                          <X size={15} />
+                        </button>
+                      </div>
+
+                      {/* Search Input Box */}
+                      <div className="relative my-1">
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 opacity-40 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={emojiSearch}
+                          onChange={(e) => setEmojiSearch(e.target.value)}
+                          placeholder="Search emojis (e.g. smile, heart, fire, laugh)..."
+                          className="w-full text-xs rounded-xl pl-8 pr-7 py-1.5 bg-black/5 dark:bg-white/5 border focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                          style={{ borderColor: "var(--m-border-light)", color: "var(--m-text)" }}
+                        />
+                        {emojiSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setEmojiSearch("")}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-xs opacity-60 hover:opacity-100 cursor-pointer"
+                          >
+                            ✕
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Scrollable Emojis Grid */}
+                      <div className="max-h-40 sm:max-h-48 overflow-y-auto custom-scrollbar p-1">
+                        <div className="grid grid-cols-8 sm:grid-cols-10 gap-1">
+                          {filteredEmojis.map((emoji, i) => (
+                            <button
+                              key={`${emoji}-${i}`}
+                              type="button"
+                              onClick={() => handleInsertEmoji(emoji)}
+                              className="size-8 sm:size-9 rounded-lg hover:bg-black/10 dark:hover:bg-white/10 active:scale-90 transition-transform flex items-center justify-center text-lg sm:text-xl cursor-pointer"
+                              title={`Insert ${emoji}`}
+                            >
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <form onSubmit={handleSend} onPaste={handlePaste} className="flex items-center gap-1.5 sm:gap-2 w-full min-w-0">
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      onChange={handleFileSelect} 
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="p-2 sm:p-2.5 rounded-full transition hover:opacity-80 shadow-xs shrink-0 flex items-center justify-center cursor-pointer"
+                      style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text)" }}
+                      title="Attach File (Max 25MB)"
+                      aria-label="Attach File"
+                    >
+                      <Paperclip size={17} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsEmojiPickerOpen(prev => !prev);
+                        setTimeout(() => scrollToBottom(true), 100);
+                      }}
+                      className={`p-2 sm:p-2.5 rounded-full transition hover:opacity-80 shadow-xs shrink-0 flex items-center justify-center cursor-pointer ${
+                        isEmojiPickerOpen ? "ring-2 ring-emerald-500 text-emerald-500" : ""
+                      }`}
+                      style={{ 
+                        backgroundColor: isEmojiPickerOpen ? "rgba(16, 185, 129, 0.12)" : "var(--m-surface-solid)", 
+                        border: isEmojiPickerOpen ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid var(--m-border)", 
+                        color: isEmojiPickerOpen ? "#10b981" : "var(--m-text)" 
+                      }}
+                      title={isEmojiPickerOpen ? "Close emoji bar" : "Add emoji"}
+                      aria-label="Add emoji"
+                    >
+                      <Smile size={17} />
+                    </button>
+                    <input
+                      ref={chatInputRef}
+                      type="text"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value)}
+                      onFocus={() => {
+                        setTimeout(() => scrollToBottom(true), 150);
+                      }}
+                      onPaste={handlePaste}
+                      placeholder={selectedFile ? "Add a message..." : "Type a message..."}
+                      className="flex-1 min-w-0 rounded-full px-3.5 sm:px-5 py-2.5 sm:py-3 text-xs sm:text-sm focus:outline-none focus:ring-2 bg-transparent border leading-normal"
+                      style={{ borderColor: "var(--m-border)", color: "var(--m-text)" }}
+                    />
+
+                  {/* Voice recording button: shown when input has no text/file */}
+                  {!draft.trim() && !selectedFile && (
+                    <button
+                      type="button"
+                      onClick={startVoiceRecording}
+                      className="p-2 sm:p-2.5 rounded-full transition hover:opacity-80 shadow-xs shrink-0 flex items-center justify-center cursor-pointer"
+                      style={{ backgroundColor: "var(--m-surface-solid)", border: "1px solid var(--m-border)", color: "var(--m-text)" }}
+                      title="Record voice message"
+                      aria-label="Record voice message"
+                    >
+                      <Mic size={17} />
+                    </button>
+                  )}
+
+                  {/* Send button: shown when there is content to send */}
+                  {(draft.trim() || selectedFile) && (
+                    <button
+                      type="submit"
+                      disabled={isUploading}
+                      className="rounded-full size-9 sm:w-auto sm:px-5 sm:py-2.5 text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 shadow-sm disabled:opacity-50 shrink-0 cursor-pointer"
+                      style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                      title="Send Message"
+                      aria-label="Send Message"
+                    >
+                      {isUploading ? (
+                        <Loader2 size={16} className="animate-spin" />
+                      ) : (
+                        <>
+                          <Send size={15} className="translate-x-0.5 sm:hidden" />
+                          <span className="hidden sm:inline">Send</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </form>
+              </>
               )}
             </div>
           )}

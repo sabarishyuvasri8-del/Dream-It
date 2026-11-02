@@ -34,11 +34,13 @@ export default function ChatMessageContent({
   // If no URL is present in the message
   if (urls.length === 0) {
     return (
-      <div className="flex flex-col gap-1">
-        <span>{content}</span>
+      <div className="flex flex-col gap-1 min-w-0 max-w-full">
+        <span className="break-words [overflow-wrap:anywhere] whitespace-pre-wrap leading-relaxed text-xs sm:text-sm select-text">
+          {content}
+        </span>
         {formattedTime && (
           <div
-            className={`text-[10px] self-end mt-0.5 opacity-60 font-medium select-none`}
+            className="text-[10px] self-end mt-0.5 opacity-65 font-medium select-none tracking-tight leading-none"
           >
             {formattedTime}
           </div>
@@ -75,23 +77,23 @@ export default function ChatMessageContent({
   };
 
   return (
-    <div className="flex flex-col gap-2 w-full max-w-[340px] sm:max-w-[400px]">
+    <div className="flex flex-col gap-2 w-full min-w-0 max-w-full">
       {/* Rich Link Preview Cover Card (WhatsApp style: cover at top) */}
       {primaryUrl && (
-        <div className="w-full">
+        <div className="w-full min-w-0 max-w-full overflow-hidden rounded-xl">
           <LinkPreviewCard url={primaryUrl} isMe={isMe} />
         </div>
       )}
 
       {/* Message Text with clickable link */}
-      <div className="flex flex-col">
-        <div className="break-words leading-relaxed text-sm">
+      <div className="flex flex-col min-w-0 max-w-full">
+        <div className="break-words [overflow-wrap:anywhere] whitespace-pre-wrap leading-relaxed text-xs sm:text-sm">
           {renderFormattedText()}
         </div>
 
         {formattedTime && (
           <div
-            className={`text-[10px] self-end mt-1 opacity-60 font-medium select-none`}
+            className="text-[10px] self-end mt-1 opacity-65 font-medium select-none tracking-tight leading-none"
           >
             {formattedTime}
           </div>
