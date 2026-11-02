@@ -69,6 +69,7 @@ import {
   RotateCcw,
   Send,
   Search,
+  Settings,
   Settings2,
   Share,
   Sparkles,
@@ -135,6 +136,7 @@ import InboxModal from "./components/InboxModal";
 import FriendsModal from "./components/FriendsModal";
 import { useAppStore } from "../lib/store";
 import ChatModal from "./components/ChatModal";
+import SettingsModal from "./components/SettingsModal";
 import {
   isNotificationSupported,
   getNotificationPermission,
@@ -651,8 +653,9 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   // ─── Theme (via ThemeContext) ───
   const { theme: currentThemeId, themeConfig, isDark: darkMode } = useTheme();
   
-  // ─── Profile Modal ───
+  // ─── Profile & Settings Modals ───
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // ─── PWA Installation State ───
   const [canInstallPWA, setCanInstallPWA] = useState(false);
@@ -4011,7 +4014,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
             </div>
           </div>
 
-          {/* Streak & Export Card */}
+          {/* Streak & Settings Card */}
           <div className={`overflow-hidden transition-all duration-300 ${isExpanded ? "max-h-[200px] opacity-100 mt-5" : "max-h-0 opacity-0 mt-0"}`}>
             <div className="rounded-xl p-3 text-xs minimal-inset feature-zoom">
               <div className="flex items-center gap-2 font-medium whitespace-nowrap" style={{ color: "var(--m-text-heading)" }}>
@@ -4019,10 +4022,26 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                 <span>{streak.currentStreak} day streak</span>
               </div>
               <div className="mt-2.5 flex gap-1.5">
-                <button onClick={exportDataJSON} className="flex-1 rounded-lg py-1.5 text-[10px] font-bold transition hover:opacity-80 whitespace-nowrap" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                  Export JSON
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSettingsOpen(true);
+                    setMobileOpen(false);
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-bold transition hover:opacity-90 whitespace-nowrap shadow-xs cursor-pointer"
+                  style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                  title="Open Settings"
+                >
+                  <Settings size={13} className="shrink-0" />
+                  <span>Settings</span>
                 </button>
-                <button onClick={exportTasksCSV} className="flex-1 rounded-lg py-1.5 text-[10px] font-bold transition hover:opacity-80 whitespace-nowrap" style={{ backgroundColor: "var(--m-surface)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                <button
+                  type="button"
+                  onClick={exportTasksCSV}
+                  className="rounded-lg px-2.5 py-1.5 text-[10px] font-semibold transition hover:opacity-80 whitespace-nowrap cursor-pointer"
+                  style={{ backgroundColor: "var(--m-surface)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}
+                  title="Export tasks to CSV"
+                >
                   Export CSV
                 </button>
               </div>
@@ -4057,6 +4076,24 @@ You can save notes and flashcards. When asked to save to notes or create flashca
               {themeConfig.swatches.slice(0, 3).map((color, i) => (
                 <span key={i} className="inline-block size-3 shrink-0 rounded-full" style={{ backgroundColor: color, border: '1px solid var(--m-border-light)' }} />
               ))}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setSettingsOpen(true)}
+            className={`flex items-center rounded-xl transition-all duration-300 minimal-surface feature-chip cursor-pointer ${
+              isExpanded ? "w-full px-3 py-2 justify-start" : "w-10 h-10 justify-center"
+            }`}
+            style={{ color: "var(--m-primary)" }}
+            title={!isExpanded ? "Settings" : undefined}
+          >
+            <Settings size={14} className="shrink-0" />
+            <span
+              className={`text-xs font-medium whitespace-nowrap overflow-hidden transition-all duration-300 ${
+                isExpanded ? "max-w-[120px] opacity-100 ml-2" : "max-w-0 opacity-0 ml-0"
+              }`}
+            >
+              Settings
             </span>
           </button>
 
@@ -4251,6 +4288,22 @@ You can save notes and flashcards. When asked to save to notes or create flashca
                           {pendingShares.length + pendingFriendRequests.length}
                         </span>
                       )}
+                    </button>
+
+                    {/* Settings */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSettingsOpen(true);
+                        setMobileActionsOpen(false);
+                      }}
+                      className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer"
+                      style={{ color: "var(--m-text)" }}
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <Settings size={16} style={{ color: "var(--m-primary)" }} />
+                        <span>Settings</span>
+                      </div>
                     </button>
                   </div>
                 </>
@@ -7113,6 +7166,29 @@ Mathematics:
       <Suspense fallback={null}>
         <UserProfileModal isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       </Suspense>
+
+      {/* ─── Settings Modal ─── */}
+      <SettingsModal
+        isOpen={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        userId={userId}
+        userNameDisplay={userNameDisplay}
+        userEmail={userEmail}
+        userImageUrl={userImageUrl}
+        streakCount={streak.currentStreak}
+        timerPreset={timerPreset}
+        onUpdateTimerPreset={(mins) => {
+          setTimerPreset(mins);
+          if (!isRunning) {
+            setSeconds(mins * 60);
+          }
+        }}
+        onOpenProfile={() => setIsProfileOpen(true)}
+        onOpenAccountSwitcher={() => setAccountSwitcherOpen(true)}
+        onSignOut={() => setShowSignOutConfirm(true)}
+        onExportJSON={exportDataJSON}
+        onExportCSV={exportTasksCSV}
+      />
 
       {/* ─── Account Switcher Modal ─── */}
       <Suspense fallback={null}>
