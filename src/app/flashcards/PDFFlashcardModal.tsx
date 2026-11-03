@@ -22,6 +22,7 @@ import {
 import confetti from 'canvas-confetti';
 import { Subject, NoteEntry, AttachedFile } from '../../lib/supabase';
 import { generateFlashcardsAndSummary, GeneratedCard, ChapterSummary, FlashcardGenerationResult } from './flashcardAIGenerator';
+import { cleanLatexToReadable } from '../../lib/flashcardDistiller';
 
 interface PDFFlashcardModalProps {
   isOpen: boolean;
@@ -623,11 +624,11 @@ export function PDFFlashcardModal({
                         <span className="text-[10px] uppercase font-bold tracking-widest opacity-60 mb-2">
                           {isFlipped ? 'Answer / Concept' : 'Question / Active Recall Prompt'}
                         </span>
-                        <p className="font-[Roboto_Slab] text-base sm:text-lg font-semibold leading-relaxed">
+                        <div className="font-[Roboto_Slab] text-base sm:text-lg font-semibold leading-relaxed whitespace-pre-line text-left">
                           {isFlipped
-                            ? generatedResult.flashcards[previewCardIndex]?.back
-                            : generatedResult.flashcards[previewCardIndex]?.front}
-                        </p>
+                            ? cleanLatexToReadable(generatedResult.flashcards[previewCardIndex]?.back)
+                            : cleanLatexToReadable(generatedResult.flashcards[previewCardIndex]?.front)}
+                        </div>
                         <p className="text-[11px] mt-4 opacity-50">
                           {isFlipped ? 'Click to flip back' : 'Click card to reveal answer'}
                         </p>

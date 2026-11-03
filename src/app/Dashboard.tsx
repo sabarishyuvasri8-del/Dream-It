@@ -128,6 +128,7 @@ const FinanceApp = lazy(() => import("./finance/FinanceApp"));
 const ExamSimulatorApp = lazy(() => import("./exams/ExamSimulatorApp"));
 import type { FinanceData, FinanceTransaction, FinanceProfile } from "../lib/finance-types";
 import { fetchAI } from "../lib/ai-client";
+import { cleanLatexToReadable, distillToFlashcard, algorithmicDistill } from "../lib/flashcardDistiller";
 import { FileUpload, formatFileSize } from "../components/FileUpload";
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
@@ -760,7 +761,19 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
         }
         if (Array.isArray(cached.notes)) setNotes(loadedCachedNotes);
         if (Array.isArray(cached.grades)) setGrades(cached.grades);
-        if (Array.isArray(cached.flashcards)) setFlashcards(cached.flashcards);
+        if (Array.isArray(cached.flashcards)) {
+          const sanitizedCachedCards: Flashcard[] = cached.flashcards.map((c) => {
+            let front = cleanLatexToReadable(c.front || "");
+            let back = cleanLatexToReadable(c.back || "");
+            if (back.length > 250 || back.includes("Diagram Identified:") || front.toLowerCase().includes("explain me that")) {
+              const distilled = algorithmicDistill(front, back);
+              front = distilled.front;
+              back = distilled.back;
+            }
+            return { ...c, front, back };
+          });
+          setFlashcards(sanitizedCachedCards);
+        }
         if (cached.streak) setStreak(cached.streak);
         if (cached.finance) setFinance(cached.finance);
         setWorkspaceReady(true);
@@ -797,7 +810,18 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
           }
           setNotes(currentNotes);
           setGrades(Array.isArray(workspace.grades) ? workspace.grades : []);
-          setFlashcards(Array.isArray(workspace.flashcards) ? workspace.flashcards : []);
+          const sanitizedLoadedCards: Flashcard[] = (Array.isArray(workspace.flashcards) ? workspace.flashcards : []).map((c) => {
+            let front = cleanLatexToReadable(c.front || "");
+            let back = cleanLatexToReadable(c.back || "");
+            if (back.length > 250 || back.includes("Diagram Identified:") || front.toLowerCase().includes("explain me that")) {
+              const subObj = currentSubs.find((s) => s.id === c.subjectId);
+              const distilled = algorithmicDistill(front, back, subObj?.name);
+              front = distilled.front;
+              back = distilled.back;
+            }
+            return { ...c, front, back };
+          });
+          setFlashcards(sanitizedLoadedCards);
           if (workspace.streak) setStreak(workspace.streak);
           if (workspace.finance) setFinance(workspace.finance);
           // Check if truly new user (all empty)
@@ -1716,8 +1740,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     const createdCards: Flashcard[] = data.cards.map((c) => ({
       id: crypto.randomUUID(),
       subjectId: targetSubId,
-      front: c.front.trim(),
-      back: c.back.trim(),
+      front: cleanLatexToReadable(c.front.trim()),
+      back: cleanLatexToReadable(c.back.trim()),
       difficulty: "medium",
       reviewCount: 0,
       createdAt: new Date().toISOString(),
@@ -1916,14 +1940,34 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   };
 
   // ─── Actions: Flashcards ───
-  const addFlashcard = (e: FormEvent) => {
+  const addFlashcard = async (e: FormEvent) => {
     e.preventDefault();
     if (!cardForm.front.trim() || !cardForm.back.trim() || !cardForm.subjectId) return;
+
+    let front = cardForm.front.trim();
+    let back = cardForm.back.trim();
+    const subObj = subjects.find((s) => s.id === cardForm.subjectId);
+
+    // If text is long (> 150 chars or > 3 lines), analyze and distill into 8-10 lines
+    if (back.length > 150 || back.split("\n").length > 3) {
+      showToast("Distilling into an 8–10 line flashcard... 🧠", "info");
+      const distilled = await distillToFlashcard({
+        front,
+        back,
+        subjectName: subObj?.name,
+      });
+      front = distilled.front;
+      back = distilled.back;
+    } else {
+      front = cleanLatexToReadable(front);
+      back = cleanLatexToReadable(back);
+    }
+
     const newCard: Flashcard = {
       id: crypto.randomUUID(),
       subjectId: cardForm.subjectId,
-      front: cardForm.front.trim(),
-      back: cardForm.back.trim(),
+      front,
+      back,
       difficulty: "medium",
       reviewCount: 0,
       createdAt: new Date().toISOString(),
@@ -1977,8 +2021,8 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     const formattedCards: Flashcard[] = newCards.map((c) => ({
       id: crypto.randomUUID(),
       subjectId: c.subjectId,
-      front: c.front,
-      back: c.back,
+      front: cleanLatexToReadable(c.front),
+      back: cleanLatexToReadable(c.back),
       difficulty: c.difficulty,
       reviewCount: 0,
       createdAt: new Date().toISOString(),
@@ -6674,9 +6718,11 @@ Mathematics:
                     <div className="h-full rounded-full transition-all duration-300" style={{ width: `${((currentCardIndex + 1) / studyCards.length) * 100}%`, backgroundColor: "var(--m-primary)" }} />
                   </div>
 
-                  <button onClick={() => setCardFlipped(!cardFlipped)} className="w-full min-h-[280px] rounded-[2rem] p-8 text-center shadow-lg transition-all duration-500 hover:shadow-xl cursor-pointer feature-zoom" style={{ backgroundColor: cardFlipped ? "var(--m-primary)" : "var(--m-surface)", color: cardFlipped ? "var(--m-primary-text)" : "var(--m-text)", border: `2px solid ${cardFlipped ? "var(--m-primary)" : "var(--m-border)"}`, transform: cardFlipped ? "rotateY(0deg)" : "rotateY(0deg)" }}>
-                    <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.2em] opacity-60 mb-4">{cardFlipped ? "Answer" : "Question"}</p>
-                    <p className="font-[Roboto_Slab] text-xl font-semibold leading-8">{cardFlipped ? studyCards[currentCardIndex].back : studyCards[currentCardIndex].front}</p>
+                  <button onClick={() => setCardFlipped(!cardFlipped)} className="w-full min-h-[280px] rounded-[2rem] p-6 sm:p-8 text-center shadow-lg transition-all duration-300 hover:shadow-xl cursor-pointer feature-zoom" style={{ backgroundColor: cardFlipped ? "var(--m-primary)" : "var(--m-surface)", color: cardFlipped ? "var(--m-primary-text)" : "var(--m-text)", border: `2px solid ${cardFlipped ? "var(--m-primary)" : "var(--m-border)"}` }}>
+                    <p className="font-[DM_Mono] text-[10px] uppercase tracking-[0.2em] opacity-60 mb-3">{cardFlipped ? "Answer / Key Takeaways" : "Question / Concept"}</p>
+                    <div className="font-[Roboto_Slab] text-base sm:text-lg font-medium leading-relaxed whitespace-pre-line text-left max-w-lg mx-auto">
+                      {cardFlipped ? cleanLatexToReadable(studyCards[currentCardIndex].back) : cleanLatexToReadable(studyCards[currentCardIndex].front)}
+                    </div>
                     {!cardFlipped && <p className="mt-6 text-xs opacity-50">Click to reveal answer</p>}
                   </button>
 
@@ -6714,15 +6760,46 @@ Mathematics:
                   <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                     {studyCards.map((card) => {
                       const sub = subjects.find((s) => s.id === card.subjectId);
+                      const cleanFront = cleanLatexToReadable(card.front);
+                      const cleanBack = cleanLatexToReadable(card.back);
                       return (
-                        <div key={card.id} className="group rounded-[1.5rem] p-5 shadow-xs transition hover:shadow-md feature-zoom" style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}>
-                          <div className="flex items-center justify-between mb-3">
-                            {sub && <span className="rounded-full px-2 py-0.5 text-[10px] font-bold" style={{ backgroundColor: sub.color + "40", color: "var(--m-text-heading)" }}>{sub.name}</span>}
-                            <button onClick={() => setFlashcards((c) => c.filter((x) => x.id !== card.id))} className="opacity-0 group-hover:opacity-100 p-1 rounded-lg transition" style={{ color: "var(--m-danger)" }}><Trash2 size={14} /></button>
+                        <div
+                          key={card.id}
+                          className="group rounded-[1.5rem] p-5 shadow-xs transition hover:shadow-md feature-zoom flex flex-col justify-between"
+                          style={{ backgroundColor: "var(--m-surface)", border: "1px solid var(--m-border)" }}
+                        >
+                          <div>
+                            <div className="flex items-center justify-between mb-3">
+                              {sub && (
+                                <span
+                                  className="rounded-full px-2 py-0.5 text-[10px] font-bold"
+                                  style={{ backgroundColor: sub.color + "40", color: "var(--m-text-heading)" }}
+                                >
+                                  {sub.name}
+                                </span>
+                              )}
+                              <button
+                                onClick={() => setFlashcards((c) => c.filter((x) => x.id !== card.id))}
+                                className="opacity-0 group-hover:opacity-100 p-1 rounded-lg transition cursor-pointer"
+                                style={{ color: "var(--m-danger)" }}
+                                title="Delete flashcard"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                            <p className="text-sm font-bold leading-snug" style={{ color: "var(--m-text-heading)" }}>
+                              {cleanFront}
+                            </p>
+                            <div
+                              className="mt-2.5 text-xs leading-relaxed whitespace-pre-line opacity-85 font-normal"
+                              style={{ color: "var(--m-text-sub)" }}
+                            >
+                              {cleanBack}
+                            </div>
                           </div>
-                          <p className="text-sm font-bold" style={{ color: "var(--m-text-heading)" }}>{card.front}</p>
-                          <p className="mt-2 text-xs" style={{ color: "var(--m-text-sub)" }}>{card.back}</p>
-                          <p className="mt-3 text-[10px] font-[DM_Mono]" style={{ color: "var(--m-text-muted)" }}>Reviewed {card.reviewCount}x</p>
+                          <p className="mt-3 text-[10px] font-[DM_Mono] pt-2.5 border-t border-[var(--m-border-light)]" style={{ color: "var(--m-text-muted)" }}>
+                            Reviewed {card.reviewCount}x
+                          </p>
                         </div>
                       );
                     })}
@@ -7364,13 +7441,31 @@ Mathematics:
               showToast("Problem solution saved to Notes! 📝");
               addXP(15);
             }}
-            onSaveToFlashcard={(front, back, subjectId) => {
+            onSaveToFlashcard={async (front, back, subjectId) => {
               const targetSubId = subjectId || subjects[0]?.id || 1;
+              const subObj = subjects.find((s) => s.id === targetSubId);
+              let distilledFront = front;
+              let distilledBack = back;
+
+              if (back.length > 150 || back.split("\n").length > 3) {
+                showToast("Synthesizing concise 8–10 line flashcard... 🧠", "info");
+                const distilled = await distillToFlashcard({
+                  front,
+                  back,
+                  subjectName: subObj?.name,
+                });
+                distilledFront = distilled.front;
+                distilledBack = distilled.back;
+              } else {
+                distilledFront = cleanLatexToReadable(front);
+                distilledBack = cleanLatexToReadable(back);
+              }
+
               const newCard: Flashcard = {
                 id: `card_${Date.now()}`,
                 subjectId: targetSubId,
-                front,
-                back,
+                front: distilledFront,
+                back: distilledBack,
                 difficulty: "medium",
                 reviewCount: 0,
                 createdAt: new Date().toISOString(),

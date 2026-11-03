@@ -6,6 +6,7 @@
 
 import { fetchAI } from '../../lib/ai-client';
 import { safeParseJSON } from '../../lib/json-repair';
+import { cleanLatexToReadable } from '../../lib/flashcardDistiller';
 
 export interface GeneratedCard {
   id: string;
@@ -56,7 +57,7 @@ ${trimmedContent}
 STRICT EDUCATIONAL REQUIREMENTS:
 1. Generate between 15 and 20 high-yield active-recall flashcard items.
    - "front": An active recall question, formula prompt, or conceptual distinction (e.g. "What is the physical significance of Brewster's Law?", "State Ampere's Circuital Law formula and define variables", "Distinguish between Step-up vs Step-down transformers").
-   - "back": Clear, comprehensive, textbook-accurate answer with essential keywords and formulas.
+   - "back": Clear, comprehensive, textbook-accurate answer in 4 to 8 punchy bullet points. CRITICAL: Use 100% human-readable plain text and Unicode symbols (e.g. N₂O₅, t½ = 0.693/k, λ, ¹⁴C, →, ±, ≈). NEVER output raw LaTeX syntax (no \\frac, no \\text, no \\lambda, no $ or $$).
    - "difficulty": Initial rating ("easy" for definitions/facts, "medium" for derivations/standard formulas, "hard" for conceptual subtleties/complex calculations).
    - "conceptCategory": "Definition" | "Formula" | "Theorem" | "Comparison" | "Exam Trap".
 2. Generate a structured Executive Chapter Summary:
@@ -141,8 +142,8 @@ export async function generateFlashcardsAndSummary(
 
     const flashcards: GeneratedCard[] = parsed.flashcards.map((c: any) => ({
       id: crypto.randomUUID(),
-      front: String(c.front || 'Concept Prompt'),
-      back: String(c.back || 'Concept Explanation'),
+      front: cleanLatexToReadable(String(c.front || 'Concept Prompt')),
+      back: cleanLatexToReadable(String(c.back || 'Concept Explanation')),
       difficulty: (['easy', 'medium', 'hard'].includes(c.difficulty) ? c.difficulty : 'medium') as 'easy' | 'medium' | 'hard',
       conceptCategory: c.conceptCategory || 'Definition',
     }));

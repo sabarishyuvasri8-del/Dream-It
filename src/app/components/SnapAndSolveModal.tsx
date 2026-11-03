@@ -20,6 +20,7 @@ import {
 import MarkdownRenderer from "./MarkdownRenderer";
 import { ImageAttachment } from "../../lib/ai-client";
 import { solveHomeworkProblem, SolveMode } from "./snapAndSolveEngine";
+import { distillToFlashcard, cleanLatexToReadable } from "../../lib/flashcardDistiller";
 
 interface SubjectOption {
   id: number;
@@ -67,6 +68,7 @@ export default function SnapAndSolveModal({
   const [copied, setCopied] = useState(false);
   const [savedNote, setSavedNote] = useState(false);
   const [savedCard, setSavedCard] = useState(false);
+  const [isDistillingCard, setIsDistillingCard] = useState(false);
 
   // Camera video and canvas refs
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -327,12 +329,27 @@ export default function SnapAndSolveModal({
     setSavedNote(true);
   };
 
-  // Save as Flashcard
-  const handleSaveFlashcard = () => {
-    if (!solution || !onSaveToFlashcard) return;
-    const front = userNote.trim() || `Problem: ${solveMode === "math" ? "Math Derivation" : "Key Concept"}`;
-    onSaveToFlashcard(front, solution.slice(0, 1500), selectedSubjectId);
-    setSavedCard(true);
+  // Save as Flashcard (Auto-distilled into a tiny, high-yield 8-10 line readable card)
+  const handleSaveFlashcard = async () => {
+    if (!solution || !onSaveToFlashcard || isDistillingCard) return;
+    setIsDistillingCard(true);
+    try {
+      const subObj = subjects.find((s) => s.id === selectedSubjectId);
+      const distilled = await distillToFlashcard({
+        front: userNote.trim(),
+        back: solution,
+        subjectName: subObj?.name,
+      });
+      onSaveToFlashcard(distilled.front, distilled.back, selectedSubjectId);
+      setSavedCard(true);
+    } catch (err) {
+      console.error("Error distilling flashcard:", err);
+      const fallbackTitle = userNote.trim() || `Problem: ${solveMode === "math" ? "Math Solution" : "Key Concept"}`;
+      onSaveToFlashcard(fallbackTitle, cleanLatexToReadable(solution.slice(0, 600)), selectedSubjectId);
+      setSavedCard(true);
+    } finally {
+      setIsDistillingCard(false);
+    }
   };
 
   // Ask Follow-up in Coach
@@ -780,7 +797,7 @@ export default function SnapAndSolveModal({
                       <button
                         type="button"
                         onClick={handleSaveFlashcard}
-                        disabled={savedCard}
+                        disabled={savedCard || isDistillingCard}
                         className={`flex items-center justify-center gap-1.5 py-2.5 px-3 rounded-xl border text-xs font-bold transition hover:scale-102 active:scale-98 ${
                           savedCard ? "opacity-60 bg-emerald-500/10 border-emerald-500/30 text-emerald-400" : ""
                         }`}
@@ -789,8 +806,22 @@ export default function SnapAndSolveModal({
                           borderColor: savedCard ? undefined : "var(--m-border)",
                         }}
                       >
-                        <Brain size={14} />
-                        {savedCard ? "Card Created ✓" : "Make Flashcard"}
+                        {isDistillingCard ? (
+                          <>
+                            <Loader2 size={14} className="animate-spin text-purple-400" />
+                            <span>Distilling 8–10 lines...</span>
+                          </>
+                        ) : savedCard ? (
+                          <>
+                            <Check size={14} />
+                            <span>Card Created ✓</span>
+                          </>
+                        ) : (
+                          <>
+                            <Brain size={14} />
+                            <span>Make Flashcard</span>
+                          </>
+                        )}
                       </button>
                     )}
 
