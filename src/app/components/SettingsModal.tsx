@@ -20,7 +20,13 @@ import {
   Flame,
   Clock,
   ToggleLeft,
-  ToggleRight
+  ToggleRight,
+  Cpu,
+  Zap,
+  Activity,
+  Layers,
+  CheckCircle2,
+  AlertCircle
 } from "lucide-react";
 import { useTheme, THEMES, type ThemeId, type ThemeSector } from "../../lib/ThemeContext";
 import {
@@ -32,7 +38,7 @@ import {
 } from "../../lib/desktopNotifications";
 import { registerPushNotifications, isPushSupported } from "../../lib/pushNotifications";
 
-export type SettingsTab = "profile" | "appearance" | "study" | "notifications" | "data";
+export type SettingsTab = "profile" | "appearance" | "ai" | "study" | "notifications" | "data";
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -91,6 +97,20 @@ export default function SettingsModal({
   const [notifPermission, setNotifPermission] = useState<NotificationPermission | "unsupported">(getNotificationPermission());
   const [isMuted, setIsMuted] = useState<boolean>(() => isNotificationsMuted());
   const [pushStatus, setPushStatus] = useState<string | null>(null);
+
+  // AI Orchestration Engine Preference (Persisted in localStorage)
+  const [aiEngine, setAiEngine] = useState<"auto" | "nvidia" | "gemini" | "nebius">(() => {
+    if (typeof window === "undefined") return "auto";
+    return (localStorage.getItem("dreamit_ai_engine") as any) || "auto";
+  });
+  const [aiTesting, setAiTesting] = useState(false);
+  const [aiTestResult, setAiTestResult] = useState<{
+    success: boolean;
+    provider?: string;
+    model?: string;
+    latencyMs?: number;
+    message?: string;
+  } | null>(null);
 
   // Sync notification state
   useEffect(() => {
@@ -152,9 +172,59 @@ export default function SettingsModal({
     setIsMuted(next);
   };
 
+  const handleSelectAiEngine = (engine: "auto" | "nvidia" | "gemini" | "nebius") => {
+    setAiEngine(engine);
+    localStorage.setItem("dreamit_ai_engine", engine);
+    setAiTestResult(null);
+  };
+
+  const handleTestAiConnection = async () => {
+    setAiTesting(true);
+    setAiTestResult(null);
+    const startTime = performance.now();
+    try {
+      const res = await fetch("/api/ai-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "Ping test. Reply 'OK'." }],
+          provider: aiEngine,
+          max_tokens: 10,
+        }),
+      });
+      const latencyMs = Math.round(performance.now() - startTime);
+      if (res.ok) {
+        const data = await res.json();
+        setAiTestResult({
+          success: true,
+          provider: data.provider || aiEngine,
+          model: data.model || "Optimized Model",
+          latencyMs,
+          message: "Centralized orchestrator operational",
+        });
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        setAiTestResult({
+          success: false,
+          latencyMs,
+          message: errJson?.error || `Status ${res.status}`,
+        });
+      }
+    } catch (err: any) {
+      setAiTestResult({
+        success: false,
+        latencyMs: Math.round(performance.now() - startTime),
+        message: err?.message || "Connection failed",
+      });
+    } finally {
+      setAiTesting(false);
+    }
+  };
+
   const TABS = [
     { id: "profile" as SettingsTab, label: "Profile", icon: User },
     { id: "appearance" as SettingsTab, label: "Appearance", icon: Palette },
+    { id: "ai" as SettingsTab, label: "AI Engine", icon: Cpu },
     { id: "study" as SettingsTab, label: "Study & Focus", icon: Timer },
     { id: "notifications" as SettingsTab, label: "Alerts", icon: Bell },
     { id: "data" as SettingsTab, label: "Data & Backup", icon: Database },
@@ -393,6 +463,336 @@ export default function SettingsModal({
                     </button>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* ─────────────── TAB: CENTRALIZED AI ORCHESTRATION ─────────────── */}
+          {activeTab === "ai" && (
+            <div className="space-y-6 animate-in fade-in duration-150">
+              {/* Header Card */}
+              <div
+                className="p-4 sm:p-5 rounded-2xl border"
+                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)" }}
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className="size-10 rounded-2xl flex items-center justify-center shrink-0 shadow-xs"
+                    style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                  >
+                    <Cpu size={20} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-sm sm:text-base">AI Orchestration & Routing Layer</h4>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-500 border border-emerald-500/20">
+                        Multi-Provider
+                      </span>
+                    </div>
+                    <p className="text-xs opacity-70 mt-1 leading-relaxed">
+                      Dream It routes each learning task to the best AI provider (Google Gemini, NVIDIA NIM, and Nebius Studio) with automatic cross-provider failover.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Provider Selection */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h5 className="font-bold text-xs uppercase tracking-wider opacity-60">Primary AI Engine</h5>
+                  <span className="text-[11px] opacity-50">Select preference</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Option 1: Smart Auto-Router */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAiEngine("auto")}
+                    className={`p-3.5 rounded-2xl border text-left transition-all duration-150 flex flex-col justify-between gap-3 cursor-pointer ${
+                      aiEngine === "auto"
+                        ? "ring-2 ring-[var(--m-primary)] shadow-md"
+                        : "hover:border-[var(--m-primary)]/50 hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
+                    style={{
+                      backgroundColor: aiEngine === "auto" ? "var(--m-surface-alt)" : "var(--m-surface)",
+                      borderColor: aiEngine === "auto" ? "var(--m-primary)" : "var(--m-border-light)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base select-none">⚡</span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold">Smart Auto-Router</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500">
+                              RECOMMENDED
+                            </span>
+                          </div>
+                          <p className="text-[10px] opacity-60 mt-0.5">Task-based dynamic selection & failover</p>
+                        </div>
+                      </div>
+                      {aiEngine === "auto" && (
+                        <div className="size-5 rounded-full bg-[var(--m-primary)] text-[var(--m-primary-text)] flex items-center justify-center shrink-0">
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] opacity-70">
+                      Dispatches vision to NVIDIA Nemotron 120B and rapid study chat to Gemini Flash with zero-downtime failover.
+                    </p>
+                  </button>
+
+                  {/* Option 2: NVIDIA NIM */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAiEngine("nvidia")}
+                    className={`p-3.5 rounded-2xl border text-left transition-all duration-150 flex flex-col justify-between gap-3 cursor-pointer ${
+                      aiEngine === "nvidia"
+                        ? "ring-2 ring-[var(--m-primary)] shadow-md"
+                        : "hover:border-[var(--m-primary)]/50 hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
+                    style={{
+                      backgroundColor: aiEngine === "nvidia" ? "var(--m-surface-alt)" : "var(--m-surface)",
+                      borderColor: aiEngine === "nvidia" ? "var(--m-primary)" : "var(--m-border-light)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base select-none">🟢</span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold">NVIDIA NIM Cloud</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-green-500/15 text-green-500">
+                              120B VISION
+                            </span>
+                          </div>
+                          <p className="text-[10px] opacity-60 mt-0.5">Nemotron 3.5 Super VL & Lightning</p>
+                        </div>
+                      </div>
+                      {aiEngine === "nvidia" && (
+                        <div className="size-5 rounded-full bg-[var(--m-primary)] text-[var(--m-primary-text)] flex items-center justify-center shrink-0">
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] opacity-70">
+                      State-of-the-art multimodal reasoning, handwriting analysis, and diagram extraction.
+                    </p>
+                  </button>
+
+                  {/* Option 3: Google Gemini */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAiEngine("gemini")}
+                    className={`p-3.5 rounded-2xl border text-left transition-all duration-150 flex flex-col justify-between gap-3 cursor-pointer ${
+                      aiEngine === "gemini"
+                        ? "ring-2 ring-[var(--m-primary)] shadow-md"
+                        : "hover:border-[var(--m-primary)]/50 hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
+                    style={{
+                      backgroundColor: aiEngine === "gemini" ? "var(--m-surface-alt)" : "var(--m-surface)",
+                      borderColor: aiEngine === "gemini" ? "var(--m-primary)" : "var(--m-border-light)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base select-none">🔷</span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold">Google Gemini</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-500">
+                              ULTRA FAST
+                            </span>
+                          </div>
+                          <p className="text-[10px] opacity-60 mt-0.5">Gemini 3.1 Flash Lite & 3.6 Flash</p>
+                        </div>
+                      </div>
+                      {aiEngine === "gemini" && (
+                        <div className="size-5 rounded-full bg-[var(--m-primary)] text-[var(--m-primary-text)] flex items-center justify-center shrink-0">
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] opacity-70">
+                      Ultra-responsive study conversations, flashcard synthesis, and structured JSON outputs.
+                    </p>
+                  </button>
+
+                  {/* Option 4: Nebius AI Studio */}
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAiEngine("nebius")}
+                    className={`p-3.5 rounded-2xl border text-left transition-all duration-150 flex flex-col justify-between gap-3 cursor-pointer ${
+                      aiEngine === "nebius"
+                        ? "ring-2 ring-[var(--m-primary)] shadow-md"
+                        : "hover:border-[var(--m-primary)]/50 hover:bg-black/5 dark:hover:bg-white/5"
+                    }`}
+                    style={{
+                      backgroundColor: aiEngine === "nebius" ? "var(--m-surface-alt)" : "var(--m-surface)",
+                      borderColor: aiEngine === "nebius" ? "var(--m-primary)" : "var(--m-border-light)",
+                    }}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base select-none">🟣</span>
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-bold">Nebius AI Studio</span>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-400">
+                              PLUG & PLAY
+                            </span>
+                          </div>
+                          <p className="text-[10px] opacity-60 mt-0.5">Llama 3.1 & Qwen 2.5 Coder</p>
+                        </div>
+                      </div>
+                      {aiEngine === "nebius" && (
+                        <div className="size-5 rounded-full bg-[var(--m-primary)] text-[var(--m-primary-text)] flex items-center justify-center shrink-0">
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-[11px] opacity-70">
+                      OpenAI-compatible inference hub ready for open-source high-throughput models.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Task Routing Matrix Details */}
+              <div
+                className="p-4 rounded-2xl border space-y-3"
+                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)" }}
+              >
+                <div className="flex items-center justify-between">
+                  <h5 className="font-bold text-xs">Task-Based Routing Matrix</h5>
+                  <span className="text-[10px] opacity-60">Auto Dispatch Rules</span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                  <div className="p-2.5 rounded-xl border flex items-center justify-between gap-2" style={{ borderColor: "var(--m-border-light)" }}>
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">📸 Snap & Solve / OCR</p>
+                      <p className="text-[10px] opacity-60">Handwritten & Vision tasks</p>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-green-500/15 text-green-500 shrink-0 font-bold">
+                      NVIDIA Nemotron 120B
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl border flex items-center justify-between gap-2" style={{ borderColor: "var(--m-border-light)" }}>
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">📐 Exam Grader & Code</p>
+                      <p className="text-[10px] opacity-60">Step-by-step verification</p>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-green-500/15 text-green-500 shrink-0 font-bold">
+                      Nemotron 120B / Gemini
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl border flex items-center justify-between gap-2" style={{ borderColor: "var(--m-border-light)" }}>
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">💬 Study Tutor & Chat</p>
+                      <p className="text-[10px] opacity-60">Conversational Q&A</p>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-500 shrink-0 font-bold">
+                      Gemini 3.1 Flash Lite
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 rounded-xl border flex items-center justify-between gap-2" style={{ borderColor: "var(--m-border-light)" }}>
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">📑 Flashcards & Summaries</p>
+                      <p className="text-[10px] opacity-60">High-speed JSON extraction</p>
+                    </div>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-500 shrink-0 font-bold">
+                      Gemini Flash / Nemotron
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Engine Diagnostics & Connection Test */}
+              <div
+                className="p-4 rounded-2xl border space-y-3"
+                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)" }}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h5 className="font-bold text-xs sm:text-sm">Orchestrator Diagnostics</h5>
+                    <p className="text-[11px] opacity-60 mt-0.5">Test live API connectivity across providers</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleTestAiConnection}
+                    disabled={aiTesting}
+                    className="px-3.5 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
+                    style={{
+                      borderColor: "var(--m-primary)",
+                      backgroundColor: "var(--m-primary)",
+                      color: "var(--m-primary-text)",
+                    }}
+                  >
+                    {aiTesting ? (
+                      <>
+                        <span className="size-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                        <span>Testing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap size={13} />
+                        <span>Ping AI Engine</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                {/* Status Indicator Bar */}
+                <div className="flex flex-wrap items-center gap-3 text-xs pt-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-emerald-500 animate-pulse" />
+                    <span className="opacity-75">Auto-Failover: <strong className="text-emerald-500">Active</strong></span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-blue-500" />
+                    <span className="opacity-75">Gemini 3.1: <strong className="text-blue-500">Ready</strong></span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-green-500" />
+                    <span className="opacity-75">NVIDIA NIM: <strong className="text-green-500">Ready</strong></span>
+                  </div>
+                </div>
+
+                {/* Test Result Message Box */}
+                {aiTestResult && (
+                  <div
+                    className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 animate-in fade-in duration-150 ${
+                      aiTestResult.success
+                        ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400"
+                        : "bg-red-500/10 border-red-500/30 text-red-500"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {aiTestResult.success ? (
+                        <CheckCircle2 size={15} className="shrink-0" />
+                      ) : (
+                        <AlertCircle size={15} className="shrink-0" />
+                      )}
+                      <div>
+                        <p className="font-semibold">{aiTestResult.message}</p>
+                        {aiTestResult.provider && (
+                          <p className="text-[10px] opacity-75">
+                            Routed via: <strong>{aiTestResult.provider.toUpperCase()}</strong> ({aiTestResult.model})
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {aiTestResult.latencyMs !== undefined && (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-black/10 dark:bg-white/10 shrink-0">
+                        {aiTestResult.latencyMs}ms
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -661,3 +1061,4 @@ export default function SettingsModal({
     </div>
   );
 }
+

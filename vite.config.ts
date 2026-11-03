@@ -18,11 +18,36 @@ function figmaAssetResolver() {
 }
 
 /**
- * Local AI Proxy Plugin
+ * Local AI Orchestrator Proxy Plugin
  * Intercepts /api/ai-chat requests during local Vite development (npm run dev)
- * so that developers can test AI features without exposing keys to the client bundle.
+ * Multi-provider routing: Gemini, NVIDIA NIM, and Nebius with automatic failover.
  */
 function localAiProxyPlugin(env: Record<string, string>) {
+  const GEMINI_MODELS = [
+    'gemini-3.1-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-3.5-flash',
+    'gemini-flash-latest',
+    'gemini-3.7-flash',
+    'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-flash-lite-latest',
+  ];
+
+  const NVIDIA_MODELS = [
+    'nvidia/nemotron-3.5-super-vl-120b-a12b',
+    'nvidia/nemotron-3.5-lightning-30b-a3b',
+    'nvidia/nemotron-3.5-bolt-e4b',
+    'nvidia/nemotron-3-ultra-550b-a55b',
+    'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+  ];
+
+  const NEBIUS_MODELS = [
+    'meta-llama/Meta-Llama-3.1-70B-Instruct',
+    'meta-llama/Meta-Llama-3.1-8B-Instruct',
+    'Qwen/Qwen2.5-Coder-32B-Instruct',
+  ];
+
   return {
     name: 'local-ai-proxy',
     configureServer(server: any) {
@@ -33,142 +58,298 @@ function localAiProxyPlugin(env: Record<string, string>) {
           req.on('end', async () => {
             try {
               const parsedBody = JSON.parse(body || '{}');
-              const fallbackKey = typeof atob === 'function' ? atob('QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=') : '';
-              const apiKey =
+              const fallbackGemini = typeof atob === 'function' ? atob('QVEuQWI4Uk42TGlwTzJackMwYmhhc21yOEQ0MF9HWHNjV0ZnY3VfamVoZ3h0Um9qSUpLSXc=') : '';
+              const fallbackNvidia = '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';
+
+              const geminiKey = (
                 env.GEMINI_API_KEY ||
                 process.env.GEMINI_API_KEY ||
                 env.VITE_GEMINI_API_KEY ||
                 process.env.VITE_GEMINI_API_KEY ||
-                fallbackKey;
+                fallbackGemini
+              ).trim();
 
-              if (!apiKey) {
+              const nvidiaKey = (
+                env.NVIDIA_API_KEY ||
+                process.env.NVIDIA_API_KEY ||
+                env.VITE_NVIDIA_API_KEY ||
+                process.env.VITE_NVIDIA_API_KEY ||
+                fallbackNvidia
+              ).trim();
+
+              const nebiusKey = (
+                env.NEBIUS_API_KEY ||
+                process.env.NEBIUS_API_KEY ||
+                env.VITE_NEBIUS_API_KEY ||
+                process.env.VITE_NEBIUS_API_KEY ||
+                ''
+              ).trim();
+
+              const {
+                messages = [],
+                image,
+                provider = 'auto',
+                task = 'general',
+                model,
+                temperature = 0.2,
+                max_tokens = 4096,
+                responseMimeType,
+                response_mime_type,
+                top_p,
+              } = parsedBody;
+
+              const hasImage = !!(image && image.base64Data);
+              const normalizedTask = (task || (hasImage ? 'vision' : 'chat')).toLowerCase();
+
+              // Build prioritized provider chain
+              let providerChain: Array<'gemini' | 'nvidia' | 'nebius'> = [];
+
+              if (provider === 'gemini') {
+                providerChain = ['gemini', 'nvidia', 'nebius'];
+              } else if (provider === 'nvidia') {
+                providerChain = ['nvidia', 'gemini', 'nebius'];
+              } else if (provider === 'nebius') {
+                providerChain = ['nebius', 'gemini', 'nvidia'];
+              } else {
+                // 'auto' routing:
+                if (hasImage || normalizedTask === 'vision' || normalizedTask === 'snap-solve' || normalizedTask === 'grader') {
+                  providerChain = nvidiaKey ? ['nvidia', 'gemini', 'nebius'] : ['gemini', 'nvidia', 'nebius'];
+                } else if (normalizedTask === 'coding' || normalizedTask === 'math' || normalizedTask === 'reasoning') {
+                  providerChain = nvidiaKey ? ['nvidia', 'gemini', 'nebius'] : ['gemini', 'nvidia', 'nebius'];
+                } else {
+                  providerChain = geminiKey ? ['gemini', 'nvidia', 'nebius'] : ['nvidia', 'gemini', 'nebius'];
+                }
+              }
+
+              providerChain = providerChain.filter((p) => {
+                if (p === 'gemini') return !!geminiKey;
+                if (p === 'nvidia') return !!nvidiaKey;
+                if (p === 'nebius') return !!nebiusKey;
+                return false;
+              });
+
+              if (providerChain.length === 0) {
                 res.statusCode = 500;
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ error: 'GEMINI_API_KEY not configured in .env' }));
+                res.end(JSON.stringify({ error: 'No configured AI keys found in .env (GEMINI_API_KEY / NVIDIA_API_KEY)' }));
                 return;
               }
 
-              const FALLBACK_MODELS = [
-                'gemini-3.1-flash-lite',
-                'gemini-3.6-flash',
-                'gemini-3.5-flash',
-                'gemini-flash-latest',
-                'gemini-3.7-flash',
-                'gemini-3.8-flash',
-                'gemini-3.5-flash-lite',
-                'gemini-flash-lite-latest',
-              ];
-
-              let requestedModel = parsedBody.model || 'gemini-3.1-flash-lite';
-              if (
-                requestedModel === 'gemini-2.5-flash' ||
-                requestedModel === 'gemini-2.5-flash-lite' ||
-                requestedModel === 'gemini-2.0-flash'
-              ) {
-                requestedModel = 'gemini-3.1-flash-lite';
-              }
-
-              const candidateModels = Array.from(new Set([requestedModel, ...FALLBACK_MODELS]));
-
-              const systemParts: Array<{ text: string }> = [];
-              const contents: Array<{ role: 'user' | 'model'; parts: Array<any> }> = [];
-
-              for (const m of (parsedBody.messages || [])) {
-                if (m.role === 'system') {
-                  systemParts.push({ text: m.content || '' });
-                } else {
-                  const role: 'user' | 'model' = m.role === 'assistant' ? 'model' : 'user';
-                  const part: any = { text: m.content || '' };
-                  if (contents.length > 0 && contents[contents.length - 1].role === role) {
-                    contents[contents.length - 1].parts.push(part);
-                  } else {
-                    contents.push({ role, parts: [part] });
-                  }
-                }
-              }
-
-              if (contents.length === 0) {
-                contents.push({ role: 'user', parts: [{ text: 'Hello' }] });
-              }
-
-              if (parsedBody.image && parsedBody.image.base64Data) {
-                const lastUser = [...contents].reverse().find((c) => c.role === 'user');
-                const imagePart = {
-                  inlineData: {
-                    mimeType: parsedBody.image.mimeType || 'image/jpeg',
-                    data: parsedBody.image.base64Data,
-                  },
-                };
-                if (lastUser) {
-                  lastUser.parts.push(imagePart);
-                } else {
-                  contents.push({ role: 'user', parts: [imagePart] });
-                }
-              }
-
-              const chosenMimeType = parsedBody.responseMimeType || parsedBody.response_mime_type;
-              const baseRequestBody: any = {
-                contents,
-                generationConfig: {
-                  temperature: typeof parsedBody.temperature === 'number' ? parsedBody.temperature : 0.2,
-                  maxOutputTokens: typeof parsedBody.max_tokens === 'number' ? Math.min(8192, Math.max(512, parsedBody.max_tokens)) : 4096,
-                  ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
-                  topP: parsedBody.top_p,
-                },
-              };
-
-              if (systemParts.length > 0) {
-                baseRequestBody.system_instruction = { parts: systemParts };
-              }
-
-              let data: any = null;
+              let finalContent = '';
+              let finalProvider = '';
+              let finalModel = '';
               let lastStatus = 0;
               let lastErrMsg = '';
 
-              for (let i = 0; i < candidateModels.length; i++) {
-                const activeModel = candidateModels[i];
-                const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${activeModel}:generateContent?key=${apiKey.trim()}`;
-                const requestBody = JSON.parse(JSON.stringify(baseRequestBody));
-
-                try {
-                  let googleRes = await fetch(googleUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(requestBody),
-                  });
-
-                  if (googleRes.ok) {
-                    data = await googleRes.json();
-                    break;
+              for (const currentProvider of providerChain) {
+                if (currentProvider === 'nvidia' && nvidiaKey) {
+                  let candidates = [...NVIDIA_MODELS];
+                  if (model && (model.startsWith('nvidia/') || model.startsWith('meta/') || model.startsWith('mistralai/'))) {
+                    candidates = Array.from(new Set([model, ...candidates]));
                   }
 
-                  lastStatus = googleRes.status;
-                  const errJson = await googleRes.json().catch(() => ({}));
-                  lastErrMsg = errJson?.error?.message || `Google API error (Status ${lastStatus})`;
-                  console.warn(`[local-ai-proxy] Model ${activeModel} failed with ${lastStatus}: ${lastErrMsg}. Switching to next model...`);
-                } catch (netErr: any) {
-                  lastErrMsg = netErr?.message || 'Network error';
-                  console.warn(`[local-ai-proxy] Network error with ${activeModel}: ${lastErrMsg}`);
+                  const formattedMessages: Array<{ role: string; content: any }> = [];
+                  for (let i = 0; i < messages.length; i++) {
+                    const m = messages[i];
+                    const isLast = m.role === 'user' && i === messages.length - 1;
+                    if (isLast && image && image.base64Data) {
+                      formattedMessages.push({
+                        role: 'user',
+                        content: [
+                          { type: 'text', text: m.content || 'Analyze this image and assist me.' },
+                          { type: 'image_url', image_url: { url: `data:${image.mimeType || 'image/jpeg'};base64,${image.base64Data}` } },
+                        ],
+                      });
+                    } else {
+                      formattedMessages.push({
+                        role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
+                        content: m.content || '',
+                      });
+                    }
+                  }
+
+                  for (const mId of candidates) {
+                    try {
+                      const nvRes = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${nvidiaKey}`,
+                        },
+                        body: JSON.stringify({
+                          model: mId,
+                          messages: formattedMessages,
+                          temperature: typeof temperature === 'number' ? temperature : 0.2,
+                          max_tokens: typeof max_tokens === 'number' ? Math.min(4096, max_tokens) : 4096,
+                          ...(top_p ? { top_p } : {}),
+                        }),
+                      });
+
+                      if (nvRes.ok) {
+                        const json = await nvRes.json();
+                        const choice = json.choices?.[0]?.message;
+                        const text = choice?.content || choice?.reasoning_content || '';
+                        if (text) {
+                          finalContent = text;
+                          finalProvider = 'nvidia';
+                          finalModel = mId;
+                          break;
+                        }
+                      }
+                      lastStatus = nvRes.status;
+                      const errJson = await nvRes.json().catch(() => ({}));
+                      lastErrMsg = errJson?.error?.message || errJson?.detail || `NVIDIA status ${lastStatus}`;
+                    } catch (e: any) {
+                      lastErrMsg = e?.message || 'NVIDIA connection error';
+                    }
+                  }
+                  if (finalContent) break;
+                } else if (currentProvider === 'gemini' && geminiKey) {
+                  let candidates = [...GEMINI_MODELS];
+                  if (model && model.startsWith('gemini-')) {
+                    candidates = Array.from(new Set([model, ...candidates]));
+                  }
+
+                  const systemParts: Array<{ text: string }> = [];
+                  const contents: Array<{ role: 'user' | 'model'; parts: Array<any> }> = [];
+
+                  for (const m of messages) {
+                    if (m.role === 'system') {
+                      systemParts.push({ text: m.content || '' });
+                    } else {
+                      const role: 'user' | 'model' = m.role === 'assistant' ? 'model' : 'user';
+                      const part: any = { text: m.content || '' };
+                      if (contents.length > 0 && contents[contents.length - 1].role === role) {
+                        contents[contents.length - 1].parts.push(part);
+                      } else {
+                        contents.push({ role, parts: [part] });
+                      }
+                    }
+                  }
+
+                  if (contents.length === 0) {
+                    contents.push({ role: 'user', parts: [{ text: 'Hello' }] });
+                  }
+
+                  if (image && image.base64Data) {
+                    const lastUser = [...contents].reverse().find((c) => c.role === 'user');
+                    const imagePart = {
+                      inlineData: {
+                        mimeType: image.mimeType || 'image/jpeg',
+                        data: image.base64Data,
+                      },
+                    };
+                    if (lastUser) {
+                      lastUser.parts.push(imagePart);
+                    } else {
+                      contents.push({ role: 'user', parts: [imagePart] });
+                    }
+                  }
+
+                  const chosenMimeType = responseMimeType || response_mime_type;
+                  const baseRequestBody: any = {
+                    contents,
+                    generationConfig: {
+                      temperature: typeof temperature === 'number' ? temperature : 0.2,
+                      maxOutputTokens: typeof max_tokens === 'number' ? Math.min(8192, Math.max(512, max_tokens)) : 4096,
+                      ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
+                      topP: top_p,
+                    },
+                  };
+
+                  if (systemParts.length > 0) {
+                    baseRequestBody.system_instruction = { parts: systemParts };
+                  }
+
+                  for (const mId of candidates) {
+                    try {
+                      const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mId}:generateContent?key=${geminiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(baseRequestBody),
+                      });
+
+                      if (gRes.ok) {
+                        const json = await gRes.json();
+                        const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                        if (text) {
+                          finalContent = text;
+                          finalProvider = 'gemini';
+                          finalModel = mId;
+                          break;
+                        }
+                      }
+                      lastStatus = gRes.status;
+                      const errJson = await gRes.json().catch(() => ({}));
+                      lastErrMsg = errJson?.error?.message || `Gemini status ${lastStatus}`;
+                    } catch (e: any) {
+                      lastErrMsg = e?.message || 'Gemini connection error';
+                    }
+                  }
+                  if (finalContent) break;
+                } else if (currentProvider === 'nebius' && nebiusKey) {
+                  const formattedMessages = messages.map((m: any) => ({
+                    role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
+                    content: m.content || '',
+                  }));
+
+                  for (const mId of NEBIUS_MODELS) {
+                    try {
+                      const nebRes = await fetch('https://api.studio.nebius.ai/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${nebiusKey}`,
+                        },
+                        body: JSON.stringify({
+                          model: mId,
+                          messages: formattedMessages,
+                          temperature: typeof temperature === 'number' ? temperature : 0.2,
+                          max_tokens: typeof max_tokens === 'number' ? Math.min(4096, max_tokens) : 4096,
+                          ...(top_p ? { top_p } : {}),
+                        }),
+                      });
+
+                      if (nebRes.ok) {
+                        const json = await nebRes.json();
+                        const text = json.choices?.[0]?.message?.content || '';
+                        if (text) {
+                          finalContent = text;
+                          finalProvider = 'nebius';
+                          finalModel = mId;
+                          break;
+                        }
+                      }
+                      lastStatus = nebRes.status;
+                      const errJson = await nebRes.json().catch(() => ({}));
+                      lastErrMsg = errJson?.error?.message || `Nebius status ${lastStatus}`;
+                    } catch (e: any) {
+                      lastErrMsg = e?.message || 'Nebius connection error';
+                    }
+                  }
+                  if (finalContent) break;
                 }
               }
 
-              if (!data) {
+              if (!finalContent) {
                 res.statusCode = lastStatus || 500;
                 res.setHeader('Content-Type', 'application/json');
-                res.end(JSON.stringify({ content: '', error: lastErrMsg || 'All AI models exhausted' }));
+                res.end(JSON.stringify({ content: '', error: lastErrMsg || 'All AI providers exhausted' }));
                 return;
               }
 
-              const candidate = data.candidates?.[0];
-              const content = candidate?.content?.parts?.[0]?.text || '';
-
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ content }));
+              res.end(JSON.stringify({
+                content: finalContent,
+                provider: finalProvider,
+                model: finalModel,
+                task: normalizedTask,
+              }));
             } catch (err: any) {
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json');
-              res.end(JSON.stringify({ error: err?.message || 'Local AI proxy error' }));
+              res.end(JSON.stringify({ error: err?.message || 'Local AI orchestrator error' }));
             }
           });
         } else if (req.url?.startsWith('/api/link-preview')) {
