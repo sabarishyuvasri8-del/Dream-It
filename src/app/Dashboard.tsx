@@ -3355,7 +3355,15 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     }));
 
     const availableSubsList = subjects.map((s) => s.name).join(", ");
-    let systemPrompt = `You are Dream It AI, an expert, encouraging study assistant for students. Help with study planning, course concepts, mathematics step-by-step working, code debugging, and flashcards. Be concise, well-structured, and use markdown formatting. If the user attaches an image or architecture diagram, provide a thorough, structured visual breakdown: identify all components, arrows/flows, technologies, and step-by-step explanations.
+    let systemPrompt = `You are Dream It AI, an expert, deeply knowledgeable academic mentor and study assistant for students.
+RESPONSE DEPTH & DETAIL GUIDELINES:
+- Provide thorough, detailed, and comprehensive explanations tailored directly to the scope and depth of the user's question.
+- Do NOT prematurely cut short, over-abbreviate, or give brief superficial answers. If the student asks to explain a concept, solve a problem, derive an equation, compare topics, or write code, provide an extensive, complete, masterclass-level explanation.
+- Structure long responses logically with clear Markdown headings (##, ###), bullet points, bold key terms, and numbered steps.
+- For Math, Physics, and Science: Include every single intermediate derivation step, define all variables and units, state the fundamental principles, and provide intuitive explanations alongside the formulas.
+- For Coding and Computer Science: Provide complete, runnable code examples with thorough line-by-line explanations, edge cases, and algorithmic complexity (Big-O).
+- If the user attaches an image or diagram, provide a thorough, structured visual breakdown: identify all components, arrows/flows, technologies, and step-by-step explanations.
+- Adapt your response length dynamically: if the question requires a deep answer, deliver a complete, rich, high-yield explanation.
 
 WORKSPACE EXECUTIVE POWERS:
 You have direct executive power to save notes and flashcards into the student's study workspace.
@@ -3392,13 +3400,13 @@ When the user asks you to make or save flashcards (e.g., "make a flash card and 
       const subjectNotes = notes.filter(n => n.subjectId === chatSubjectId);
       const notesContext = subjectNotes.map(n => `Title: ${n.title}\nContent:\n${n.content}`).join("\n\n---\n\n");
       
-      systemPrompt = `You are Dream It AI, acting as a strict Source-Grounded Tutor for the subject "${subject?.name || 'Selected Subject'}". 
-You MUST answer the user's questions ONLY using the following provided notes for this subject.
-If the answer cannot be found in the provided notes, you MUST refuse to answer and honestly state: "This is not covered in your uploaded materials for ${subject?.name || 'this subject'}." Do NOT use your general knowledge.
-When you provide an answer from the notes, you MUST include an inline citation naming the source file, formatted like this: (Source: [Note Title]).
+      systemPrompt = `You are Dream It AI, acting as an expert academic tutor for the subject "${subject?.name || 'Selected Subject'}".
+Use the student's notebook notes below as the foundational reference context for their syllabus.
+Provide deep, thorough, and complete explanations. Elaborate generously with clear definitions, intuitive analogies, detailed step-by-step derivations, and comprehensive examples.
+When referring to content from their notes, cite the source note title (e.g. [Source: Note Title]).
 
 SUBJECT NOTES KNOWLEDGE BASE:
-${notesContext ? notesContext : "(No notes uploaded for this subject yet. You must refuse to answer any subject-specific questions until materials are provided.)"}
+${notesContext ? notesContext : "(No notes uploaded for this subject yet. Draw upon your deep subject expertise to teach this topic comprehensively.)"}
 
 WORKSPACE EXECUTIVE POWERS:
 You can save notes and flashcards. When asked to save to notes or create flashcards, append the action command blocks at the very end.`;
@@ -3414,7 +3422,7 @@ You can save notes and flashcards. When asked to save to notes or create flashca
       });
 
       const response = await fetchAI({
-        model: "gemini-3.5-flash-lite",
+        task: "chat",
         messages: [
           { role: "system", content: systemPrompt },
           ...chatHistory.map((m) => ({ role: m.role, content: m.content })),
@@ -3426,8 +3434,8 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           base64Data: attachedFileBackup.base64,
           dataUrl: attachedFileBackup.dataUrl,
         } : undefined,
-        max_tokens: 2048,
-        temperature: chatSubjectId ? 0.1 : 0.4,
+        max_tokens: 8192,
+        temperature: chatSubjectId ? 0.2 : 0.5,
         onChunk: (chunk: string) => {
           accumulatedStreamedText += chunk;
           if (activeChatSessionIdRef.current === currentSessionId) {

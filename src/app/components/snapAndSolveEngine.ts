@@ -42,7 +42,7 @@ FORMATTING REQUIREMENTS:
    - ## ✍️ Step-by-Step Derivation: Numbered, clear mathematical steps with intermediate explanations.
    - ## 🎯 Final Answer: The final result boxed (e.g., $$\\mathbf{x = 4}$$).
    - ## ⚠️ Watch Out: 1 common student trap or misconception to avoid on exams.
-3. Be friendly, encouraging, and pedagogically clear.`;
+3. Be friendly, encouraging, and pedagogically clear. Provide a detailed, in-depth explanation covering all theoretical foundations and mathematical derivations without skipping steps.`;
   } else if (mode === "diagram") {
     systemPrompt = `You are Dream It AI: Chief Science & Diagram Analyst.
 A student has snapped an image of a scientific diagram, anatomical chart, chemical reaction scheme, or physics circuit.
@@ -79,7 +79,7 @@ FORMATTING REQUIREMENTS:
 
   try {
     const res = await fetchAI({
-      model: "gemini-3.1-flash-lite",
+      task: "vision",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -91,8 +91,8 @@ FORMATTING REQUIREMENTS:
         dataUrl: image.dataUrl,
       },
       temperature: 0.2,
-      max_tokens: 4096,
-      timeoutMs: 45000,
+      max_tokens: 8192,
+      timeoutMs: 55000,
     });
 
     if (res.error) {

@@ -119,7 +119,7 @@ export default async function handler(req: any, res?: any) {
       task = "general",
       model,
       temperature = 0.2,
-      max_tokens = 4096,
+      max_tokens = 8192,
       responseMimeType,
       response_mime_type,
       top_p,
@@ -368,7 +368,7 @@ async function executeNvidiaRequest(opts: {
         model: currentModel,
         messages: formattedMessages,
         temperature: typeof opts.temperature === "number" ? opts.temperature : 0.2,
-        max_tokens: typeof opts.max_tokens === "number" ? Math.min(4096, opts.max_tokens) : 4096,
+        max_tokens: typeof opts.max_tokens === "number" ? Math.min(8192, opts.max_tokens) : 8192,
         ...(opts.top_p ? { top_p: opts.top_p } : {}),
       };
 
@@ -460,7 +460,7 @@ async function executeGeminiRequest(opts: {
     contents,
     generationConfig: {
       temperature: typeof opts.temperature === "number" ? opts.temperature : 0.2,
-      maxOutputTokens: typeof opts.max_tokens === "number" ? Math.min(8192, Math.max(512, opts.max_tokens)) : 4096,
+      maxOutputTokens: typeof opts.max_tokens === "number" ? Math.min(8192, Math.max(512, opts.max_tokens)) : 8192,
       ...(opts.responseMimeType ? { responseMimeType: opts.responseMimeType } : {}),
       topP: opts.top_p,
     },
@@ -540,7 +540,7 @@ async function executeNebiusRequest(opts: {
         model: currentModel,
         messages: formattedMessages,
         temperature: typeof opts.temperature === "number" ? opts.temperature : 0.2,
-        max_tokens: typeof opts.max_tokens === "number" ? Math.min(4096, opts.max_tokens) : 4096,
+        max_tokens: typeof opts.max_tokens === "number" ? Math.min(8192, opts.max_tokens) : 8192,
         ...(opts.top_p ? { top_p: opts.top_p } : {}),
       };
 
