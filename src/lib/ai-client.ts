@@ -100,7 +100,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     model: requestedModel || "auto",
   });
 
-  const defaultTimeout = params.image ? 35000 : 15000;
+  const defaultTimeout = 90000;
   const timeoutDuration = params.timeoutMs ?? defaultTimeout;
 
   // 2. Primary Route: Centralized /api/ai-chat orchestrator endpoint
@@ -119,7 +119,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         task: effectiveTask,
         model: requestedModel || undefined,
         temperature: params.temperature,
-        max_tokens: params.max_tokens || 8192,
+        max_tokens: params.max_tokens || 32768,
         responseMimeType: params.responseMimeType,
         top_p: params.top_p,
       }),
@@ -206,7 +206,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
           model: nvModel,
           messages: formattedMessages,
           temperature: typeof params.temperature === "number" ? params.temperature : 0.2,
-          max_tokens: typeof params.max_tokens === "number" ? Math.min(8192, params.max_tokens) : 8192,
+          max_tokens: typeof params.max_tokens === "number" ? Math.min(65536, params.max_tokens) : 32768,
           ...(params.top_p ? { top_p: params.top_p } : {}),
         }),
       });
@@ -286,7 +286,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
           contents,
           generationConfig: {
             temperature: typeof params.temperature === "number" ? params.temperature : 0.2,
-            maxOutputTokens: typeof params.max_tokens === "number" ? Math.min(8192, Math.max(512, params.max_tokens)) : 8192,
+            maxOutputTokens: typeof params.max_tokens === "number" ? Math.min(65536, Math.max(512, params.max_tokens)) : 32768,
             ...(params.responseMimeType ? { responseMimeType: params.responseMimeType } : {}),
             topP: params.top_p,
           },

@@ -2194,7 +2194,7 @@ Daily Study Hours: ${syllabusDailyHours} hours/day
 Student's Registered Subjects: ${subjects.map((s) => s.name).join(", ") || "General Studies"}
 
 SYLLABUS & TOPIC MATERIAL:
-${rawSyllabus.slice(0, 15000)}
+${rawSyllabus.slice(0, 100000)}
 
 Distribute study blocks across 4 cognitive phases:
 1. Phase 1 (First 50% of time): Core Concept Acquisition & Difficult Theory
@@ -2241,7 +2241,7 @@ Return ONLY a valid JSON object matching this schema without markdown fences:
             { role: "user", content: prompt },
           ],
           temperature: 0.2,
-          max_tokens: 3000,
+          max_tokens: 8192,
         });
 
         let parsed: any = null;
@@ -3329,7 +3329,7 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     const promptForAI = attachedFileBackup
       ? (attachedFileBackup.isImage
           ? questionText
-          : `[ATTACHED DOCUMENT: ${attachedFileBackup.name} (${attachedFileBackup.pageCount ? `${attachedFileBackup.pageCount} pages, ` : ""}${formatFileSize(attachedFileBackup.size)})]\n--- DOCUMENT CONTENT START ---\n${attachedFileBackup.content.slice(0, 25000)}\n--- DOCUMENT CONTENT END ---\n\nUser Question: ${questionText}`)
+          : `[ATTACHED DOCUMENT: ${attachedFileBackup.name} (${attachedFileBackup.pageCount ? `${attachedFileBackup.pageCount} pages, ` : ""}${formatFileSize(attachedFileBackup.size)})]\n--- DOCUMENT CONTENT START ---\n${attachedFileBackup.content.slice(0, 200000)}\n--- DOCUMENT CONTENT END ---\n\nUser Question: ${questionText}`)
       : questionText;
 
     let currentSessionId = activeChatSessionIdRef.current || activeChatSessionId;
@@ -3348,8 +3348,8 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     setChatFile(null);
     setIsAsking(true);
 
-    // Strip heavy base64 data URLs from history to keep memory & network payload ultra lean
-    const chatHistory = baseHistory.slice(-8).map((m) => ({
+    // Retain up to 60 previous dialogue turns for deep contextual memory while stripping heavy base64 data URLs
+    const chatHistory = baseHistory.slice(-60).map((m) => ({
       role: m.role,
       content: m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]"),
     }));
@@ -3399,17 +3399,35 @@ When the user asks you to make or save flashcards (e.g., "make a flash card and 
       const subject = subjects.find(s => s.id === chatSubjectId);
       const subjectNotes = notes.filter(n => n.subjectId === chatSubjectId);
       const notesContext = subjectNotes.map(n => `Title: ${n.title}\nContent:\n${n.content}`).join("\n\n---\n\n");
+      const subjectCards = flashcards.filter(c => c.subjectId === chatSubjectId || c.subject?.toLowerCase() === subject?.name?.toLowerCase());
+      const cardsContext = subjectCards.length > 0
+        ? `\n\nEXISTING FLASHCARDS FOR THIS SUBJECT (${subjectCards.length} cards):\n` + subjectCards.slice(0, 30).map(c => `- Q: ${c.front} | A: ${c.back}`).join("\n")
+        : "";
       
       systemPrompt = `You are Dream It AI, acting as an expert academic tutor for the subject "${subject?.name || 'Selected Subject'}".
-Use the student's notebook notes below as the foundational reference context for their syllabus.
+Use the student's notebook notes and study materials below as the foundational reference context for their syllabus.
 Provide deep, thorough, and complete explanations. Elaborate generously with clear definitions, intuitive analogies, detailed step-by-step derivations, and comprehensive examples.
 When referring to content from their notes, cite the source note title (e.g. [Source: Note Title]).
 
 SUBJECT NOTES KNOWLEDGE BASE:
 ${notesContext ? notesContext : "(No notes uploaded for this subject yet. Draw upon your deep subject expertise to teach this topic comprehensively.)"}
+${cardsContext}
 
 WORKSPACE EXECUTIVE POWERS:
 You can save notes and flashcards. When asked to save to notes or create flashcards, append the action command blocks at the very end.`;
+    } else {
+      // General assistant mode - inject comprehensive workspace context so AI is fully aware of all student assets
+      const noteSummaries = notes.slice(0, 20).map(n => `- [${n.subject || 'General'}] "${n.title}": ${n.content.slice(0, 300).replace(/\n+/g, " ")}...`).join("\n");
+      const taskSummaries = tasks.slice(0, 15).map(t => `- "${t.title}" (${t.course || 'General'}, priority: ${t.priority}, status: ${t.completed ? 'completed' : 'pending'})`).join("\n");
+      const flashcardSummary = `Total flashcards across workspace: ${flashcards.length} cards.`;
+
+      systemPrompt += `\nSTUDENT STUDY WORKSPACE CONTEXT:
+Registered Subjects: [${availableSubsList || "General Studies"}]
+${flashcardSummary}
+Recent Student Notes & Summaries:
+${noteSummaries || "No notes saved yet."}
+Active Study Tasks & Goals:
+${taskSummaries || "No active tasks."}\n`;
     }
 
     let accumulatedStreamedText = "";
@@ -3434,8 +3452,8 @@ You can save notes and flashcards. When asked to save to notes or create flashca
           base64Data: attachedFileBackup.base64,
           dataUrl: attachedFileBackup.dataUrl,
         } : undefined,
-        max_tokens: 8192,
-        temperature: chatSubjectId ? 0.2 : 0.5,
+        max_tokens: 32768,
+        temperature: chatSubjectId ? 0.2 : 0.4,
         onChunk: (chunk: string) => {
           accumulatedStreamedText += chunk;
           if (activeChatSessionIdRef.current === currentSessionId) {

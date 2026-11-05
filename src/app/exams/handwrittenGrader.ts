@@ -101,9 +101,9 @@ Output ONLY valid JSON matching this exact structure:
       messages: [{ role: "user", content: prompt }],
       image: primaryImage,
       temperature: 0.1,
-      max_tokens: 8192,
+      max_tokens: 16384,
       responseMimeType: "application/json",
-      timeoutMs: 50000,
+      timeoutMs: 90000,
     });
 
     if (res.error) {

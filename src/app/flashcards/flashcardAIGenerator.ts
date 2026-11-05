@@ -40,8 +40,8 @@ export interface FlashcardGenerationResult {
  * Builds the AI prompt for extracting 15–20 active-recall flashcards & chapter summary.
  */
 function buildFlashcardPrompt(content: string, hintTitle?: string, subjectName?: string): string {
-  // Truncate to reasonable context (up to ~18,000 characters for high density and speed)
-  const trimmedContent = content.slice(0, 20000);
+  // Allow deep comprehensive document analysis (up to 120,000 characters)
+  const trimmedContent = content.slice(0, 120000);
 
   return `You are a Senior Academic Pedagogy Director and Active-Recall Learning Specialist.
 Analyze the following textbook chapter / study material and synthesize an elite 15–20 card active-recall flashcard deck and a high-yield Executive Chapter Summary.
@@ -120,9 +120,9 @@ export async function generateFlashcardsAndSummary(
       model: 'gemini-3.5-flash-lite',
       messages: [{ role: 'user', content: prompt }],
       temperature: 0.2,
-      max_tokens: 8192,
+      max_tokens: 16384,
       responseMimeType: 'application/json',
-      timeoutMs: 45000,
+      timeoutMs: 90000,
     });
 
     if (aiRes.error) {

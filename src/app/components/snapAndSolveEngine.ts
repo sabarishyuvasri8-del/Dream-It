@@ -91,8 +91,8 @@ FORMATTING REQUIREMENTS:
         dataUrl: image.dataUrl,
       },
       temperature: 0.2,
-      max_tokens: 8192,
-      timeoutMs: 55000,
+      max_tokens: 32768,
+      timeoutMs: 90000,
     });
 
     if (res.error) {

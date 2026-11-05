@@ -58,7 +58,7 @@ EXAMINATION SPECIFICATIONS:
 - Difficulty Target: ${difficulty}
 - Total Marks: ${totalMarks}
 - Time Allowed: ${durationMinutes} Minutes
-${sourceNoteContent ? `\nSOURCE STUDY NOTES CONTEXT:\n"""\n${sourceNoteContent.slice(0, 4000)}\n"""\n` : ""}
+${sourceNoteContent ? `\nSOURCE STUDY NOTES CONTEXT:\n"""\n${sourceNoteContent.slice(0, 80000)}\n"""\n` : ""}
 
 BLUEPRINT & QUESTION DISTRIBUTION:
 ${questionDistribution}
@@ -338,9 +338,9 @@ export async function generateCBSEExamPaper(config: ExamConfig): Promise<{ paper
       model: "gemini-3.1-flash-lite",
       messages: [{ role: "user", content: prompt }],
       temperature: 0.2,
-      max_tokens: 8192,
+      max_tokens: 16384,
       responseMimeType: "application/json",
-      timeoutMs: 40000,
+      timeoutMs: 90000,
     });
 
     const raw = (aiRes.content || "").trim();

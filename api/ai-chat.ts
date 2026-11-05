@@ -119,7 +119,7 @@ export default async function handler(req: any, res?: any) {
       task = "general",
       model,
       temperature = 0.2,
-      max_tokens = 8192,
+      max_tokens = 32768,
       responseMimeType,
       response_mime_type,
       top_p,
@@ -361,14 +361,14 @@ async function executeNvidiaRequest(opts: {
 
   for (const currentModel of opts.candidateModels) {
     const modelCtrl = new AbortController();
-    const modelTimer = setTimeout(() => modelCtrl.abort(), 35000);
+    const modelTimer = setTimeout(() => modelCtrl.abort(), 90000);
 
     try {
       const payload: any = {
         model: currentModel,
         messages: formattedMessages,
         temperature: typeof opts.temperature === "number" ? opts.temperature : 0.2,
-        max_tokens: typeof opts.max_tokens === "number" ? Math.min(8192, opts.max_tokens) : 8192,
+        max_tokens: typeof opts.max_tokens === "number" ? Math.min(65536, opts.max_tokens) : 32768,
         ...(opts.top_p ? { top_p: opts.top_p } : {}),
       };
 
@@ -460,7 +460,7 @@ async function executeGeminiRequest(opts: {
     contents,
     generationConfig: {
       temperature: typeof opts.temperature === "number" ? opts.temperature : 0.2,
-      maxOutputTokens: typeof opts.max_tokens === "number" ? Math.min(8192, Math.max(512, opts.max_tokens)) : 8192,
+      maxOutputTokens: typeof opts.max_tokens === "number" ? Math.min(65536, Math.max(512, opts.max_tokens)) : 32768,
       ...(opts.responseMimeType ? { responseMimeType: opts.responseMimeType } : {}),
       topP: opts.top_p,
     },
@@ -476,7 +476,7 @@ async function executeGeminiRequest(opts: {
   for (const currentModel of opts.candidateModels) {
     const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${opts.apiKey.trim()}`;
     const modelCtrl = new AbortController();
-    const modelTimer = setTimeout(() => modelCtrl.abort(), 25000);
+    const modelTimer = setTimeout(() => modelCtrl.abort(), 60000);
 
     try {
       const googleRes = await fetch(googleUrl, {
@@ -533,14 +533,14 @@ async function executeNebiusRequest(opts: {
 
   for (const currentModel of opts.candidateModels) {
     const modelCtrl = new AbortController();
-    const modelTimer = setTimeout(() => modelCtrl.abort(), 30000);
+    const modelTimer = setTimeout(() => modelCtrl.abort(), 60000);
 
     try {
       const payload: any = {
         model: currentModel,
         messages: formattedMessages,
         temperature: typeof opts.temperature === "number" ? opts.temperature : 0.2,
-        max_tokens: typeof opts.max_tokens === "number" ? Math.min(8192, opts.max_tokens) : 8192,
+        max_tokens: typeof opts.max_tokens === "number" ? Math.min(65536, opts.max_tokens) : 32768,
         ...(opts.top_p ? { top_p: opts.top_p } : {}),
       };
 

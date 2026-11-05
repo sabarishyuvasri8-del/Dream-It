@@ -92,7 +92,7 @@ function localAiProxyPlugin(env: Record<string, string>) {
                 task = 'general',
                 model,
                 temperature = 0.2,
-                max_tokens = 8192,
+                max_tokens = 32768,
                 responseMimeType,
                 response_mime_type,
                 top_p,
@@ -180,7 +180,7 @@ function localAiProxyPlugin(env: Record<string, string>) {
                           model: mId,
                           messages: formattedMessages,
                           temperature: typeof temperature === 'number' ? temperature : 0.2,
-                          max_tokens: typeof max_tokens === 'number' ? Math.min(8192, max_tokens) : 8192,
+                          max_tokens: typeof max_tokens === 'number' ? Math.min(65536, max_tokens) : 32768,
                           ...(top_p ? { top_p } : {}),
                         }),
                       });
@@ -251,7 +251,7 @@ function localAiProxyPlugin(env: Record<string, string>) {
                     contents,
                     generationConfig: {
                       temperature: typeof temperature === 'number' ? temperature : 0.2,
-                      maxOutputTokens: typeof max_tokens === 'number' ? Math.min(8192, Math.max(512, max_tokens)) : 8192,
+                      maxOutputTokens: typeof max_tokens === 'number' ? Math.min(65536, Math.max(512, max_tokens)) : 32768,
                       ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
                       topP: top_p,
                     },
@@ -305,7 +305,7 @@ function localAiProxyPlugin(env: Record<string, string>) {
                           model: mId,
                           messages: formattedMessages,
                           temperature: typeof temperature === 'number' ? temperature : 0.2,
-                          max_tokens: typeof max_tokens === 'number' ? Math.min(8192, max_tokens) : 8192,
+                          max_tokens: typeof max_tokens === 'number' ? Math.min(65536, max_tokens) : 32768,
                           ...(top_p ? { top_p } : {}),
                         }),
                       });
