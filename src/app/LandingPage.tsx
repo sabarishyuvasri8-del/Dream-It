@@ -28,10 +28,15 @@ import {
   Wallet,
   X,
   Palette,
+  Snowflake,
 } from "lucide-react";
 import ParticleField from "./components/ParticleField";
 import { Snowfall } from "falling-snow/react";
 import ThemeSelector from "./components/ThemeSelector";
+import SnowSettingsModal, {
+  SnowSettings,
+  DEFAULT_SNOW_SETTINGS,
+} from "./components/SnowSettingsModal";
 import { useTheme } from "../lib/ThemeContext";
 
 /* ─── HOOKS ─── */
@@ -254,6 +259,38 @@ export default function LandingPage({
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isThemeSelectorOpen, setIsThemeSelectorOpen] = useState(false);
+  const [isSnowSettingsOpen, setIsSnowSettingsOpen] = useState(false);
+
+  const STORAGE_KEY_SNOW = "dreamit_snowfall_settings";
+  const [snowSettings, setSnowSettings] = useState<SnowSettings>(() => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY_SNOW);
+      if (saved) {
+        return { ...DEFAULT_SNOW_SETTINGS, ...JSON.parse(saved) };
+      }
+    } catch (e) {
+      console.warn("Failed to load snow settings:", e);
+    }
+    return DEFAULT_SNOW_SETTINGS;
+  });
+
+  const handleSnowSettingsChange = (updated: SnowSettings) => {
+    setSnowSettings(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY_SNOW, JSON.stringify(updated));
+    } catch (e) {
+      console.warn("Failed to save snow settings:", e);
+    }
+  };
+
+  const handleSnowSettingsReset = () => {
+    setSnowSettings(DEFAULT_SNOW_SETTINGS);
+    try {
+      localStorage.removeItem(STORAGE_KEY_SNOW);
+    } catch (e) {
+      console.warn("Failed to reset snow settings:", e);
+    }
+  };
 
   useEffect(() => {
     let wasScrolled = window.scrollY > 100;
@@ -306,18 +343,24 @@ export default function LandingPage({
       }}
     >
       <ParticleField />
-      <Snowfall
-        fullScreen
-        flake="mixed"
-        count={85}
-        speed={0.7}
-        wind={0.15}
-        size={[3, 14]}
-        opacity={[0.25, 0.85]}
-        depth={1}
-        zIndex={10}
-        respectReducedMotion={prefersReducedMotion}
-      />
+      {snowSettings.enabled && (
+        <Snowfall
+          fullScreen
+          flake={snowSettings.flake === "emoji" ? undefined : (snowSettings.flake as any)}
+          images={snowSettings.flake === "emoji" ? snowSettings.emojiFlakes : undefined}
+          count={snowSettings.count}
+          speed={snowSettings.speed}
+          wind={snowSettings.wind}
+          size={[snowSettings.minSize, snowSettings.maxSize]}
+          colors={snowSettings.colors}
+          opacity={[snowSettings.minOpacity, snowSettings.maxOpacity]}
+          spin={snowSettings.spin}
+          sway={snowSettings.sway}
+          depth={snowSettings.depth}
+          zIndex={10}
+          respectReducedMotion={prefersReducedMotion}
+        />
+      )}
       {/* ─── HEADER ─── */}
       <header
         className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
@@ -369,6 +412,33 @@ export default function LandingPage({
           </nav>
 
           <div className="hidden md:flex items-center gap-3">
+            {/* Snow Falling Settings Button */}
+            <button
+              onClick={() => setIsSnowSettingsOpen(true)}
+              className="px-3 py-2 rounded-xl transition-all duration-200 hover:scale-105 flex items-center gap-2 group text-xs font-semibold cursor-pointer"
+              style={{
+                backgroundColor: "var(--m-surface-alt)",
+                color: "var(--m-text-heading)",
+                border: "1px solid var(--m-border-light)",
+              }}
+              title="Customize Snow Falling Effect"
+              aria-label="Snow Falling Settings"
+            >
+              <Snowflake
+                size={15}
+                style={{ color: "var(--m-primary)" }}
+                className={snowSettings.enabled ? "animate-spin-slow" : "opacity-40"}
+              />
+              <span className="hidden lg:inline">Snow</span>
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{
+                  backgroundColor: snowSettings.enabled ? "var(--m-primary)" : "var(--m-text-sub)",
+                  boxShadow: snowSettings.enabled ? "0 0 6px var(--m-primary)" : "none",
+                }}
+              />
+            </button>
+
             <button
               onClick={() => setIsThemeSelectorOpen(true)}
               className="px-3 py-2 rounded-xl transition-all duration-200 hover:scale-105 flex items-center gap-2 group text-xs font-semibold cursor-pointer"
@@ -428,21 +498,40 @@ export default function LandingPage({
             </button>
           </div>
 
-          <button
-            className="md:hidden p-2 rounded-md focus:outline-none focus-visible:ring-2"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            aria-label="Toggle menu"
-            style={{ color: "var(--m-text-heading)", outlineColor: "var(--m-primary)" }}
-          >
-            {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          <div className="md:hidden flex items-center gap-2">
+            <button
+              onClick={() => setIsSnowSettingsOpen(true)}
+              className="p-2 rounded-xl transition-all hover:scale-105 flex items-center justify-center cursor-pointer"
+              style={{
+                backgroundColor: "var(--m-surface-alt)",
+                color: "var(--m-text-heading)",
+                border: "1px solid var(--m-border-light)",
+              }}
+              title="Snow Falling Settings"
+              aria-label="Snow Falling Settings"
+            >
+              <Snowflake
+                size={18}
+                style={{ color: "var(--m-primary)" }}
+                className={snowSettings.enabled ? "animate-spin-slow" : "opacity-40"}
+              />
+            </button>
+            <button
+              className="p-2 rounded-md focus:outline-none focus-visible:ring-2"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle menu"
+              style={{ color: "var(--m-text-heading)", outlineColor: "var(--m-primary)" }}
+            >
+              {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Menu */}
         <div
           className="md:hidden overflow-hidden transition-all duration-300"
           style={{
-            maxHeight: mobileMenuOpen ? "400px" : "0",
+            maxHeight: mobileMenuOpen ? "460px" : "0",
             opacity: mobileMenuOpen ? 1 : 0,
             backgroundColor: "var(--m-surface-solid)",
             borderBottom: mobileMenuOpen ? "1px solid var(--m-border)" : "none",
@@ -460,6 +549,29 @@ export default function LandingPage({
                 {link.name}
               </a>
             ))}
+            <button
+              onClick={() => {
+                closeMobileMenu();
+                setIsSnowSettingsOpen(true);
+              }}
+              className="flex items-center justify-between px-4 py-3 rounded-xl text-sm font-semibold transition-colors cursor-pointer"
+              style={{
+                backgroundColor: "var(--m-surface-alt)",
+                color: "var(--m-text-heading)",
+                border: "1px solid var(--m-border-light)",
+              }}
+            >
+              <div className="flex items-center gap-2.5">
+                <Snowflake size={18} style={{ color: "var(--m-primary)" }} />
+                <span>Snowfall: {snowSettings.enabled ? `${snowSettings.count} flakes (${snowSettings.flake})` : "Paused"}</span>
+              </div>
+              <span
+                className="w-2.5 h-2.5 rounded-full"
+                style={{
+                  backgroundColor: snowSettings.enabled ? "var(--m-primary)" : "var(--m-text-sub)",
+                }}
+              />
+            </button>
             <button
               onClick={() => {
                 closeMobileMenu();
@@ -1359,6 +1471,15 @@ export default function LandingPage({
       <ThemeSelector
         isOpen={isThemeSelectorOpen}
         onClose={() => setIsThemeSelectorOpen(false)}
+      />
+
+      {/* ─── SNOWFALL STUDIO MODAL ─── */}
+      <SnowSettingsModal
+        isOpen={isSnowSettingsOpen}
+        onClose={() => setIsSnowSettingsOpen(false)}
+        settings={snowSettings}
+        onChange={handleSnowSettingsChange}
+        onReset={handleSnowSettingsReset}
       />
     </div>
   );
