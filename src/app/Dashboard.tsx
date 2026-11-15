@@ -127,7 +127,7 @@ import {
 const FinanceApp = lazy(() => import("./finance/FinanceApp"));
 const ExamSimulatorApp = lazy(() => import("./exams/ExamSimulatorApp"));
 import type { FinanceData, FinanceTransaction, FinanceProfile } from "../lib/finance-types";
-import { fetchAI } from "../lib/ai-client";
+import { fetchAI, generateAIImage } from "../lib/ai-client";
 import { cleanLatexToReadable, distillToFlashcard, algorithmicDistill } from "../lib/flashcardDistiller";
 import { FileUpload, formatFileSize } from "../components/FileUpload";
 import { useTheme } from "../lib/ThemeContext";
@@ -152,6 +152,7 @@ import { useWebRTCCall } from "./components/calls/useWebRTCCall";
 import IncomingCallModal from "./components/calls/IncomingCallModal";
 import ActiveCallOverlay from "./components/calls/ActiveCallOverlay";
 import { AIThinkingStatus } from "./components/AIThinkingStatus";
+import { AIImageGenerationCard } from "./components/AIImageGenerationCard";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { OfflineSyncIndicator } from "./components/OfflineSyncIndicator";
 import { subscribePWAInstall, promptPWAInstall, isPWAInstalled } from "../lib/pwa";
@@ -194,6 +195,47 @@ function renderSimpleMarkdown(text: string, isUserMessage?: boolean) {
       <MarkdownRenderer content={text} compact={isUserMessage} />
     </Suspense>
   );
+}
+
+/** Render chat message content with rich support for AI Image Generation cards */
+function renderChatMessageContent(
+  content: string,
+  isUserMessage?: boolean,
+  onRegenerateImage?: (prompt: string, seed?: number) => void,
+  onSaveImageToNotes?: (title: string, content: string, imageUrl: string) => void,
+  showToast?: (msg: string, type?: "success" | "error" | "info") => void
+) {
+  if (!content || !content.trim()) {
+    return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet.</p>;
+  }
+
+  const imageCardMatch = content.match(/\[DREAMIT_IMAGE_CARD:([\s\S]*?)\]/);
+  if (imageCardMatch) {
+    try {
+      const cardData = JSON.parse(imageCardMatch[1]);
+      const remainingText = content.replace(/\[DREAMIT_IMAGE_CARD:[\s\S]*?\]/, "").trim();
+
+      return (
+        <div className="space-y-3 w-full">
+          <AIImageGenerationCard
+            data={cardData}
+            onRegenerate={onRegenerateImage}
+            onSaveToNotes={onSaveImageToNotes}
+            showToast={showToast}
+          />
+          {remainingText && (
+            <div className="pt-1">
+              {renderSimpleMarkdown(remainingText, isUserMessage)}
+            </div>
+          )}
+        </div>
+      );
+    } catch (e) {
+      console.warn("Failed to parse DREAMIT_IMAGE_CARD JSON:", e);
+    }
+  }
+
+  return renderSimpleMarkdown(content, isUserMessage);
 }
 function getLast7Days(): string[] {
   const days: string[] = [];
@@ -3395,6 +3437,92 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     setChatFile(null);
     setIsAsking(true);
 
+    // ─── Detect AI Image Generation Intent ───
+    const isExplicitImageCmd = /^\/(?:image|img|draw|art|generate)\s+(.+)/i.exec(rawQuestion);
+    const isNaturalImagePrompt =
+      /(?:generate|create|draw|make|paint|illustrate|render|visualize)\s+(?:an?\s+)?(?:image|picture|drawing|artwork|photo|illustration|graphic|portrait)\s+(?:of\s+)?(.+)/i.exec(rawQuestion) ||
+      (/^(?:draw|paint|illustrate|visualize)\s+(.+)/i.test(rawQuestion) &&
+       !/^(?:draw|illustrate)\s+(?:a\s+)?(?:conclusion|comparison|contrast|parallel|line|distinction|connection)\b/i.test(rawQuestion)
+        ? /^(?:draw|paint|illustrate|visualize)\s+(.+)/i.exec(rawQuestion)
+        : null);
+
+    const imagePromptMatch = !attachedFileBackup ? (isExplicitImageCmd || isNaturalImagePrompt) : null;
+
+    if (imagePromptMatch) {
+      const extractedPrompt = imagePromptMatch[1].trim();
+      const seed = Math.floor(Math.random() * 10000000);
+      const initialCardContent = `[DREAMIT_IMAGE_CARD:${JSON.stringify({
+        status: "generating",
+        prompt: extractedPrompt,
+        aspectRatio: "1:1",
+        seed,
+      })}]`;
+
+      const generatingMessages: Message[] = [
+        ...nextUserMessages,
+        { role: "assistant", content: initialCardContent },
+      ];
+      setMessages(generatingMessages);
+      messagesRef.current = generatingMessages;
+      flushSessionToStorage(currentSessionId, generatingMessages);
+
+      try {
+        const imageResult = await generateAIImage({
+          prompt: extractedPrompt,
+          aspectRatio: "1:1",
+          seed,
+        });
+
+        if (imageResult && imageResult.imageUrl) {
+          const finalCardContent = `[DREAMIT_IMAGE_CARD:${JSON.stringify({
+            status: "ready",
+            prompt: extractedPrompt,
+            refinedPrompt: imageResult.refinedPrompt,
+            imageUrl: imageResult.imageUrl,
+            provider: imageResult.provider || "FLUX.1 High-Fidelity",
+            seed: imageResult.seed,
+            aspectRatio: imageResult.aspectRatio || "1:1",
+            dimensions: imageResult.dimensions,
+          })}]`;
+
+          const readyMessages: Message[] = [
+            ...nextUserMessages,
+            {
+              role: "assistant",
+              content: `${finalCardContent}\n\n✨ Here is your generated visual of **${extractedPrompt}**. You can download it, copy it to your clipboard, or save it to your study notes.`,
+            },
+          ];
+
+          if (activeChatSessionIdRef.current === currentSessionId) {
+            setMessages(readyMessages);
+            messagesRef.current = readyMessages;
+          }
+          flushSessionToStorage(currentSessionId, readyMessages);
+          addXP(5);
+          showToast("AI image generated! 🎨", "success");
+        } else {
+          throw new Error("Failed to generate image URL");
+        }
+      } catch (err: any) {
+        console.warn("Image generation failed:", err);
+        const errorMessages: Message[] = [
+          ...nextUserMessages,
+          {
+            role: "assistant",
+            content: `⚠️ **Dream It AI**: Failed to generate image for "${extractedPrompt}". Please try again in a few moments.`,
+          },
+        ];
+        if (activeChatSessionIdRef.current === currentSessionId) {
+          setMessages(errorMessages);
+          messagesRef.current = errorMessages;
+        }
+        flushSessionToStorage(currentSessionId, errorMessages);
+      } finally {
+        setIsAsking(false);
+      }
+      return;
+    }
+
     // Retain up to 60 previous dialogue turns for deep contextual memory while stripping heavy base64 data URLs
     const chatHistory = baseHistory.slice(-60).map((m) => ({
       role: m.role,
@@ -3688,9 +3816,16 @@ ${taskSummaries || "No active tasks."}\n`;
   // ─── AI Message Action Handlers (Copy, Share, Edit, Regenerate) ───
   const getCleanMessageText = (content: string) => {
     return content
+      .replace(/\[DREAMIT_IMAGE_CARD:\{[\s\S]*?"prompt":"([^"]+)"[\s\S]*?\}\]/g, "[Generated AI Image: $1]")
+      .replace(/\[DREAMIT_IMAGE_CARD:[\s\S]*?\]/g, "[Generated AI Image]")
       .replace(/^!\[.*?\]\(.*?\)\s*/, "")
       .replace(/^(?:📎|📄)\s*\*\*.*?\*\*.*?\n\n/, "")
       .trim();
+  };
+
+  const handleRegenerateImage = (prompt: string, seed?: number) => {
+    if (isAsking) return;
+    askCoach(undefined, `/image ${prompt}`);
   };
 
   const handleCopyMessage = async (content: string, idx: number) => {
@@ -5836,7 +5971,20 @@ Mathematics:
                             </div>
                           </div>
                         ) : m.content ? (
-                          renderSimpleMarkdown(m.content, m.role === "user")
+                          renderChatMessageContent(
+                            m.content,
+                            m.role === "user",
+                            handleRegenerateImage,
+                            (title, content, imgUrl) => {
+                              executeSaveNoteFromAI({
+                                title,
+                                content,
+                                subjectName: "AI Visuals",
+                                subjectId: chatSubjectId ?? undefined,
+                              });
+                            },
+                            showToast
+                          )
                         ) : (
                           <AIThinkingStatus size="sm" />
                         )}
@@ -5954,6 +6102,19 @@ Mathematics:
                     </button>
                     <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
                       <Camera size={17} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!chatDraft.startsWith("/image ")) {
+                          setChatDraft(chatDraft.trim() ? `/image ${chatDraft.trim()}` : "Generate an image of ");
+                        }
+                      }}
+                      className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75"
+                      style={{ color: "var(--m-text-sub)" }}
+                      title="Generate AI Image (/image)"
+                    >
+                      <Sparkles size={17} />
                     </button>
 
                     <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="How can I help you today?" />
@@ -8101,6 +8262,20 @@ Mathematics:
                           <Camera size={16} className="sm:hidden" />
                           <Camera size={18} className="hidden sm:block" />
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!chatDraft.startsWith("/image ")) {
+                              setChatDraft(chatDraft.trim() ? `/image ${chatDraft.trim()}` : "Generate an image of ");
+                            }
+                          }}
+                          className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75"
+                          style={{ color: "var(--m-text-sub)" }}
+                          title="Generate AI Image (/image)"
+                        >
+                          <Sparkles size={16} className="sm:hidden" />
+                          <Sparkles size={18} className="hidden sm:block" />
+                        </button>
 
                         <input
                           value={chatDraft}
@@ -8219,7 +8394,20 @@ Mathematics:
                                 </div>
                               </div>
                             ) : m.content ? (
-                              renderSimpleMarkdown(m.content, m.role === "user")
+                              renderChatMessageContent(
+                                m.content,
+                                m.role === "user",
+                                handleRegenerateImage,
+                                (title, content, imgUrl) => {
+                                  executeSaveNoteFromAI({
+                                    title,
+                                    content,
+                                    subjectName: "AI Visuals",
+                                    subjectId: chatSubjectId ?? undefined,
+                                  });
+                                },
+                                showToast
+                              )
                             ) : (
                               <AIThinkingStatus size="lg" />
                             )}
@@ -8325,6 +8513,20 @@ Mathematics:
                       <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
                         <Camera size={16} className="sm:hidden" />
                         <Camera size={18} className="hidden sm:block" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!chatDraft.startsWith("/image ")) {
+                            setChatDraft(chatDraft.trim() ? `/image ${chatDraft.trim()}` : "Generate an image of ");
+                          }
+                        }}
+                        className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75"
+                        style={{ color: "var(--m-text-sub)" }}
+                        title="Generate AI Image (/image)"
+                      >
+                        <Sparkles size={16} className="sm:hidden" />
+                        <Sparkles size={18} className="hidden sm:block" />
                       </button>
 
                       <input

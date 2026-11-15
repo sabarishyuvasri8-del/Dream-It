@@ -481,6 +481,62 @@ function localAiProxyPlugin(env: Record<string, string>) {
               mediaType: youtubeId ? 'video' : undefined,
             }));
           }
+        } else if (req.url === '/api/ai-image' && req.method === 'POST') {
+          let body = '';
+          req.on('data', (chunk: any) => { body += chunk; });
+          req.on('end', async () => {
+            try {
+              const parsed = JSON.parse(body || '{}');
+              const {
+                prompt = '',
+                aspectRatio = '1:1',
+                enhance = true,
+                seed = Math.floor(Math.random() * 10000000),
+                model = 'flux',
+              } = parsed;
+
+              if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+                res.statusCode = 400;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ error: 'Prompt must be a non-empty string.' }));
+                return;
+              }
+
+              const ASPECT_RATIO_MAP: Record<string, { width: number; height: number }> = {
+                '1:1': { width: 1024, height: 1024 },
+                '16:9': { width: 1280, height: 720 },
+                '9:16': { width: 720, height: 1280 },
+                '4:3': { width: 1024, height: 768 },
+              };
+              const dimensions = ASPECT_RATIO_MAP[aspectRatio] || ASPECT_RATIO_MAP['1:1'];
+
+              // Polish prompt if enhance requested
+              let refinedPrompt = prompt.trim();
+              if (enhance && refinedPrompt.length < 120 && !/cinematic|photorealistic|detailed|8k/i.test(refinedPrompt)) {
+                refinedPrompt = `${refinedPrompt}, highly detailed, cinematic lighting, 8k resolution, photorealistic, elegant composition`;
+              }
+
+              const encodedPrompt = encodeURIComponent(refinedPrompt);
+              const imageUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=${dimensions.width}&height=${dimensions.height}&seed=${seed}&nologo=true&model=${model}&enhance=false`;
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({
+                success: true,
+                imageUrl,
+                originalPrompt: prompt.trim(),
+                refinedPrompt,
+                provider: 'FLUX.1 High-Fidelity',
+                seed,
+                aspectRatio,
+                dimensions,
+              }));
+            } catch (err: any) {
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: err?.message || 'Image generation failed' }));
+            }
+          });
         } else if (req.url === '/api/send-push' && req.method === 'POST') {
           let body = '';
           req.on('data', (chunk: any) => { body += chunk; });
