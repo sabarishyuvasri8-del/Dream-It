@@ -255,6 +255,39 @@ const DEFAULT_WELCOME_MESSAGE: Message = {
   content: "Welcome! I'm **Dream It AI**, your intelligent study assistant.\n\nAsk me study questions, math problems, code debugging, or attach files — I'm here to help you excel!",
 };
 
+const DAILY_GREETINGS: string[] = [
+  "Back at it, {name}",
+  "Good to see you, {name}",
+  "Ready when you are, {name}",
+  "What are we tackling today, {name}?",
+  "Let’s make progress, {name}",
+  "Where were we, {name}?",
+  "Great to have you back, {name}",
+  "What’s on your mind today, {name}?",
+  "Time to lock in, {name}",
+  "Stay in the zone, {name}",
+  "Deep work starts now, {name}",
+  "One concept at a time, {name}",
+  "Focus on what matters, {name}",
+  "Clear mind, sharp focus, {name}",
+  "Master your craft today, {name}",
+  "Built for breakthroughs, {name}",
+  "Make today count, {name}",
+  "Let's crush this session, {name}",
+  "One step closer to your goals, {name}",
+  "Small steps, massive results, {name}",
+  "Consistency beats talent, {name}",
+  "Turn effort into mastery, {name}",
+  "Level up today, {name}",
+  "Future you will thank you, {name}",
+  "Ready to learn, {name}?",
+  "Let's solve something, {name}",
+  "What are we discovering today, {name}?",
+  "Think clearly, achieve more, {name}",
+  "Let's build something great, {name}",
+  "Your study sanctuary, {name}",
+];
+
 function safeSaveSessionsToStorage(key: string, sessions: AIChatSession[]): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(sessions));
@@ -681,6 +714,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     const first = raw.split(" ")[0];
     return first.charAt(0).toUpperCase() + first.slice(1);
   }, [userNameDisplay]);
+
+  // Quote of the day (rotates through the 30 quotes daily)
+  const dailyGreeting = useMemo(() => {
+    const dayOfMonth = new Date().getDate(); // 1 to 31
+    const idx = (dayOfMonth - 1) % DAILY_GREETINGS.length;
+    const template = DAILY_GREETINGS[idx] || DAILY_GREETINGS[0];
+    return template.replace("{name}", userFirstName);
+  }, [userFirstName]);
 
   // ─── P2P WebRTC Friends Calling (Zero Storage) ───
   const callManager = useWebRTCCall(userId, userNameDisplay, userImageUrl);
@@ -5721,7 +5762,7 @@ Mathematics:
                             className="font-[Roboto_Slab] text-xl sm:text-2xl font-normal tracking-tight"
                             style={{ color: "var(--m-text-heading)" }}
                           >
-                            Back at it, {userFirstName}
+                            {dailyGreeting}
                           </h2>
                         </div>
                       ) : (
@@ -8018,7 +8059,7 @@ Mathematics:
                     className="font-[Roboto_Slab] text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight mb-4 sm:mb-6 text-center select-none"
                     style={{ color: "var(--m-text-heading)" }}
                   >
-                    Back at it, {userFirstName}
+                    {dailyGreeting}
                   </h1>
 
                   <div className="w-full select-auto">
