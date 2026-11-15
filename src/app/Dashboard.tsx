@@ -497,8 +497,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
 
   // ─── AI Chat — Dream It AI ───
 
-  const DEFAULT_WELCOME: Message = DEFAULT_WELCOME_MESSAGE;
-  const [messages, setMessages] = useState<Message[]>([DEFAULT_WELCOME_MESSAGE]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [chatDraft, setChatDraft] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [chatSubjectId, setChatSubjectId] = useState<number | null>(null);
@@ -512,7 +511,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const activeChatSessionIdRef = useRef<string | null>(null);
   activeChatSessionIdRef.current = activeChatSessionId;
-  const messagesRef = useRef<Message[]>([DEFAULT_WELCOME_MESSAGE]);
+  const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
   const [showPastChatsDrawer, setShowPastChatsDrawer] = useState(false);
   const [wideSidebarOpen, setWideSidebarOpen] = useState(() => {
@@ -675,6 +674,13 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     const namePart = userEmail.split("@")[0];
     return namePart.charAt(0).toUpperCase() + namePart.slice(1);
   }, [userName, userEmail]);
+
+  const userFirstName = useMemo(() => {
+    const raw = (userNameDisplay || "").trim();
+    if (!raw) return "there";
+    const first = raw.split(" ")[0];
+    return first.charAt(0).toUpperCase() + first.slice(1);
+  }, [userNameDisplay]);
 
   // ─── P2P WebRTC Friends Calling (Zero Storage) ───
   const callManager = useWebRTCCall(userId, userNameDisplay, userImageUrl);
@@ -3751,8 +3757,8 @@ ${taskSummaries || "No active tasks."}\n`;
     const newId = "session_" + Date.now();
     activeChatSessionIdRef.current = newId;
     setActiveChatSessionId(newId);
-    setMessages([DEFAULT_WELCOME_MESSAGE]);
-    messagesRef.current = [DEFAULT_WELCOME_MESSAGE];
+    setMessages([]);
+    messagesRef.current = [];
     setShowPastChatsDrawer(false);
     setEditingMessageIdx(null);
     setChatDraft("");
@@ -3784,7 +3790,7 @@ ${taskSummaries || "No active tasks."}\n`;
     if (!session) return;
 
     // 2. Switch to selected session - DO NOT TOUCH timestamps or reorder sessions!
-    const targetMsgs = session.messages && session.messages.length > 0 ? session.messages : [DEFAULT_WELCOME_MESSAGE];
+    const targetMsgs = session.messages && session.messages.length > 0 ? session.messages : [];
     activeChatSessionIdRef.current = session.id;
     setActiveChatSessionId(session.id);
     setMessages(targetMsgs);
@@ -3820,7 +3826,7 @@ ${taskSummaries || "No active tasks."}\n`;
       const validNext = updatedSessions.filter((s) => s.messages && s.messages.some((m) => m.role === "user"));
       if (validNext.length > 0) {
         const nextActive = validNext[0];
-        const nextMsgs = nextActive.messages?.length ? nextActive.messages : [DEFAULT_WELCOME_MESSAGE];
+        const nextMsgs = nextActive.messages?.length ? nextActive.messages : [];
         activeChatSessionIdRef.current = nextActive.id;
         setActiveChatSessionId(nextActive.id);
         setMessages(nextMsgs);
@@ -3832,8 +3838,8 @@ ${taskSummaries || "No active tasks."}\n`;
         const freshId = "session_" + Date.now();
         activeChatSessionIdRef.current = freshId;
         setActiveChatSessionId(freshId);
-        setMessages([DEFAULT_WELCOME_MESSAGE]);
-        messagesRef.current = [DEFAULT_WELCOME_MESSAGE];
+        setMessages([]);
+        messagesRef.current = [];
       }
     }
 
@@ -3872,8 +3878,8 @@ ${taskSummaries || "No active tasks."}\n`;
     const freshId = "session_" + Date.now();
     setActiveChatSessionId(freshId);
     activeChatSessionIdRef.current = freshId;
-    setMessages([DEFAULT_WELCOME_MESSAGE]);
-    messagesRef.current = [DEFAULT_WELCOME_MESSAGE];
+    setMessages([]);
+    messagesRef.current = [];
     setChatDraft("");
     setChatFile(null);
   }, [userId]);
@@ -5708,8 +5714,21 @@ Mathematics:
                 ) : (
                   <>
                     {/* Messages Container (Fills middle area perfectly) */}
-                    <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6" style={{ scrollBehavior: "smooth" }}>
-                  {messages.map((m, idx) => (
+                    <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6 flex flex-col" style={{ scrollBehavior: "smooth" }}>
+                  {messages.length === 0 ? (
+                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 my-auto select-none min-h-[200px]">
+                      <div className="flex items-center gap-2.5 justify-center">
+                        <span className="text-xl sm:text-2xl text-[#d97706] dark:text-[#f59e0b] select-none leading-none">✳</span>
+                        <h2
+                          className="font-[Roboto_Slab] text-xl sm:text-2xl font-normal tracking-tight"
+                          style={{ color: "var(--m-text-heading)" }}
+                        >
+                          Back at it, {userFirstName}
+                        </h2>
+                      </div>
+                    </div>
+                  ) : (
+                    messages.map((m, idx) => (
                     <div
                       key={idx}
                       className={`group flex flex-col ${m.role === "user" ? "items-end ml-auto max-w-[88%]" : "items-start w-full max-w-full"}`}
@@ -5839,7 +5858,7 @@ Mathematics:
                         </div>
                       )}
                     </div>
-                  ))}
+                  ))) }
                   {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
                     <div className="flex w-fit items-center gap-2 py-1.5 pl-0.5">
                       <AIThinkingStatus size="sm" />
@@ -5900,7 +5919,7 @@ Mathematics:
                       <Camera size={17} />
                     </button>
 
-                    <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="Ask Dream It AI anything, or paste image/file..." />
+                    <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="How can I help you today?" />
                     <VoiceInputButton
                       value={chatDraft}
                       onChange={setChatDraft}
@@ -8002,8 +8021,21 @@ Mathematics:
                 className="flex-1 overflow-y-auto custom-scrollbar w-full overscroll-contain"
                 style={{ scrollBehavior: "smooth" }}
               >
-                <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-8 space-y-4 sm:space-y-7">
-                {messages.map((m, idx) => (
+                <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-8 space-y-4 sm:space-y-7 flex flex-col flex-1">
+                {messages.length === 0 ? (
+                  <div className="flex-1 flex flex-col items-center justify-center text-center py-20 sm:py-32 my-auto select-none">
+                    <div className="flex items-center gap-3 justify-center">
+                      <span className="text-2xl sm:text-3xl text-[#d97706] dark:text-[#f59e0b] select-none leading-none">✳</span>
+                      <h1
+                        className="font-[Roboto_Slab] text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight"
+                        style={{ color: "var(--m-text-heading)" }}
+                      >
+                        Back at it, {userFirstName}
+                      </h1>
+                    </div>
+                  </div>
+                ) : (
+                  messages.map((m, idx) => (
                   <div
                     key={idx}
                     className={`group flex flex-col ${
@@ -8135,51 +8167,10 @@ Mathematics:
                       </div>
                     )}
                   </div>
-                ))}
+                ))) }
                 {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
                   <div className="flex w-fit items-center gap-3 py-2 pl-1">
                     <AIThinkingStatus size="lg" />
-                  </div>
-                )}
-
-                {/* Quick Prompts when starting a chat */}
-                {messages.length <= 1 && (
-                  <div className="pt-2 sm:pt-4">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider mb-2 opacity-60 font-mono" style={{ color: "var(--m-text-sub)" }}>
-                      Suggested Prompts
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {[
-                        { title: "Explain a concept simply", desc: "Break down complex topics into clear steps", icon: Sparkles },
-                        { title: "Create practice quiz", desc: "Test my knowledge with active recall questions", icon: BookOpen },
-                        { title: "Debug & explain code", desc: "Find bugs and optimize algorithms", icon: Code },
-                        { title: "Create study schedule", desc: "Organize my exam prep and revision", icon: CalendarDays },
-                      ].map((starter, sIdx) => {
-                        const Icon = starter.icon;
-                        return (
-                          <button
-                            key={sIdx}
-                            type="button"
-                            onClick={() => {
-                              setChatDraft(starter.title);
-                            }}
-                            className="flex items-start gap-2.5 p-2.5 sm:p-3 rounded-2xl border text-left transition hover:scale-[1.01] active:scale-98 shadow-xs group"
-                            style={{
-                              borderColor: "var(--m-border)",
-                              backgroundColor: "var(--m-surface-alt)",
-                            }}
-                          >
-                            <div className="size-7 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-105 transition" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
-                              <Icon size={14} />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs font-bold leading-snug" style={{ color: "var(--m-text-heading)" }}>{starter.title}</p>
-                              <p className="text-[10.5px] opacity-70 leading-tight mt-0.5" style={{ color: "var(--m-text-sub)" }}>{starter.desc}</p>
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
                   </div>
                 )}
               </div>
@@ -8236,7 +8227,7 @@ Mathematics:
                     }}
                     className="flex-1 bg-transparent py-1.5 sm:py-2 text-xs sm:text-sm outline-none min-w-0"
                     style={{ color: "var(--m-text)" }}
-                    placeholder="Ask Dream It AI anything..."
+                    placeholder="How can I help you today?"
                   />
                   <VoiceInputButton
                     value={chatDraft}
