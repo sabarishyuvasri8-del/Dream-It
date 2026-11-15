@@ -30,6 +30,7 @@ import {
   Palette,
 } from "lucide-react";
 import ParticleField from "./components/ParticleField";
+import { Snowfall } from "falling-snow/react";
 import ThemeSelector from "./components/ThemeSelector";
 import { useTheme } from "../lib/ThemeContext";
 
@@ -305,6 +306,18 @@ export default function LandingPage({
       }}
     >
       <ParticleField />
+      <Snowfall
+        fullScreen
+        flake="mixed"
+        count={85}
+        speed={0.7}
+        wind={0.15}
+        size={[3, 14]}
+        opacity={[0.25, 0.85]}
+        depth={1}
+        zIndex={10}
+        respectReducedMotion={prefersReducedMotion}
+      />
       {/* ─── HEADER ─── */}
       <header
         className="fixed top-0 left-0 right-0 z-50 transition-all duration-300"
