@@ -5717,15 +5717,12 @@ Mathematics:
                     <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6 flex flex-col" style={{ scrollBehavior: "smooth" }}>
                   {messages.length === 0 ? (
                     <div className="flex-1 flex flex-col items-center justify-center text-center p-6 my-auto select-none min-h-[200px]">
-                      <div className="flex items-center gap-2.5 justify-center">
-                        <span className="text-xl sm:text-2xl text-[#d97706] dark:text-[#f59e0b] select-none leading-none">✳</span>
-                        <h2
-                          className="font-[Roboto_Slab] text-xl sm:text-2xl font-normal tracking-tight"
-                          style={{ color: "var(--m-text-heading)" }}
-                        >
-                          Back at it, {userFirstName}
-                        </h2>
-                      </div>
+                      <h2
+                        className="font-[Roboto_Slab] text-xl sm:text-2xl font-normal tracking-tight"
+                        style={{ color: "var(--m-text-heading)" }}
+                      >
+                        Back at it, {userFirstName}
+                      </h2>
                     </div>
                   ) : (
                     messages.map((m, idx) => (
@@ -8024,15 +8021,12 @@ Mathematics:
                 <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-8 space-y-4 sm:space-y-7 flex flex-col flex-1">
                 {messages.length === 0 ? (
                   <div className="flex-1 flex flex-col items-center justify-center text-center py-20 sm:py-32 my-auto select-none">
-                    <div className="flex items-center gap-3 justify-center">
-                      <span className="text-2xl sm:text-3xl text-[#d97706] dark:text-[#f59e0b] select-none leading-none">✳</span>
-                      <h1
-                        className="font-[Roboto_Slab] text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight"
-                        style={{ color: "var(--m-text-heading)" }}
-                      >
-                        Back at it, {userFirstName}
-                      </h1>
-                    </div>
+                    <h1
+                      className="font-[Roboto_Slab] text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight"
+                      style={{ color: "var(--m-text-heading)" }}
+                    >
+                      Back at it, {userFirstName}
+                    </h1>
                   </div>
                 ) : (
                   messages.map((m, idx) => (
