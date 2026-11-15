@@ -5716,7 +5716,7 @@ Mathematics:
                     {/* Messages Container (Fills middle area perfectly) */}
                     <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6 flex flex-col" style={{ scrollBehavior: "smooth" }}>
                   {messages.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-center p-6 my-auto select-none min-h-[200px]">
+                    <div className="flex-1 flex flex-col items-center justify-end text-center p-4 pb-4 select-none">
                       <h2
                         className="font-[Roboto_Slab] text-xl sm:text-2xl font-normal tracking-tight"
                         style={{ color: "var(--m-text-heading)" }}
@@ -8012,236 +8012,316 @@ Mathematics:
                 }
               }}
             >
-              {/* Fullscreen Messages Area - Full width scroll container so scrolling anywhere on the blank space scrolls the chat */}
-              <div
-                ref={chatMaxContainerRef}
-                className="flex-1 overflow-y-auto custom-scrollbar w-full overscroll-contain"
-                style={{ scrollBehavior: "smooth" }}
-              >
-                <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-8 space-y-4 sm:space-y-7 flex flex-col flex-1">
-                {messages.length === 0 ? (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center py-20 sm:py-32 my-auto select-none">
-                    <h1
-                      className="font-[Roboto_Slab] text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight"
-                      style={{ color: "var(--m-text-heading)" }}
-                    >
-                      Back at it, {userFirstName}
-                    </h1>
-                  </div>
-                ) : (
-                  messages.map((m, idx) => (
-                  <div
-                    key={idx}
-                    className={`group flex flex-col ${
-                      m.role === "user" ? "items-end ml-auto max-w-[90%] sm:max-w-[75%]" : "items-start w-full max-w-full"
-                    }`}
+              {messages.length === 0 ? (
+                /* Empty state: Quote and Chatbar grouped together in the center, Claude-style! */
+                <div className="flex-1 flex flex-col items-center justify-center w-full max-w-3xl mx-auto px-4 sm:px-6 my-auto -mt-6 sm:-mt-10 select-none">
+                  <h1
+                    className="font-[Roboto_Slab] text-2xl sm:text-3xl md:text-4xl font-normal tracking-tight mb-4 sm:mb-6 text-center select-none"
+                    style={{ color: "var(--m-text-heading)" }}
                   >
-                    <div
-                      className={`contain-chat transition ${
-                        m.role === "user"
-                          ? `user-chat-bubble ${editingMessageIdx === idx ? "w-full min-w-[260px] sm:min-w-[420px] rounded-2xl p-3 sm:p-4" : "w-fit rounded-2xl sm:rounded-[22px] px-3.5 py-2 sm:px-5 sm:py-3"} shadow-xs text-xs sm:text-[15px] leading-relaxed break-words`
-                          : "w-full py-1 sm:py-2 px-0.5 sm:px-1 text-xs sm:text-[15px] leading-relaxed"
-                      }`}
-                      style={
-                        m.role === "user"
-                          ? {
-                              backgroundColor: "var(--m-chat-user-bg)",
-                              color: "var(--m-chat-user-text)",
-                              border: "1px solid var(--m-chat-user-border, transparent)",
-                              borderRadius: editingMessageIdx === idx ? "16px" : "22px",
-                            }
-                          : {
-                              backgroundColor: "transparent",
-                              color: "var(--m-text)",
-                              border: "none",
-                              boxShadow: "none",
-                            }
-                      }
-                    >
-                      {editingMessageIdx === idx ? (
-                        <div className="space-y-3 py-1">
-                          <textarea
-                            value={editingMessageDraft}
-                            onChange={(e) => setEditingMessageDraft(e.target.value)}
-                            rows={Math.max(2, Math.min(8, editingMessageDraft.split("\n").length))}
-                            className="w-full resize-none rounded-xl p-3 text-xs sm:text-sm leading-relaxed outline-none border transition focus:ring-2 focus:ring-white/30"
-                            style={{
-                              backgroundColor: "rgba(0, 0, 0, 0.25)",
-                              color: "inherit",
-                              borderColor: "rgba(255, 255, 255, 0.2)",
-                            }}
-                            autoFocus
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                handleSaveAndSubmitEdit(idx);
-                              } else if (e.key === "Escape") {
-                                handleCancelEditMessage();
-                              }
-                            }}
-                          />
-                          <div className="flex items-center justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={handleCancelEditMessage}
-                              className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:bg-white/10"
-                              style={{ border: "1px solid rgba(255,255,255,0.2)", color: "inherit" }}
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!editingMessageDraft.trim() || isAsking}
-                              onClick={() => handleSaveAndSubmitEdit(idx)}
-                              className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-bold transition hover:scale-102 disabled:opacity-40 shadow-xs"
-                              style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text, #ffffff)" }}
-                            >
-                              <span>Send</span>
-                            </button>
-                          </div>
+                    Back at it, {userFirstName}
+                  </h1>
+
+                  <div className="w-full select-auto">
+                    {/* The Fullscreen Input Bar positioned directly below the quote */}
+                    <form onSubmit={askCoach} onPaste={handleChatPaste} className="w-full">
+                      {isExtractingChatFile && (
+                        <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-medium mb-1.5 sm:mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                          <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
+                          <span>Reading &amp; extracting text from document...</span>
                         </div>
-                      ) : m.content ? (
-                        renderSimpleMarkdown(m.content, m.role === "user")
-                      ) : (
-                        <AIThinkingStatus size="lg" />
+                      )}
+                      {chatFile && !isExtractingChatFile && (
+                        <div className="flex items-center justify-between rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-medium mb-1.5 sm:mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                          <span className="flex items-center gap-2 truncate">
+                            {chatFile.isImage && chatFile.dataUrl ? (
+                              <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                            ) : chatFile.isPdf ? (
+                              <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
+                                <FileText size={15} />
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+                              </span>
+                            ) : (
+                              <Paperclip size={14} />
+                            )}
+                            <span className="truncate">{chatFile.name}</span>
+                            <span className="text-[10px] opacity-75 font-mono">
+                              ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
+                            </span>
+                          </span>
+                          <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5 sm:gap-3 rounded-2xl p-1.5 pl-2 sm:p-2.5 sm:pl-4 minimal-inset shadow-md" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
+                        <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file (PDF / image)">
+                          <Paperclip size={16} className="sm:hidden" />
+                          <Paperclip size={18} className="hidden sm:block" />
+                        </button>
+                        <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
+                          <Camera size={16} className="sm:hidden" />
+                          <Camera size={18} className="hidden sm:block" />
+                        </button>
+
+                        <input
+                          value={chatDraft}
+                          onChange={(e) => setChatDraft(e.target.value)}
+                          onPaste={handleChatPaste}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              askCoach();
+                            }
+                          }}
+                          className="flex-1 bg-transparent py-1.5 sm:py-2 text-xs sm:text-sm outline-none min-w-0"
+                          style={{ color: "var(--m-text)" }}
+                          placeholder="How can I help you today?"
+                          autoFocus
+                        />
+                        <VoiceInputButton
+                          value={chatDraft}
+                          onChange={setChatDraft}
+                          disabled={isAsking}
+                          size={15}
+                        />
+                        <button
+                          type="submit"
+                          disabled={(!chatDraft.trim() && !chatFile) || isAsking}
+                          className="flex items-center justify-center size-8 sm:size-auto sm:gap-2 rounded-xl sm:px-5 sm:py-2.5 text-xs font-bold transition hover:scale-105 active:scale-95 disabled:opacity-40 shrink-0 shadow-xs"
+                          style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                          aria-label="Send message"
+                        >
+                          <Send size={14} className="sm:hidden" />
+                          <Send size={15} className="hidden sm:inline-block" />
+                          <span className="hidden sm:inline">Send</span>
+                        </button>
+                      </div>
+                    </form>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Fullscreen Messages Area - Full width scroll container so scrolling anywhere on the blank space scrolls the chat */}
+                  <div
+                    ref={chatMaxContainerRef}
+                    className="flex-1 overflow-y-auto custom-scrollbar w-full overscroll-contain"
+                    style={{ scrollBehavior: "smooth" }}
+                  >
+                    <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 md:px-8 py-4 sm:py-8 space-y-4 sm:space-y-7 flex flex-col flex-1">
+                      {messages.map((m, idx) => (
+                        <div
+                          key={idx}
+                          className={`group flex flex-col ${
+                            m.role === "user" ? "items-end ml-auto max-w-[90%] sm:max-w-[75%]" : "items-start w-full max-w-full"
+                          }`}
+                        >
+                          <div
+                            className={`contain-chat transition ${
+                              m.role === "user"
+                                ? `user-chat-bubble ${editingMessageIdx === idx ? "w-full min-w-[260px] sm:min-w-[420px] rounded-2xl p-3 sm:p-4" : "w-fit rounded-2xl sm:rounded-[22px] px-3.5 py-2 sm:px-5 sm:py-3"} shadow-xs text-xs sm:text-[15px] leading-relaxed break-words`
+                                : "w-full py-1 sm:py-2 px-0.5 sm:px-1 text-xs sm:text-[15px] leading-relaxed"
+                            }`}
+                            style={
+                              m.role === "user"
+                                ? {
+                                    backgroundColor: "var(--m-chat-user-bg)",
+                                    color: "var(--m-chat-user-text)",
+                                    border: "1px solid var(--m-chat-user-border, transparent)",
+                                    borderRadius: editingMessageIdx === idx ? "16px" : "22px",
+                                  }
+                                : {
+                                    backgroundColor: "transparent",
+                                    color: "var(--m-text)",
+                                    border: "none",
+                                    boxShadow: "none",
+                                  }
+                            }
+                          >
+                            {editingMessageIdx === idx ? (
+                              <div className="space-y-3 py-1">
+                                <textarea
+                                  value={editingMessageDraft}
+                                  onChange={(e) => setEditingMessageDraft(e.target.value)}
+                                  rows={Math.max(2, Math.min(8, editingMessageDraft.split("\n").length))}
+                                  className="w-full resize-none rounded-xl p-3 text-xs sm:text-sm leading-relaxed outline-none border transition focus:ring-2 focus:ring-white/30"
+                                  style={{
+                                    backgroundColor: "rgba(0, 0, 0, 0.25)",
+                                    color: "inherit",
+                                    borderColor: "rgba(255, 255, 255, 0.2)",
+                                  }}
+                                  autoFocus
+                                  onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                      e.preventDefault();
+                                      handleSaveAndSubmitEdit(idx);
+                                    } else if (e.key === "Escape") {
+                                      handleCancelEditMessage();
+                                    }
+                                  }}
+                                />
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={handleCancelEditMessage}
+                                    className="rounded-lg px-3 py-1.5 text-xs font-medium transition hover:bg-white/10"
+                                    style={{ border: "1px solid rgba(255,255,255,0.2)", color: "inherit" }}
+                                  >
+                                    Cancel
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={!editingMessageDraft.trim() || isAsking}
+                                    onClick={() => handleSaveAndSubmitEdit(idx)}
+                                    className="flex items-center gap-1.5 rounded-lg px-4 py-1.5 text-xs font-bold transition hover:scale-102 disabled:opacity-40 shadow-xs"
+                                    style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text, #ffffff)" }}
+                                  >
+                                    <span>Send</span>
+                                  </button>
+                                </div>
+                              </div>
+                            ) : m.content ? (
+                              renderSimpleMarkdown(m.content, m.role === "user")
+                            ) : (
+                              <AIThinkingStatus size="lg" />
+                            )}
+                          </div>
+
+                          {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
+                          {m.content && editingMessageIdx !== idx && (
+                            <div
+                              className={`flex items-center gap-1 sm:gap-1.5 mt-1 sm:mt-1.5 text-xs opacity-75 sm:opacity-70 group-hover:opacity-100 transition-opacity ${
+                                m.role === "user" ? "justify-end pr-1 sm:pr-2" : "justify-start pl-0.5 sm:pl-1"
+                              }`}
+                              style={{ color: "var(--m-text-sub)" }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleCopyMessage(m.content, idx)}
+                                className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                                title="Copy message"
+                                aria-label="Copy message"
+                              >
+                                {copiedMessageIdx === idx ? (
+                                  <Check size={14} className="text-emerald-400" />
+                                ) : (
+                                  <Copy size={14} />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleShareMessage(m.content)}
+                                className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                                title="Share"
+                                aria-label="Share message"
+                              >
+                                <Share size={14} />
+                              </button>
+                              {m.role === "user" ? (
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditMessage(idx, m.content)}
+                                  className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                                  title="Edit message"
+                                  aria-label="Edit message"
+                                >
+                                  <Pencil size={14} />
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRegenerateResponse(idx)}
+                                  className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                                  title="Regenerate response"
+                                  aria-label="Regenerate response"
+                                >
+                                  <RotateCcw size={14} />
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
+                        <div className="flex w-fit items-center gap-3 py-2 pl-1">
+                          <AIThinkingStatus size="lg" />
+                        </div>
                       )}
                     </div>
+                  </div>
 
-                    {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
-                    {m.content && editingMessageIdx !== idx && (
-                      <div
-                        className={`flex items-center gap-1 sm:gap-1.5 mt-1 sm:mt-1.5 text-xs opacity-75 sm:opacity-70 group-hover:opacity-100 transition-opacity ${
-                          m.role === "user" ? "justify-end pr-1 sm:pr-2" : "justify-start pl-0.5 sm:pl-1"
-                        }`}
-                        style={{ color: "var(--m-text-sub)" }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => handleCopyMessage(m.content, idx)}
-                          className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                          title="Copy message"
-                          aria-label="Copy message"
-                        >
-                          {copiedMessageIdx === idx ? (
-                            <Check size={14} className="text-emerald-400" />
-                          ) : (
-                            <Copy size={14} />
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleShareMessage(m.content)}
-                          className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                          title="Share"
-                          aria-label="Share message"
-                        >
-                          <Share size={14} />
-                        </button>
-                        {m.role === "user" ? (
-                          <button
-                            type="button"
-                            onClick={() => handleStartEditMessage(idx, m.content)}
-                            className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                            title="Edit message"
-                            aria-label="Edit message"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => handleRegenerateResponse(idx)}
-                            className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                            title="Regenerate response"
-                            aria-label="Regenerate response"
-                          >
-                            <RotateCcw size={14} />
-                          </button>
-                        )}
+                  {/* Fullscreen Input Bar (Responsive: safe-area padding and mobile-optimized buttons) */}
+                  <form onSubmit={askCoach} onPaste={handleChatPaste} className="w-full max-w-5xl mx-auto px-2.5 sm:px-6 pb-[max(0.6rem,env(safe-area-inset-bottom))] sm:pb-6 pt-1.5 sm:pt-2 shrink-0">
+                    {isExtractingChatFile && (
+                      <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-medium mb-1.5 sm:mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                        <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
+                        <span>Reading &amp; extracting text from document...</span>
                       </div>
                     )}
-                  </div>
-                ))) }
-                {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
-                  <div className="flex w-fit items-center gap-3 py-2 pl-1">
-                    <AIThinkingStatus size="lg" />
-                  </div>
-                )}
-              </div>
-            </div>
-
-              {/* Fullscreen Input Bar (Responsive: safe-area padding and mobile-optimized buttons) */}
-              <form onSubmit={askCoach} onPaste={handleChatPaste} className="w-full max-w-5xl mx-auto px-2.5 sm:px-6 pb-[max(0.6rem,env(safe-area-inset-bottom))] sm:pb-6 pt-1.5 sm:pt-2 shrink-0">
-                {isExtractingChatFile && (
-                  <div className="flex items-center gap-2 rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-medium mb-1.5 sm:mb-2 minimal-inset animate-pulse" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                    <Loader2 size={14} className="animate-spin text-indigo-400 shrink-0" />
-                    <span>Reading &amp; extracting text from document...</span>
-                  </div>
-                )}
-                {chatFile && !isExtractingChatFile && (
-                  <div className="flex items-center justify-between rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-medium mb-1.5 sm:mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
-                    <span className="flex items-center gap-2 truncate">
-                      {chatFile.isImage && chatFile.dataUrl ? (
-                        <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
-                      ) : chatFile.isPdf ? (
-                        <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
-                          <FileText size={15} />
-                          <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+                    {chatFile && !isExtractingChatFile && (
+                      <div className="flex items-center justify-between rounded-xl px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-medium mb-1.5 sm:mb-2 minimal-inset" style={{ color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                        <span className="flex items-center gap-2 truncate">
+                          {chatFile.isImage && chatFile.dataUrl ? (
+                            <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                          ) : chatFile.isPdf ? (
+                            <span className="flex items-center gap-1.5 shrink-0 text-rose-400">
+                              <FileText size={15} />
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+                            </span>
+                          ) : (
+                            <Paperclip size={14} />
+                          )}
+                          <span className="truncate">{chatFile.name}</span>
+                          <span className="text-[10px] opacity-75 font-mono">
+                            ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
+                          </span>
                         </span>
-                      ) : (
-                        <Paperclip size={14} />
-                      )}
-                      <span className="truncate">{chatFile.name}</span>
-                      <span className="text-[10px] opacity-75 font-mono">
-                        ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
-                      </span>
-                    </span>
-                    <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
-                  </div>
-                )}
-                <div className="flex items-center gap-1.5 sm:gap-3 rounded-2xl p-1.5 pl-2 sm:p-2.5 sm:pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
-                  <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file (PDF / image)">
-                    <Paperclip size={16} className="sm:hidden" />
-                    <Paperclip size={18} className="hidden sm:block" />
-                  </button>
-                  <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
-                    <Camera size={16} className="sm:hidden" />
-                    <Camera size={18} className="hidden sm:block" />
-                  </button>
+                        <button type="button" onClick={() => setChatFile(null)} className="p-1 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 sm:gap-3 rounded-2xl p-1.5 pl-2 sm:p-2.5 sm:pl-4 minimal-inset shadow-xs" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
+                      <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file (PDF / image)">
+                        <Paperclip size={16} className="sm:hidden" />
+                        <Paperclip size={18} className="hidden sm:block" />
+                      </button>
+                      <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
+                        <Camera size={16} className="sm:hidden" />
+                        <Camera size={18} className="hidden sm:block" />
+                      </button>
 
-                  <input
-                    value={chatDraft}
-                    onChange={(e) => setChatDraft(e.target.value)}
-                    onPaste={handleChatPaste}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        askCoach();
-                      }
-                    }}
-                    className="flex-1 bg-transparent py-1.5 sm:py-2 text-xs sm:text-sm outline-none min-w-0"
-                    style={{ color: "var(--m-text)" }}
-                    placeholder="How can I help you today?"
-                  />
-                  <VoiceInputButton
-                    value={chatDraft}
-                    onChange={setChatDraft}
-                    disabled={isAsking}
-                    size={15}
-                  />
-                  <button
-                    type="submit"
-                    disabled={(!chatDraft.trim() && !chatFile) || isAsking}
-                    className="flex items-center justify-center size-8 sm:size-auto sm:gap-2 rounded-xl sm:px-5 sm:py-2.5 text-xs font-bold transition hover:scale-105 active:scale-95 disabled:opacity-40 shrink-0 shadow-xs"
-                    style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
-                    aria-label="Send message"
-                  >
-                    <Send size={14} className="sm:hidden" />
-                    <Send size={15} className="hidden sm:inline-block" />
-                    <span className="hidden sm:inline">Send</span>
-                  </button>
-                </div>
-              </form>
+                      <input
+                        value={chatDraft}
+                        onChange={(e) => setChatDraft(e.target.value)}
+                        onPaste={handleChatPaste}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            askCoach();
+                          }
+                        }}
+                        className="flex-1 bg-transparent py-1.5 sm:py-2 text-xs sm:text-sm outline-none min-w-0"
+                        style={{ color: "var(--m-text)" }}
+                        placeholder="How can I help you today?"
+                      />
+                      <VoiceInputButton
+                        value={chatDraft}
+                        onChange={setChatDraft}
+                        disabled={isAsking}
+                        size={15}
+                      />
+                      <button
+                        type="submit"
+                        disabled={(!chatDraft.trim() && !chatFile) || isAsking}
+                        className="flex items-center justify-center size-8 sm:size-auto sm:gap-2 rounded-xl sm:px-5 sm:py-2.5 text-xs font-bold transition hover:scale-105 active:scale-95 disabled:opacity-40 shrink-0 shadow-xs"
+                        style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}
+                        aria-label="Send message"
+                      >
+                        <Send size={14} className="sm:hidden" />
+                        <Send size={15} className="hidden sm:inline-block" />
+                        <span className="hidden sm:inline">Send</span>
+                      </button>
+                    </div>
+                  </form>
+                </>
+              )}
             </div>
           </div>
         </div>
