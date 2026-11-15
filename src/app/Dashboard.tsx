@@ -3862,24 +3862,13 @@ ${taskSummaries || "No active tasks."}\n`;
             safeSaveSessionsToStorage(storageKey, valid);
           }
           setChatSessions(valid);
-
-          // Restore user's most recent active chat conversation so chat history stays persistent across reloads
-          const latest = valid[0];
-          setActiveChatSessionId(latest.id);
-          activeChatSessionIdRef.current = latest.id;
-          setMessages(latest.messages && latest.messages.length > 0 ? latest.messages : [DEFAULT_WELCOME_MESSAGE]);
-          messagesRef.current = latest.messages && latest.messages.length > 0 ? latest.messages : [DEFAULT_WELCOME_MESSAGE];
-          if (latest.subjectId !== undefined) {
-            setChatSubjectId(latest.subjectId);
-          }
-          return;
         }
       }
     } catch (e) {
       console.warn("Failed loading AI chat sessions from localStorage:", e);
     }
 
-    // If no previous chats exist, initialize with a fresh welcome session
+    // Always start with a fresh new chat window upon opening or refreshing the app
     const freshId = "session_" + Date.now();
     setActiveChatSessionId(freshId);
     activeChatSessionIdRef.current = freshId;
