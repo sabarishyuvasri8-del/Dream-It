@@ -5713,19 +5713,76 @@ Mathematics:
                   </div>
                 ) : (
                   <>
-                    {/* Messages Container (Fills middle area perfectly) */}
-                    <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6 flex flex-col" style={{ scrollBehavior: "smooth" }}>
-                  {messages.length === 0 ? (
-                    <div className="flex-1 flex flex-col items-center justify-end text-center p-4 pb-4 select-none">
-                      <h2
-                        className="font-[Roboto_Slab] text-xl sm:text-2xl font-normal tracking-tight"
-                        style={{ color: "var(--m-text-heading)" }}
-                      >
-                        Back at it, {userFirstName}
-                      </h2>
-                    </div>
-                  ) : (
-                    messages.map((m, idx) => (
+                    <input ref={chatFileInputRef} type="file" onChange={handleChatFileSelect} className="hidden" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.docx,.doc,.txt,.py,.js,.ts,.tsx,.jsx,.json,.csv,.html,.css,.cpp,.c,.java,.sql,.md" />
+                    {messages.length === 0 ? (
+                      /* Empty state: Quote and Chatbar grouped together in the center, Claude-style! */
+                      <div className="flex-1 flex flex-col items-center justify-center p-4 my-auto select-none w-full">
+                        <h2
+                          className="font-[Roboto_Slab] text-xl sm:text-2xl font-normal tracking-tight mb-3 text-center select-none"
+                          style={{ color: "var(--m-text-heading)" }}
+                        >
+                          Back at it, {userFirstName}
+                        </h2>
+                        <div className="w-full select-auto">
+                          <form
+                            onSubmit={askCoach}
+                            onPaste={handleChatPaste}
+                            className="w-full"
+                          >
+                            {isExtractingChatFile && (
+                              <div className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium mb-2 animate-pulse" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
+                                <Loader2 size={13} className="animate-spin text-indigo-400 shrink-0" />
+                                <span className="truncate">Reading & extracting text from document...</span>
+                              </div>
+                            )}
+                            {chatFile && !isExtractingChatFile && (
+                              <div className="flex items-center justify-between rounded-xl px-3 py-1.5 text-xs font-bold mb-2" style={{ backgroundColor: "var(--m-surface-alt)", color: "var(--m-primary)", border: "1px solid var(--m-border)" }}>
+                                <span className="flex items-center gap-2 truncate">
+                                  {chatFile.isImage && chatFile.dataUrl ? (
+                                    <img src={chatFile.dataUrl} alt={chatFile.name} className="size-6 object-cover rounded-md border border-black/10 shrink-0" />
+                                  ) : chatFile.isPdf ? (
+                                    <span className="flex items-center gap-1 shrink-0 text-rose-400">
+                                      <FileText size={14} />
+                                      <span className="text-[9px] px-1 py-0.2 rounded bg-rose-500/15 font-bold uppercase tracking-wider">PDF</span>
+                                    </span>
+                                  ) : (
+                                    <Paperclip size={13} />
+                                  )}
+                                  <span className="truncate">{chatFile.name}</span>
+                                  <span className="text-[10px] opacity-75 font-mono">
+                                    ({chatFile.pageCount ? `${chatFile.pageCount} pgs • ` : ""}{formatFileSize(chatFile.size)})
+                                  </span>
+                                </span>
+                                <button type="button" onClick={() => setChatFile(null)} className="p-0.5 rounded-md transition hover:opacity-75" title="Remove attachment"><X size={14} /></button>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-2 rounded-2xl p-1.5 pl-2.5 shadow-md" style={{ border: "1px solid var(--m-border)", backgroundColor: "var(--m-input-bg)" }}>
+                              <button type="button" onClick={() => chatFileInputRef.current?.click()} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-text-sub)" }} title="Attach file">
+                                <Paperclip size={17} />
+                              </button>
+                              <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
+                                <Camera size={17} />
+                              </button>
+
+                              <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="How can I help you today?" autoFocus />
+                              <VoiceInputButton
+                                value={chatDraft}
+                                onChange={setChatDraft}
+                                disabled={isAsking}
+                                size={15}
+                              />
+                              <button type="submit" disabled={(!chatDraft.trim() && !chatFile) || isAsking} className="grid size-9 place-items-center rounded-xl transition hover:scale-105 disabled:opacity-40 shrink-0 shadow-xs" style={{ backgroundColor: "var(--m-primary)", color: "var(--m-primary-text)" }}>
+                                <Send size={15} />
+                              </button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        {/* Messages Container (Fills middle area perfectly) */}
+                        <div ref={chatContainerRef} className="flex-1 space-y-4 overflow-y-auto custom-scrollbar overscroll-contain p-4 text-xs leading-6 flex flex-col" style={{ scrollBehavior: "smooth" }}>
+                          {messages.map((m, idx) => (
                     <div
                       key={idx}
                       className={`group flex flex-col ${m.role === "user" ? "items-end ml-auto max-w-[88%]" : "items-start w-full max-w-full"}`}
@@ -5855,7 +5912,7 @@ Mathematics:
                         </div>
                       )}
                     </div>
-                  ))) }
+                  )) }
                   {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
                     <div className="flex w-fit items-center gap-2 py-1.5 pl-0.5">
                       <AIThinkingStatus size="sm" />
@@ -5880,7 +5937,6 @@ Mathematics:
                   className="shrink-0 p-3"
                   style={{ borderTop: "1px solid var(--m-border-light)" }}
                 >
-                  <input ref={chatFileInputRef} type="file" onChange={handleChatFileSelect} className="hidden" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.docx,.doc,.txt,.py,.js,.ts,.tsx,.jsx,.json,.csv,.html,.css,.cpp,.c,.java,.sql,.md" />
                   {isExtractingChatFile && (
                     <div className="flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-medium mb-2 animate-pulse" style={{ backgroundColor: "var(--m-surface-alt)", border: "1px solid var(--m-border)", color: "var(--m-primary)" }}>
                       <Loader2 size={13} className="animate-spin text-indigo-400 shrink-0" />
@@ -5930,7 +5986,9 @@ Mathematics:
                 </form>
               </>
             )}
-          </aside>
+          </>
+        )}
+      </aside>
             </div>
           )}
 
