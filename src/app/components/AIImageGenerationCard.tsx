@@ -528,4 +528,3 @@ export const AIImageGenerationCard: React.FC<AIImageGenerationCardProps> = ({
 };
 
 export default AIImageGenerationCard;
-

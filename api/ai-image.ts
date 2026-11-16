@@ -155,4 +155,3 @@ export default async function handler(req: any, res?: any) {
     return new Response(JSON.stringify({ error: errMsg, success: false }), { status: 500, headers });
   }
 }
-
