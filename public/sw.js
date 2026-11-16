@@ -3,13 +3,17 @@
  * Provides offline shell caching, instant 0ms asset loading, and network resilience.
  */
 
-const CACHE_NAME = 'dreamit-pwa-v1.2';
+const CACHE_NAME = 'dreamit-pwa-v1.3';
 
 // Critical core assets cached on initial install
 const CORE_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
+  '/favicon.svg',
+  '/favicon.ico',
+  '/favicon-32x32.png',
+  '/favicon-16x16.png',
   '/logo.png',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
