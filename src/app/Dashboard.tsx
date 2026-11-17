@@ -161,6 +161,7 @@ const PDFFlashcardModal = lazy(() =>
 );
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
 const AIPdfSandboxCard = lazy(() => import("./components/AIPdfSandboxCard"));
+const AIInteractiveQuizCard = lazy(() => import("./components/AIInteractiveQuizCard"));
 const UserProfileModal = lazy(() => import("./components/UserProfileModal"));
 const AccountSwitcherModal = lazy(() => import("./components/AccountSwitcherModal"));
 const NotesTab = lazy(() => import("./components/tabs/NotesTab"));
@@ -169,6 +170,14 @@ import CommandPalette from "./components/CommandPalette";
 import { extractFilesFromClipboard } from "./utils/clipboardHelper";
 import { safeParseJSON } from "../lib/json-repair";
 import { compileMarkdownToPdf, downloadCompiledPdf, type PdfDocumentSpec } from "../lib/pdfGenerator";
+import {
+  QUIZ_TOKEN_START,
+  encodeQuizToken,
+  extractQuizFromContent,
+  isExplicitQuizRequest,
+  parseInteractiveQuizBlock,
+  parseNaturalMarkdownMcqs,
+} from "../lib/quizParser";
 type Message = { role: "user" | "assistant"; content: string };
 
 export interface AIChatSession {
@@ -354,13 +363,18 @@ function extractPdfSandboxFromContent(content: string): { spec: PdfDocumentSpec 
   return { spec: null, remainingText: content };
 }
 
-/** Render chat message content with support for embedded interactive PDF Sandbox cards */
+/** Render chat message content with support for embedded interactive PDF Sandbox & Quiz cards */
 function renderChatMessageContent(
   text: string,
   isUserMessage?: boolean,
   onSavePdfToNotes?: (title: string, content: string, subject?: string) => void,
   showToast?: (msg: string, type?: "success" | "error" | "info") => void,
-  isStreaming?: boolean
+  isStreaming?: boolean,
+  quizHandlers?: {
+    onComplete?: (score: number, total: number) => void;
+    onSaveToFlashcards?: (subject: string | undefined, cards: Array<{ front: string; back: string }>) => void;
+    onRequestMoreQuestions?: (prompt: string) => void;
+  }
 ) {
   if (!text || !text.trim()) {
     return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet.</p>;
@@ -387,6 +401,59 @@ function renderChatMessageContent(
         </div>
       </div>
     );
+  }
+
+  // Only show the quiz building pill while actively streaming an incomplete interactive_quiz block
+  const hasRawQuizBlock = !isUserMessage && text.includes("```interactive_quiz");
+  if (hasRawQuizBlock && isStreaming) {
+    const beforeFence = text.split("```interactive_quiz")[0].trim();
+    return (
+      <div className="space-y-3 w-full">
+        {beforeFence && renderSimpleMarkdown(beforeFence, false)}
+        <div
+          className="flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium"
+          style={{
+            backgroundColor: "var(--m-surface-alt)",
+            borderColor: "var(--m-border)",
+            color: "var(--m-text)",
+          }}
+        >
+          <Loader2 size={15} className="animate-spin text-indigo-400 shrink-0" />
+          <span>Preparing your interactive quiz...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Render finalized Interactive Quiz artifact (also auto-heals any saved raw ```interactive_quiz blocks)
+  if (!isUserMessage && (text.includes(QUIZ_TOKEN_START) || hasRawQuizBlock)) {
+    const { spec, remainingText } = extractQuizFromContent(text);
+    if (spec) {
+      return (
+        <div className="space-y-3 w-full">
+          {remainingText && renderSimpleMarkdown(remainingText, false)}
+          <Suspense
+            fallback={
+              <div
+                className="flex items-center gap-2 px-4 py-4 rounded-2xl border text-xs animate-pulse"
+                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)" }}
+              >
+                <Loader2 size={14} className="animate-spin text-indigo-400" />
+                <span>Loading Interactive Quiz...</span>
+              </div>
+            }
+          >
+            <AIInteractiveQuizCard
+              spec={spec}
+              onComplete={quizHandlers?.onComplete}
+              onSaveToFlashcards={quizHandlers?.onSaveToFlashcards}
+              onRequestMoreQuestions={quizHandlers?.onRequestMoreQuestions}
+              showToast={showToast}
+            />
+          </Suspense>
+        </div>
+      );
+    }
   }
 
   // Render finalized PDF Sandbox artifact (also auto-heals any saved raw pdf_document / action:create_pdf blocks!)
@@ -3629,9 +3696,22 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
           clean = `${remainingText ? remainingText + "\n\n" : ""}[Generated PDF Document: "${spec.title}"]\n${spec.content.slice(0, 4000)}`;
         }
       }
+      if (clean.includes(QUIZ_TOKEN_START)) {
+        const { spec, remainingText } = extractQuizFromContent(clean);
+        if (spec) {
+          const quizText = spec.questions
+            .map(
+              (q, i) =>
+                `Q${i + 1}: ${q.question}\n${q.options.map((o) => `${o.label}) ${o.text}`).join("\n")}\nAnswer: ${q.options[q.correctIndex]?.label || "A"}`
+            )
+            .join("\n\n");
+          clean = `${remainingText ? remainingText + "\n\n" : ""}[Interactive Quiz: "${spec.title}"]\n${quizText.slice(0, 3500)}`;
+        }
+      }
       return { role: m.role, content: clean };
     });
 
+    const isQuizIntentPrompt = isExplicitQuizRequest(questionText);
     const availableSubsList = subjects.map((s) => s.name).join(", ");
     const pdfExecutiveInstruction = `3. CREATING & COMPILING PDF DOCUMENTS IN THE SANDBOX:
 When the user asks you to create, generate, make, build, compile, or export a PDF document (e.g., "create a pdf of...", "make a formula sheet pdf", "export this as a pdf", "/pdf ..."):
@@ -3647,6 +3727,33 @@ theme: academic
 Full, comprehensive, publication-grade Markdown document with ## headings, bullet points, tables, LaTeX formulas, and worked examples.
 \`\`\`
 `;
+
+    const quizExecutiveInstruction = isQuizIntentPrompt
+      ? `\n4. INTERACTIVE IN-CHAT QUIZ / MCQ BUILDER (ACTIVE FOR THIS REQUEST):
+The user explicitly requested MCQs or a quiz. Output a brief 1-sentence intro followed by this EXACT fenced \`interactive_quiz\` block (plain text frontmatter + \`---\` separated questions — do NOT wrap in JSON, and do NOT print a separate duplicate text list of the same questions outside the block):
+\`\`\`interactive_quiz
+title: Clear Topic Quiz Title
+subject: Subject Name
+difficulty: Easy | Medium | Hard
+---
+Q: Clear question stem (supports LaTeX math like $\\Delta T_b = K_b \\cdot m$)
+A) First option
+B) Second option
+C) Third option
+D) Fourth option
+ANSWER: B
+EXPLANATION: Concise, clear explanation of why option B is correct.
+---
+Q: Second question stem...
+A) Option A
+B) Option B
+C) Option C
+D) Option D
+ANSWER: D
+EXPLANATION: Clear explanation of the concept.
+\`\`\`
+Generate the exact number of questions requested by the user (default to 5 high-yield, exam-quality MCQs if no count is specified). Ensure all 4 options are plausible and only one is unambiguously correct.\n`
+      : "";
 
     let systemPrompt = `You are Dream It AI, an expert, deeply knowledgeable academic mentor and study assistant for students.
 RESPONSE DEPTH & DETAIL GUIDELINES:
@@ -3687,7 +3794,7 @@ When the user asks you to make or save flashcards (e.g., "make a flash card and 
 }
 \`\`\`
 
-${pdfExecutiveInstruction}`;
+${pdfExecutiveInstruction}${quizExecutiveInstruction}`;
 
     if (chatSubjectId !== null) {
       const subject = subjects.find(s => s.id === chatSubjectId);
@@ -3710,7 +3817,7 @@ ${cardsContext}
 WORKSPACE EXECUTIVE POWERS:
 You can save notes, create flashcards, and compile live A4 PDF documents in the sandbox. When asked to save notes, create flashcards, or create a PDF, append the appropriate action command block at the very end.
 
-${pdfExecutiveInstruction}`;
+${pdfExecutiveInstruction}${quizExecutiveInstruction}`;
     } else {
       // General assistant mode - inject comprehensive workspace context so AI is fully aware of all student assets
       const noteSummaries = notes.slice(0, 20).map(n => `- [${n.subject || 'General'}] "${n.title}": ${n.content.slice(0, 300).replace(/\n+/g, " ")}...`).join("\n");
@@ -3802,9 +3909,23 @@ ${taskSummaries || "No active tasks."}\n`;
 
         let actionExecuted = false;
         let pdfCreated = false;
+        let quizCreated = false;
 
-        // 0. Parse structured ```pdf_document or ```action:create_pdf block (zero-escape + LaTeX-safe recovery)
-        if (fullContent.includes("```pdf_document") || fullContent.includes("```action:create_pdf")) {
+        // 0a. Parse structured ```interactive_quiz block ONLY when user explicitly asked for MCQs or a quiz
+        if (isQuizIntentPrompt && !isPdfIntent && fullContent.includes("```interactive_quiz")) {
+          const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
+          const extractedQuiz = parseInteractiveQuizBlock(fullContent, activeSubName);
+          if (extractedQuiz.spec && extractedQuiz.spec.questions.length > 0) {
+            const qToken = encodeQuizToken(extractedQuiz.spec);
+            fullContent = extractedQuiz.remainingText ? `${extractedQuiz.remainingText}\n\n${qToken}` : qToken;
+            quizCreated = true;
+            actionExecuted = true;
+            showToast(`Interactive quiz (${extractedQuiz.spec.questions.length} Qs) ready!`, "success");
+          }
+        }
+
+        // 0b. Parse structured ```pdf_document or ```action:create_pdf block (zero-escape + LaTeX-safe recovery)
+        if (!quizCreated && (fullContent.includes("```pdf_document") || fullContent.includes("```action:create_pdf"))) {
           const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
           const extracted = extractPdfBlockFromRawText(
             fullContent,
@@ -3980,6 +4101,18 @@ ${taskSummaries || "No active tasks."}\n`;
           }
         }
 
+        // 6. Fallback for Interactive Quiz ONLY when user explicitly requested MCQs/quiz
+        if (!quizCreated && !pdfCreated && isQuizIntentPrompt && !isPdfIntent) {
+          const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
+          const fallbackQuiz = parseNaturalMarkdownMcqs(fullContent, "Interactive Practice Quiz", activeSubName);
+          if (fallbackQuiz.spec && fallbackQuiz.spec.questions.length >= 2) {
+            const qToken = encodeQuizToken(fallbackQuiz.spec);
+            fullContent = fallbackQuiz.remainingText ? `${fallbackQuiz.remainingText}\n\n${qToken}` : qToken;
+            quizCreated = true;
+            showToast(`Interactive quiz (${fallbackQuiz.spec.questions.length} Qs) ready!`, "success");
+          }
+        }
+
         // Update messages with the final cleaned content and persist session
         const finalMessages: Message[] = [
           ...nextUserMessages,
@@ -4014,6 +4147,18 @@ ${taskSummaries || "No active tasks."}\n`;
       const { spec, remainingText } = extractPdfSandboxFromContent(text);
       if (spec) {
         text = `${remainingText ? remainingText + "\n\n" : ""}# ${spec.title}\n\n${spec.content}`;
+      }
+    }
+    if (text.includes(QUIZ_TOKEN_START)) {
+      const { spec, remainingText } = extractQuizFromContent(text);
+      if (spec) {
+        const formatted = spec.questions
+          .map(
+            (q, i) =>
+              `**Q${i + 1}.** ${q.question}\n${q.options.map((o) => `- ${o.label}) ${o.text}`).join("\n")}\n**Answer:** ${q.options[q.correctIndex]?.label || "A"}${q.explanation ? `\n*Explanation:* ${q.explanation}` : ""}`
+          )
+          .join("\n\n");
+        text = `${remainingText ? remainingText + "\n\n" : ""}# ${spec.title}\n\n${formatted}`;
       }
     }
     return text
@@ -6210,7 +6355,25 @@ Mathematics:
                               });
                             },
                             showToast,
-                            isAsking && idx === messages.length - 1
+                            isAsking && idx === messages.length - 1,
+                            {
+                              onComplete: (score, total) => {
+                                const pct = Math.round((score / Math.max(1, total)) * 100);
+                                const xp = pct >= 80 ? 15 : 10;
+                                addXP(xp);
+                                showToast(`Quiz complete: ${score}/${total} (+${xp} XP)`, "success");
+                              },
+                              onSaveToFlashcards: (subjectName, cards) => {
+                                executeSaveFlashcardsFromAI({
+                                  subjectName,
+                                  subjectId: chatSubjectId ?? undefined,
+                                  cards,
+                                });
+                              },
+                              onRequestMoreQuestions: (followUpPrompt) => {
+                                if (!isAsking) askCoach(undefined, followUpPrompt);
+                              },
+                            }
                           )
                         ) : (
                           <AIThinkingStatus size="sm" />
@@ -8617,7 +8780,25 @@ Mathematics:
                                   });
                                 },
                                 showToast,
-                                isAsking && idx === messages.length - 1
+                                isAsking && idx === messages.length - 1,
+                                {
+                                  onComplete: (score, total) => {
+                                    const pct = Math.round((score / Math.max(1, total)) * 100);
+                                    const xp = pct >= 80 ? 15 : 10;
+                                    addXP(xp);
+                                    showToast(`Quiz complete: ${score}/${total} (+${xp} XP)`, "success");
+                                  },
+                                  onSaveToFlashcards: (subjectName, cards) => {
+                                    executeSaveFlashcardsFromAI({
+                                      subjectName,
+                                      subjectId: chatSubjectId ?? undefined,
+                                      cards,
+                                    });
+                                  },
+                                  onRequestMoreQuestions: (followUpPrompt) => {
+                                    if (!isAsking) askCoach(undefined, followUpPrompt);
+                                  },
+                                }
                               )
                             ) : (
                               <AIThinkingStatus size="lg" />
