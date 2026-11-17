@@ -191,7 +191,7 @@ function renderSimpleMarkdown(text: string, isUserMessage?: boolean) {
   }
   return (
     <Suspense fallback={<div className="animate-pulse bg-black/5 dark:bg-white/5 h-12 rounded-xl" />}>
-      <MarkdownRenderer content={text} compact={isUserMessage} />
+      <MarkdownRenderer content={text} compact={isUserMessage} serif={!isUserMessage} />
     </Suspense>
   );
 }

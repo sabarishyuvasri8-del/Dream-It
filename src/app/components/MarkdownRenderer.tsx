@@ -10,6 +10,7 @@ interface MarkdownRendererProps {
   emptyMessage?: string;
   className?: string;
   compact?: boolean;
+  serif?: boolean;
 }
 
 interface ErrorBoundaryProps {
@@ -55,6 +56,7 @@ function MarkdownRendererBase({
   emptyMessage = "Nothing written yet. Switch to Edit mode to write your note!",
   className = "",
   compact = false,
+  serif = false,
 }: MarkdownRendererProps) {
   if (!content || !content.trim()) {
     return (
@@ -76,13 +78,17 @@ function MarkdownRendererBase({
       : [];
   }, [hasMath]);
 
+  const headingFont = serif && !compact ? "font-ai-serif tracking-[-0.015em]" : "font-[Roboto_Slab]";
+
   return (
     <MarkdownErrorBoundary fallbackText={content}>
       <div
         className={
           compact
             ? `space-y-1 text-xs sm:text-[13px] leading-relaxed font-[DM_Sans] ${className}`
-            : `space-y-4 text-sm sm:text-[15px] leading-[1.75] font-[DM_Sans] ${className}`
+            : serif
+              ? `space-y-4 text-[15.5px] sm:text-[16.5px] leading-[1.78] font-ai-serif ${className}`
+              : `space-y-4 text-sm sm:text-[15px] leading-[1.75] font-[DM_Sans] ${className}`
         }
         style={{ color: "inherit" }}
       >
@@ -92,7 +98,7 @@ function MarkdownRendererBase({
           components={{
             h1: ({ node, ...props }) => (
               <h1
-                className={compact ? "font-[Roboto_Slab] text-sm font-bold my-1 leading-snug" : "font-[Roboto_Slab] text-xl sm:text-2xl font-bold mt-7 mb-3.5 pb-2 border-b leading-snug"}
+                className={compact ? `${headingFont} text-sm font-bold my-1 leading-snug` : `${headingFont} text-xl sm:text-2xl font-bold mt-7 mb-3.5 pb-2 border-b leading-snug`}
                 style={{
                   borderColor: "var(--m-border-light)",
                   color: compact ? "inherit" : "var(--m-text-heading)",
@@ -102,24 +108,27 @@ function MarkdownRendererBase({
             ),
             h2: ({ node, ...props }) => (
               <h2
-                className={compact ? "font-[Roboto_Slab] text-xs font-bold my-1 leading-snug" : "font-[Roboto_Slab] text-lg sm:text-xl font-bold mt-6 mb-3 leading-snug"}
+                className={compact ? `${headingFont} text-xs font-bold my-1 leading-snug` : `${headingFont} text-lg sm:text-xl font-bold mt-6 mb-3 leading-snug`}
                 style={{ color: compact ? "inherit" : "var(--m-text-heading)" }}
                 {...props}
               />
             ),
             h3: ({ node, ...props }) => (
               <h3
-                className={compact ? "font-[Roboto_Slab] text-xs font-bold my-0.5 leading-snug" : "font-[Roboto_Slab] text-[15px] sm:text-base font-bold mt-5 mb-2.5 leading-snug"}
+                className={compact ? `${headingFont} text-xs font-bold my-0.5 leading-snug` : `${headingFont} text-[16px] sm:text-[17px] font-semibold mt-5 mb-2.5 leading-snug`}
                 style={{ color: compact ? "inherit" : "var(--m-text-heading)" }}
                 {...props}
               />
             ),
             h4: ({ node, ...props }) => (
               <h4
-                className={compact ? "font-[Roboto_Slab] text-xs font-bold my-0.5 leading-snug" : "font-[Roboto_Slab] text-sm sm:text-[15px] font-bold mt-4 mb-2 leading-snug"}
+                className={compact ? `${headingFont} text-xs font-bold my-0.5 leading-snug` : `${headingFont} text-[15px] sm:text-base font-semibold mt-4 mb-2 leading-snug`}
                 style={{ color: compact ? "inherit" : "var(--m-text-heading)" }}
                 {...props}
               />
+            ),
+            strong: ({ node, ...props }) => (
+              <strong className={serif && !compact ? "font-semibold" : "font-bold"} {...props} />
             ),
             ul: ({ node, ...props }) => (
               <ul

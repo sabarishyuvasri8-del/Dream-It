@@ -769,7 +769,7 @@ export default function SnapAndSolveModal({
                     </div>
 
                     <div className="text-sm leading-relaxed">
-                      <MarkdownRenderer content={solution} />
+                      <MarkdownRenderer content={solution} serif />
                     </div>
                   </div>
 

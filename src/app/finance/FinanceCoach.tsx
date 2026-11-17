@@ -557,7 +557,7 @@ export default function FinanceCoach({ data, onUpdate }: { data: FinanceData, on
               {msg.role === "user" ? (
                 <p className="whitespace-pre-wrap">{msg.content}</p>
               ) : (
-                <MarkdownRenderer content={msg.content} />
+                <MarkdownRenderer content={msg.content} serif />
               )}
             </div>
             {msg.role === "user" && (

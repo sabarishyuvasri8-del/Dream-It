@@ -1235,3 +1235,13 @@ html, body {
   font-size: 1.05em;
   line-height: normal;
 }
+
+/* ─── AI Response Editorial Typography (Source Serif 4) ─── */
+.font-ai-serif {
+  font-family: "Source Serif 4", Georgia, Cambria, "Times New Roman", Times, serif;
+  font-optical-sizing: auto;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
