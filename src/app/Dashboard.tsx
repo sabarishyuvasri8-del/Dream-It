@@ -31,6 +31,7 @@ import {
   Cpu,
   Download,
   Edit2,
+  FileDown,
   FileText,
   Flame,
   Folder,
@@ -159,12 +160,15 @@ const PDFFlashcardModal = lazy(() =>
   import("./flashcards/PDFFlashcardModal").then((m) => ({ default: m.PDFFlashcardModal }))
 );
 const MarkdownRenderer = lazy(() => import("./components/MarkdownRenderer"));
+const AIPdfSandboxCard = lazy(() => import("./components/AIPdfSandboxCard"));
 const UserProfileModal = lazy(() => import("./components/UserProfileModal"));
 const AccountSwitcherModal = lazy(() => import("./components/AccountSwitcherModal"));
 const NotesTab = lazy(() => import("./components/tabs/NotesTab"));
 const SnapAndSolveModal = lazy(() => import("./components/SnapAndSolveModal"));
 import CommandPalette from "./components/CommandPalette";
 import { extractFilesFromClipboard } from "./utils/clipboardHelper";
+import { safeParseJSON } from "../lib/json-repair";
+import { compileMarkdownToPdf, downloadCompiledPdf, type PdfDocumentSpec } from "../lib/pdfGenerator";
 type Message = { role: "user" | "assistant"; content: string };
 
 export interface AIChatSession {
@@ -194,6 +198,97 @@ function renderSimpleMarkdown(text: string, isUserMessage?: boolean) {
       <MarkdownRenderer content={text} compact={isUserMessage} serif={!isUserMessage} />
     </Suspense>
   );
+}
+
+const PDF_SANDBOX_START = "<!--DREAMIT_PDF_SANDBOX_START-->";
+const PDF_SANDBOX_END = "<!--DREAMIT_PDF_SANDBOX_END-->";
+
+function encodePdfSandboxToken(spec: PdfDocumentSpec): string {
+  return `${PDF_SANDBOX_START}${JSON.stringify(spec)}${PDF_SANDBOX_END}`;
+}
+
+function extractPdfSandboxFromContent(content: string): { spec: PdfDocumentSpec | null; remainingText: string } {
+  const startIdx = content.indexOf(PDF_SANDBOX_START);
+  const endIdx = content.indexOf(PDF_SANDBOX_END);
+  if (startIdx !== -1 && endIdx > startIdx) {
+    const rawJson = content.slice(startIdx + PDF_SANDBOX_START.length, endIdx);
+    const remainingText = (
+      content.slice(0, startIdx) + content.slice(endIdx + PDF_SANDBOX_END.length)
+    ).trim();
+    try {
+      const parsed = safeParseJSON<PdfDocumentSpec | null>(rawJson, null);
+      if (parsed && typeof parsed.content === "string") {
+        return { spec: parsed, remainingText };
+      }
+    } catch {
+      // Fallback to raw markdown if corrupted
+    }
+  }
+  return { spec: null, remainingText: content };
+}
+
+/** Render chat message content with support for embedded interactive PDF Sandbox cards */
+function renderChatMessageContent(
+  text: string,
+  isUserMessage?: boolean,
+  onSavePdfToNotes?: (title: string, content: string, subject?: string) => void,
+  showToast?: (msg: string, type?: "success" | "error" | "info") => void
+) {
+  if (!text || !text.trim()) {
+    return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet.</p>;
+  }
+
+  // Hide raw in-progress ```action:create_pdf JSON block during streaming and show sleek compiling status
+  if (!isUserMessage && text.includes("```action:create_pdf")) {
+    const beforeFence = text.split("```action:create_pdf")[0].trim();
+    return (
+      <div className="space-y-3 w-full">
+        {beforeFence && renderSimpleMarkdown(beforeFence, false)}
+        <div
+          className="flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium"
+          style={{
+            backgroundColor: "var(--m-surface-alt)",
+            borderColor: "var(--m-border)",
+            color: "var(--m-text)",
+          }}
+        >
+          <Loader2 size={15} className="animate-spin text-rose-500 shrink-0" />
+          <span>Building &amp; formatting your PDF document inside the sandbox...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Check for finalized PDF Sandbox artifact
+  if (!isUserMessage && text.includes(PDF_SANDBOX_START)) {
+    const { spec, remainingText } = extractPdfSandboxFromContent(text);
+    if (spec) {
+      return (
+        <div className="space-y-3 w-full">
+          {remainingText && renderSimpleMarkdown(remainingText, false)}
+          <Suspense
+            fallback={
+              <div
+                className="flex items-center gap-2 px-4 py-4 rounded-2xl border text-xs animate-pulse"
+                style={{ backgroundColor: "var(--m-surface-alt)", borderColor: "var(--m-border)" }}
+              >
+                <Loader2 size={14} className="animate-spin text-rose-500" />
+                <span>Loading PDF Sandbox...</span>
+              </div>
+            }
+          >
+            <AIPdfSandboxCard
+              spec={spec}
+              onSaveToNotes={onSavePdfToNotes}
+              showToast={showToast}
+            />
+          </Suspense>
+        </div>
+      );
+    }
+  }
+
+  return renderSimpleMarkdown(text, isUserMessage);
 }
 function getLast7Days(): string[] {
   const days: string[] = [];
@@ -3396,12 +3491,34 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
     setIsAsking(true);
 
     // Retain up to 60 previous dialogue turns for deep contextual memory while stripping heavy base64 data URLs
-    const chatHistory = baseHistory.slice(-60).map((m) => ({
-      role: m.role,
-      content: m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]"),
-    }));
+    const chatHistory = baseHistory.slice(-60).map((m) => {
+      let clean = m.content.replace(/!\[(.*?)\]\(data:image\/[^;]+;base64,[^)]+\)/g, "[Attached Image: $1]");
+      if (clean.includes(PDF_SANDBOX_START)) {
+        const { spec, remainingText } = extractPdfSandboxFromContent(clean);
+        if (spec) {
+          clean = `${remainingText ? remainingText + "\n\n" : ""}[Generated PDF Document: "${spec.title}"]\n${spec.content.slice(0, 4000)}`;
+        }
+      }
+      return { role: m.role, content: clean };
+    });
 
     const availableSubsList = subjects.map((s) => s.name).join(", ");
+    const pdfExecutiveInstruction = `3. CREATING & COMPILING PDF DOCUMENTS IN THE SANDBOX:
+When the user asks you to create, generate, make, build, compile, or export a PDF document (e.g., "create a pdf of...", "make a pdf study guide", "export this as a pdf", "generate a formula sheet pdf", "/pdf ..."):
+- Write a brief 1–2 sentence confirmation before the action block.
+- At the very end of your response, you MUST output this exact action block containing the complete, richly structured, publication-grade Markdown document so the Dream It PDF Sandbox can compile and preview the live A4 PDF right inside the chat:
+\`\`\`action:create_pdf
+{
+  "title": "Clear Document Title",
+  "subtitle": "Concise subtitle or syllabus tag",
+  "subject": "Subject Name (e.g. Physics, Mathematics, Chemistry, or General)",
+  "filename": "clean-slug-filename.pdf",
+  "theme": "academic",
+  "content": "Full, comprehensive, publication-grade Markdown document with ## headings, bullet points, tables, formulas, and examples"
+}
+\`\`\`
+`;
+
     let systemPrompt = `You are Dream It AI, an expert, deeply knowledgeable academic mentor and study assistant for students.
 RESPONSE DEPTH & DETAIL GUIDELINES:
 - Provide thorough, detailed, and comprehensive explanations tailored directly to the scope and depth of the user's question.
@@ -3413,7 +3530,7 @@ RESPONSE DEPTH & DETAIL GUIDELINES:
 - Adapt your response length dynamically: if the question requires a deep answer, deliver a complete, rich, high-yield explanation.
 
 WORKSPACE EXECUTIVE POWERS:
-You have direct executive power to save notes and flashcards into the student's study workspace.
+You have direct executive power to save notes, create flashcards, and compile live A4 PDF documents directly inside the user's Dream It sandbox.
 Current available subjects: [${availableSubsList}].
 
 1. SAVING TO NOTES:
@@ -3440,7 +3557,8 @@ When the user asks you to make or save flashcards (e.g., "make a flash card and 
   ]
 }
 \`\`\`
-`;
+
+${pdfExecutiveInstruction}`;
 
     if (chatSubjectId !== null) {
       const subject = subjects.find(s => s.id === chatSubjectId);
@@ -3461,7 +3579,9 @@ ${notesContext ? notesContext : "(No notes uploaded for this subject yet. Draw u
 ${cardsContext}
 
 WORKSPACE EXECUTIVE POWERS:
-You can save notes and flashcards. When asked to save to notes or create flashcards, append the action command blocks at the very end.`;
+You can save notes, create flashcards, and compile live A4 PDF documents in the sandbox. When asked to save notes, create flashcards, or create a PDF, append the appropriate action command block at the very end.
+
+${pdfExecutiveInstruction}`;
     } else {
       // General assistant mode - inject comprehensive workspace context so AI is fully aware of all student assets
       const noteSummaries = notes.slice(0, 20).map(n => `- [${n.subject || 'General'}] "${n.title}": ${n.content.slice(0, 300).replace(/\n+/g, " ")}...`).join("\n");
@@ -3545,8 +3665,43 @@ ${taskSummaries || "No active tasks."}\n`;
         const isSaveNoteIntent = /(?:save|add|put|store|write).*(?:note|notes|notebook|page)/i.test(questionText);
         const isFlashcardIntent = /(?:flash ?card|flashcard).*(?:save|create|make|add)/i.test(questionText) ||
                                   /(?:create|make|generate).*(?:flash ?card|flashcard)/i.test(questionText);
+        const isPdfIntent =
+          /^\/pdf\b/i.test(questionText) ||
+          /(?:create|make|generate|build|export|convert|turn|compile|give me|prepare|write)\b[\s\S]*?\bpdf\b/i.test(questionText) ||
+          /\bpdf\b[\s\S]*?\b(?:create|make|generate|export|download|file|document|notes|sheet|guide|paper|summary)\b/i.test(questionText);
 
         let actionExecuted = false;
+        let pdfCreated = false;
+
+        // 0. Parse structured action:create_pdf
+        const pdfActionRegex = /```action:create_pdf\s*([\s\S]*?)\s*```/;
+        const pdfMatch = fullContent.match(pdfActionRegex);
+        if (pdfMatch) {
+          try {
+            const pdfData = safeParseJSON<Partial<PdfDocumentSpec>>(pdfMatch[1], {});
+            const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
+            const remainingProse = fullContent.replace(pdfActionRegex, "").trim();
+            const pdfSpec: PdfDocumentSpec = {
+              title: (pdfData.title || "Study Document").trim(),
+              subtitle: pdfData.subtitle ? String(pdfData.subtitle).trim() : undefined,
+              subject: pdfData.subject || activeSubName || undefined,
+              filename: pdfData.filename || undefined,
+              theme: pdfData.theme === "executive" || pdfData.theme === "minimal" ? pdfData.theme : "academic",
+              content: (pdfData.content || remainingProse || "").trim(),
+              author: userProfile.name || "Dream It AI",
+            };
+            if (pdfSpec.content) {
+              const token = encodePdfSandboxToken(pdfSpec);
+              fullContent = remainingProse ? `${remainingProse}\n\n${token}` : token;
+              pdfCreated = true;
+              actionExecuted = true;
+              addXP(5);
+              showToast(`PDF "${pdfSpec.title}" ready in sandbox!`, "success");
+            }
+          } catch (err) {
+            console.warn("Failed parsing action:create_pdf block:", err);
+          }
+        }
 
         // 1. Parse structured action:save_note
         const noteActionRegex = /```action:save_note\s*([\s\S]*?)\s*```/;
@@ -3658,6 +3813,55 @@ ${taskSummaries || "No active tasks."}\n`;
           }
         }
 
+        // 5. Robust Fallback: If user explicitly requested a PDF and AI returned Markdown directly (or referenced previous answer)
+        if (!pdfCreated && isPdfIntent) {
+          let pdfBody = fullContent.replace(/```action:create_pdf[\s\S]*$/i, "").trim();
+          let introMessage = "Here is your compiled PDF document ready inside the sandbox:";
+
+          // If user said "make a pdf of that" / "export this as pdf" and AI gave a short acknowledgement, pull previous assistant response
+          if (pdfBody.length < 180) {
+            const prevAssistant = [...baseHistory]
+              .reverse()
+              .find((m) => m.role === "assistant" && m.content && m.content.length > 100);
+            if (prevAssistant) {
+              const { spec: prevSpec, remainingText } = extractPdfSandboxFromContent(prevAssistant.content);
+              pdfBody = prevSpec ? prevSpec.content : remainingText;
+            }
+          }
+
+          if (pdfBody.length > 30) {
+            const headingMatch = pdfBody.match(/^#+\s*(.+)$/m);
+            const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
+            const subMention = subjects.find(
+              (s) =>
+                new RegExp(`\\b${s.name}\\b`, "i").test(questionText) ||
+                new RegExp(`\\b${s.name}\\b`, "i").test(pdfBody)
+            );
+            const inferredTitle =
+              (headingMatch ? headingMatch[1].replace(/[*#`]/g, "").trim() : "") ||
+              questionText
+                .replace(/^\/pdf\s*/i, "")
+                .replace(/\b(?:create|make|generate|build|export|convert|turn|compile|give me|prepare|write|a|an|the|as|into|of|for|pdf|document|file)\b/gi, "")
+                .replace(/\s+/g, " ")
+                .trim()
+                .slice(0, 70) ||
+              "Study Document";
+
+            const fallbackSpec: PdfDocumentSpec = {
+              title: inferredTitle.charAt(0).toUpperCase() + inferredTitle.slice(1),
+              subject: activeSubName || subMention?.name || undefined,
+              theme: "academic",
+              content: pdfBody,
+              author: userProfile.name || "Dream It AI",
+            };
+
+            fullContent = `${introMessage}\n\n${encodePdfSandboxToken(fallbackSpec)}`;
+            pdfCreated = true;
+            addXP(5);
+            showToast(`PDF "${fallbackSpec.title}" ready in sandbox!`, "success");
+          }
+        }
+
         // Update messages with the final cleaned content and persist session
         const finalMessages: Message[] = [
           ...nextUserMessages,
@@ -3685,12 +3889,52 @@ ${taskSummaries || "No active tasks."}\n`;
     }
   };
 
-  // ─── AI Message Action Handlers (Copy, Share, Edit, Regenerate) ───
+  // ─── AI Message Action Handlers (Copy, Share, Edit, Regenerate, PDF Export) ───
   const getCleanMessageText = (content: string) => {
-    return content
+    let text = content;
+    if (text.includes(PDF_SANDBOX_START)) {
+      const { spec, remainingText } = extractPdfSandboxFromContent(text);
+      if (spec) {
+        text = `${remainingText ? remainingText + "\n\n" : ""}# ${spec.title}\n\n${spec.content}`;
+      }
+    }
+    return text
       .replace(/^!\[.*?\]\(.*?\)\s*/, "")
       .replace(/^(?:📎|📄)\s*\*\*.*?\*\*.*?\n\n/, "")
       .trim();
+  };
+
+  const handleExportMessageToPdf = async (content: string) => {
+    try {
+      const { spec, remainingText } = extractPdfSandboxFromContent(content);
+      const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
+      let pdfSpec: PdfDocumentSpec;
+
+      if (spec) {
+        pdfSpec = spec;
+      } else {
+        const cleanBody = getCleanMessageText(remainingText || content);
+        const headingMatch = cleanBody.match(/^#+\s*(.+)$/m);
+        const title = headingMatch
+          ? headingMatch[1].replace(/[*#`]/g, "").trim()
+          : cleanBody.split("\n")[0].replace(/[*#`]/g, "").trim().slice(0, 64) || "Dream It AI Response";
+        pdfSpec = {
+          title,
+          subject: activeSubName || "Dream It Study",
+          theme: "academic",
+          content: cleanBody,
+          author: userProfile.name || "Dream It AI",
+        };
+      }
+
+      const compiled = await compileMarkdownToPdf(pdfSpec);
+      downloadCompiledPdf(compiled);
+      setTimeout(() => URL.revokeObjectURL(compiled.blobUrl), 15000);
+      showToast(`Exported ${compiled.filename}`, "success");
+    } catch (err) {
+      console.error("Failed to export PDF:", err);
+      showToast("Failed to export PDF", "error");
+    }
   };
 
   const handleCopyMessage = async (content: string, idx: number) => {
@@ -5836,13 +6080,25 @@ Mathematics:
                             </div>
                           </div>
                         ) : m.content ? (
-                          renderSimpleMarkdown(m.content, m.role === "user")
+                          renderChatMessageContent(
+                            m.content,
+                            m.role === "user",
+                            (title, content, subjectName) => {
+                              executeSaveNoteFromAI({
+                                title,
+                                content,
+                                subjectName,
+                                subjectId: chatSubjectId ?? undefined,
+                              });
+                            },
+                            showToast
+                          )
                         ) : (
                           <AIThinkingStatus size="sm" />
                         )}
                       </div>
 
-                      {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
+                      {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate, Export PDF) */}
                       {m.content && editingMessageIdx !== idx && (
                         <div
                           className={`flex items-center gap-1.5 mt-1 text-[11px] opacity-70 group-hover:opacity-100 transition-opacity ${
@@ -5883,15 +6139,26 @@ Mathematics:
                               <Pencil size={13} />
                             </button>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => handleRegenerateResponse(idx)}
-                              className="p-1 rounded-md transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                              title="Regenerate response"
-                              aria-label="Regenerate response"
-                            >
-                              <RotateCcw size={13} />
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleExportMessageToPdf(m.content)}
+                                className="p-1 rounded-md transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                                title="Export response as PDF"
+                                aria-label="Export response as PDF"
+                              >
+                                <FileDown size={13} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleRegenerateResponse(idx)}
+                                className="p-1 rounded-md transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                                title="Regenerate response"
+                                aria-label="Regenerate response"
+                              >
+                                <RotateCcw size={13} />
+                              </button>
+                            </>
                           )}
                         </div>
                       )}
@@ -8219,13 +8486,25 @@ Mathematics:
                                 </div>
                               </div>
                             ) : m.content ? (
-                              renderSimpleMarkdown(m.content, m.role === "user")
+                              renderChatMessageContent(
+                                m.content,
+                                m.role === "user",
+                                (title, content, subjectName) => {
+                                  executeSaveNoteFromAI({
+                                    title,
+                                    content,
+                                    subjectName,
+                                    subjectId: chatSubjectId ?? undefined,
+                                  });
+                                },
+                                showToast
+                              )
                             ) : (
                               <AIThinkingStatus size="lg" />
                             )}
                           </div>
 
-                          {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate) */}
+                          {/* ChatGPT-style Action Row (Copy, Share, Edit / Regenerate, Export PDF) */}
                           {m.content && editingMessageIdx !== idx && (
                             <div
                               className={`flex items-center gap-1 sm:gap-1.5 mt-1 sm:mt-1.5 text-xs opacity-75 sm:opacity-70 group-hover:opacity-100 transition-opacity ${
@@ -8266,15 +8545,26 @@ Mathematics:
                                   <Pencil size={14} />
                                 </button>
                               ) : (
-                                <button
-                                  type="button"
-                                  onClick={() => handleRegenerateResponse(idx)}
-                                  className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
-                                  title="Regenerate response"
-                                  aria-label="Regenerate response"
-                                >
-                                  <RotateCcw size={14} />
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleExportMessageToPdf(m.content)}
+                                    className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                                    title="Export response as PDF"
+                                    aria-label="Export response as PDF"
+                                  >
+                                    <FileDown size={14} />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRegenerateResponse(idx)}
+                                    className="p-1.5 rounded-lg transition hover:bg-black/10 dark:hover:bg-white/10 hover:text-white"
+                                    title="Regenerate response"
+                                    aria-label="Regenerate response"
+                                  >
+                                    <RotateCcw size={14} />
+                                  </button>
+                                </>
                               )}
                             </div>
                           )}
