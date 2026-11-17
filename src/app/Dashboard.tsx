@@ -207,6 +207,127 @@ function encodePdfSandboxToken(spec: PdfDocumentSpec): string {
   return `${PDF_SANDBOX_START}${JSON.stringify(spec)}${PDF_SANDBOX_END}`;
 }
 
+/**
+ * Unbreakable parser for both ```pdf_document (YAML frontmatter + raw Markdown)
+ * and legacy ```action:create_pdf (JSON with LaTeX repair & manual field fallback).
+ */
+function extractPdfBlockFromRawText(
+  rawText: string,
+  defaultAuthor = "Dream It AI",
+  defaultSubject?: string
+): { spec: PdfDocumentSpec | null; remainingText: string } {
+  // 1. Primary zero-escape format: ```pdf_document ... ```
+  const pdfDocIdx = rawText.indexOf("```pdf_document");
+  if (pdfDocIdx !== -1) {
+    const before = rawText.slice(0, pdfDocIdx).trim();
+    let afterFence = rawText.slice(pdfDocIdx + "```pdf_document".length).replace(/^\r?\n/, "");
+    // Trim trailing closing ``` at the end of the block (preserving any nested code blocks inside)
+    const lastFenceIdx = afterFence.lastIndexOf("\n```");
+    let after = "";
+    if (lastFenceIdx !== -1) {
+      const trailing = afterFence.slice(lastFenceIdx + 4).trim();
+      afterFence = afterFence.slice(0, lastFenceIdx);
+      after = trailing;
+    } else if (afterFence.trimEnd().endsWith("```")) {
+      afterFence = afterFence.trimEnd().slice(0, -3);
+    }
+
+    let title = "Study Document";
+    let subtitle: string | undefined;
+    let subject: string | undefined = defaultSubject;
+    let filename: string | undefined;
+    let theme: "academic" | "minimal" | "executive" = "academic";
+    let body = afterFence.trim();
+
+    // Parse optional YAML-style header before ---
+    const sepMatch = /\n---[ \t]*\n/.exec(afterFence);
+    if (sepMatch && sepMatch.index < 600) {
+      const headerBlock = afterFence.slice(0, sepMatch.index);
+      body = afterFence.slice(sepMatch.index + sepMatch[0].length).trim();
+      for (const line of headerBlock.split("\n")) {
+        const kv = /^([a-zA-Z_]+)\s*:\s*(.+)$/.exec(line.trim());
+        if (!kv) continue;
+        const key = kv[1].toLowerCase();
+        const val = kv[2].replace(/^["']|["']$/g, "").trim();
+        if (key === "title" && val) title = val;
+        else if (key === "subtitle" && val) subtitle = val;
+        else if (key === "subject" && val) subject = val;
+        else if (key === "filename" && val) filename = val;
+        else if (key === "theme" && (val === "academic" || val === "minimal" || val === "executive")) {
+          theme = val;
+        }
+      }
+    } else {
+      const h1Match = body.match(/^#+\s*(.+)$/m);
+      if (h1Match) title = h1Match[1].replace(/[*#`]/g, "").trim();
+    }
+
+    if (body) {
+      return {
+        spec: { title, subtitle, subject, filename, theme, content: body, author: defaultAuthor },
+        remainingText: [before, after].filter(Boolean).join("\n\n").trim(),
+      };
+    }
+  }
+
+  // 2. Legacy/JSON format: ```action:create_pdf { ... } ``` (even if unclosed or containing LaTeX backslashes)
+  const jsonFenceIdx = rawText.indexOf("```action:create_pdf");
+  if (jsonFenceIdx !== -1) {
+    const before = rawText.slice(0, jsonFenceIdx).trim();
+    let payload = rawText.slice(jsonFenceIdx + "```action:create_pdf".length).replace(/^\r?\n/, "");
+    const lastFenceIdx = payload.lastIndexOf("```");
+    let after = "";
+    if (lastFenceIdx !== -1) {
+      after = payload.slice(lastFenceIdx + 3).trim();
+      payload = payload.slice(0, lastFenceIdx).trim();
+    }
+
+    let parsed = safeParseJSON<Partial<PdfDocumentSpec> | null>(payload, null);
+
+    // Regex fallback if JSON was severely malformed due to raw quotes/backslashes
+    if (!parsed || !parsed.content) {
+      const titleM = /"title"\s*:\s*"([^"]+)"/.exec(payload);
+      const subM = /"subtitle"\s*:\s*"([^"]+)"/.exec(payload);
+      const subjM = /"subject"\s*:\s*"([^"]+)"/.exec(payload);
+      const fileM = /"filename"\s*:\s*"([^"]+)"/.exec(payload);
+      const contentStartM = /"content"\s*:\s*"/.exec(payload);
+      if (contentStartM) {
+        let rawContent = payload.slice(contentStartM.index + contentStartM[0].length);
+        // Strip trailing closing quote and brace
+        rawContent = rawContent.replace(/"\s*,?\s*(?:"[a-zA-Z_]+"\s*:[\s\S]*)?\}?\s*$/, "");
+        // Unescape literal \n and \" while keeping LaTeX backslashes intact
+        rawContent = rawContent.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+        if (rawContent.trim()) {
+          parsed = {
+            title: titleM?.[1] || "Study Document",
+            subtitle: subM?.[1],
+            subject: subjM?.[1] || defaultSubject,
+            filename: fileM?.[1],
+            content: rawContent.trim(),
+          };
+        }
+      }
+    }
+
+    if (parsed && parsed.content && parsed.content.trim()) {
+      return {
+        spec: {
+          title: (parsed.title || "Study Document").trim(),
+          subtitle: parsed.subtitle ? String(parsed.subtitle).trim() : undefined,
+          subject: parsed.subject || defaultSubject,
+          filename: parsed.filename || undefined,
+          theme: parsed.theme === "executive" || parsed.theme === "minimal" ? parsed.theme : "academic",
+          content: parsed.content.trim(),
+          author: defaultAuthor,
+        },
+        remainingText: [before, after].filter(Boolean).join("\n\n").trim(),
+      };
+    }
+  }
+
+  return { spec: null, remainingText: rawText };
+}
+
 function extractPdfSandboxFromContent(content: string): { spec: PdfDocumentSpec | null; remainingText: string } {
   const startIdx = content.indexOf(PDF_SANDBOX_START);
   const endIdx = content.indexOf(PDF_SANDBOX_END);
@@ -224,6 +345,12 @@ function extractPdfSandboxFromContent(content: string): { spec: PdfDocumentSpec 
       // Fallback to raw markdown if corrupted
     }
   }
+
+  // Auto-recover any saved/unprocessed ```pdf_document or ```action:create_pdf blocks
+  if (content.includes("```pdf_document") || content.includes("```action:create_pdf")) {
+    return extractPdfBlockFromRawText(content);
+  }
+
   return { spec: null, remainingText: content };
 }
 
@@ -232,15 +359,18 @@ function renderChatMessageContent(
   text: string,
   isUserMessage?: boolean,
   onSavePdfToNotes?: (title: string, content: string, subject?: string) => void,
-  showToast?: (msg: string, type?: "success" | "error" | "info") => void
+  showToast?: (msg: string, type?: "success" | "error" | "info") => void,
+  isStreaming?: boolean
 ) {
   if (!text || !text.trim()) {
     return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet.</p>;
   }
 
-  // Hide raw in-progress ```action:create_pdf JSON block during streaming and show sleek compiling status
-  if (!isUserMessage && text.includes("```action:create_pdf")) {
-    const beforeFence = text.split("```action:create_pdf")[0].trim();
+  // Only show the compiling progress pill while actively streaming an incomplete PDF block
+  const hasRawPdfBlock = !isUserMessage && (text.includes("```pdf_document") || text.includes("```action:create_pdf"));
+  if (hasRawPdfBlock && isStreaming) {
+    const splitMarker = text.includes("```pdf_document") ? "```pdf_document" : "```action:create_pdf";
+    const beforeFence = text.split(splitMarker)[0].trim();
     return (
       <div className="space-y-3 w-full">
         {beforeFence && renderSimpleMarkdown(beforeFence, false)}
@@ -259,8 +389,8 @@ function renderChatMessageContent(
     );
   }
 
-  // Check for finalized PDF Sandbox artifact
-  if (!isUserMessage && text.includes(PDF_SANDBOX_START)) {
+  // Render finalized PDF Sandbox artifact (also auto-heals any saved raw pdf_document / action:create_pdf blocks!)
+  if (!isUserMessage && (text.includes(PDF_SANDBOX_START) || hasRawPdfBlock)) {
     const { spec, remainingText } = extractPdfSandboxFromContent(text);
     if (spec) {
       return (
@@ -3504,18 +3634,17 @@ Output ONLY a raw valid JSON array. Do NOT wrap in markdown code blocks if possi
 
     const availableSubsList = subjects.map((s) => s.name).join(", ");
     const pdfExecutiveInstruction = `3. CREATING & COMPILING PDF DOCUMENTS IN THE SANDBOX:
-When the user asks you to create, generate, make, build, compile, or export a PDF document (e.g., "create a pdf of...", "make a pdf study guide", "export this as a pdf", "generate a formula sheet pdf", "/pdf ..."):
-- Write a brief 1–2 sentence confirmation before the action block.
-- At the very end of your response, you MUST output this exact action block containing the complete, richly structured, publication-grade Markdown document so the Dream It PDF Sandbox can compile and preview the live A4 PDF right inside the chat:
-\`\`\`action:create_pdf
-{
-  "title": "Clear Document Title",
-  "subtitle": "Concise subtitle or syllabus tag",
-  "subject": "Subject Name (e.g. Physics, Mathematics, Chemistry, or General)",
-  "filename": "clean-slug-filename.pdf",
-  "theme": "academic",
-  "content": "Full, comprehensive, publication-grade Markdown document with ## headings, bullet points, tables, formulas, and examples"
-}
+When the user asks you to create, generate, make, build, compile, or export a PDF document (e.g., "create a pdf of...", "make a formula sheet pdf", "export this as a pdf", "/pdf ..."):
+- Write a brief 1–2 sentence confirmation before the document block.
+- At the very end of your response, you MUST output this exact fenced \`pdf_document\` block (plain text frontmatter + raw Markdown — do NOT wrap in JSON) so the Dream It PDF Sandbox can instantly compile and preview the live A4 PDF right inside the chat:
+\`\`\`pdf_document
+title: Clear Document Title
+subtitle: Concise subtitle or syllabus tag
+subject: Subject Name (e.g. Physics, Mathematics, Chemistry, or General)
+theme: academic
+---
+# 1. Section Heading
+Full, comprehensive, publication-grade Markdown document with ## headings, bullet points, tables, LaTeX formulas, and worked examples.
 \`\`\`
 `;
 
@@ -3667,39 +3796,28 @@ ${taskSummaries || "No active tasks."}\n`;
                                   /(?:create|make|generate).*(?:flash ?card|flashcard)/i.test(questionText);
         const isPdfIntent =
           /^\/pdf\b/i.test(questionText) ||
-          /(?:create|make|generate|build|export|convert|turn|compile|give me|prepare|write)\b[\s\S]*?\bpdf\b/i.test(questionText) ||
-          /\bpdf\b[\s\S]*?\b(?:create|make|generate|export|download|file|document|notes|sheet|guide|paper|summary)\b/i.test(questionText);
+          (!attachedFileBackup?.isPdf &&
+            /\bpdf\b/i.test(questionText) &&
+            !/(?:read|analyze|summarize|explain|upload|attached|what is in|from this|from the)\s+(?:this\s+|the\s+|my\s+)?pdf\b/i.test(questionText));
 
         let actionExecuted = false;
         let pdfCreated = false;
 
-        // 0. Parse structured action:create_pdf
-        const pdfActionRegex = /```action:create_pdf\s*([\s\S]*?)\s*```/;
-        const pdfMatch = fullContent.match(pdfActionRegex);
-        if (pdfMatch) {
-          try {
-            const pdfData = safeParseJSON<Partial<PdfDocumentSpec>>(pdfMatch[1], {});
-            const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
-            const remainingProse = fullContent.replace(pdfActionRegex, "").trim();
-            const pdfSpec: PdfDocumentSpec = {
-              title: (pdfData.title || "Study Document").trim(),
-              subtitle: pdfData.subtitle ? String(pdfData.subtitle).trim() : undefined,
-              subject: pdfData.subject || activeSubName || undefined,
-              filename: pdfData.filename || undefined,
-              theme: pdfData.theme === "executive" || pdfData.theme === "minimal" ? pdfData.theme : "academic",
-              content: (pdfData.content || remainingProse || "").trim(),
-              author: userProfile.name || "Dream It AI",
-            };
-            if (pdfSpec.content) {
-              const token = encodePdfSandboxToken(pdfSpec);
-              fullContent = remainingProse ? `${remainingProse}\n\n${token}` : token;
-              pdfCreated = true;
-              actionExecuted = true;
-              addXP(5);
-              showToast(`PDF "${pdfSpec.title}" ready in sandbox!`, "success");
-            }
-          } catch (err) {
-            console.warn("Failed parsing action:create_pdf block:", err);
+        // 0. Parse structured ```pdf_document or ```action:create_pdf block (zero-escape + LaTeX-safe recovery)
+        if (fullContent.includes("```pdf_document") || fullContent.includes("```action:create_pdf")) {
+          const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
+          const extracted = extractPdfBlockFromRawText(
+            fullContent,
+            userProfile.name || "Dream It AI",
+            activeSubName
+          );
+          if (extracted.spec && extracted.spec.content) {
+            const token = encodePdfSandboxToken(extracted.spec);
+            fullContent = extracted.remainingText ? `${extracted.remainingText}\n\n${token}` : token;
+            pdfCreated = true;
+            actionExecuted = true;
+            addXP(5);
+            showToast(`PDF "${extracted.spec.title}" ready in sandbox!`, "success");
           }
         }
 
@@ -6091,7 +6209,8 @@ Mathematics:
                                 subjectId: chatSubjectId ?? undefined,
                               });
                             },
-                            showToast
+                            showToast,
+                            isAsking && idx === messages.length - 1
                           )
                         ) : (
                           <AIThinkingStatus size="sm" />
@@ -8497,7 +8616,8 @@ Mathematics:
                                     subjectId: chatSubjectId ?? undefined,
                                   });
                                 },
-                                showToast
+                                showToast,
+                                isAsking && idx === messages.length - 1
                               )
                             ) : (
                               <AIThinkingStatus size="lg" />

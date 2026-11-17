@@ -87,23 +87,41 @@ export function safeParseJSON<T = any>(raw: string, fallback?: T): T {
 }
 
 /**
- * Escapes unescaped newlines, tabs, and invalid quotes inside string values.
+ * Escapes unescaped newlines, tabs, and invalid backslash sequences (e.g. LaTeX \frac, \Delta, \pi) inside string values.
  */
 function sanitizeJsonStrings(str: string): string {
   let result = "";
   let inString = false;
-  let isEscaped = false;
+  const latexCollisions = /^(?:frac|dfrac|tfrac|text|textrm|textbf|textit|times|theta|Theta|tau|to|tan|triangle|beta|bar|begin|binom|big|rho|right|rightarrow|Rightarrow|nu|nabla|neq|ne|notin|neg|not)\b/;
 
   for (let i = 0; i < str.length; i++) {
     const char = str[i];
 
     if (inString) {
-      if (isEscaped) {
-        result += char;
-        isEscaped = false;
-      } else if (char === "\\") {
-        result += char;
-        isEscaped = true;
+      if (char === "\\") {
+        const next = str[i + 1];
+        if (next === undefined) {
+          result += "\\\\";
+        } else if (next === "\\" || next === '"' || next === "/") {
+          result += "\\" + next;
+          i++;
+        } else if (next === "u" && /^[0-9a-fA-F]{4}$/.test(str.slice(i + 2, i + 6))) {
+          result += str.slice(i, i + 6);
+          i += 5;
+        } else if ("bfnrt".includes(next)) {
+          // Preserve real JSON \n, \t, etc., unless it starts a LaTeX command like \frac, \text, \beta, \rho, \nu
+          const rest = str.slice(i + 1, i + 16);
+          if (latexCollisions.test(rest)) {
+            result += "\\\\" + next;
+          } else {
+            result += "\\" + next;
+          }
+          i++;
+        } else {
+          // Illegal JSON escape such as \Delta, \pi, \chi, \cdot, \sigma, \{, \, -> double-escape it
+          result += "\\\\" + next;
+          i++;
+        }
       } else if (char === '"') {
         inString = false;
         result += char;
