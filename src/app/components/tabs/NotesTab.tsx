@@ -898,15 +898,15 @@ export const NotesTab: FC<NotesTabProps> = ({
                 value={noteDraft}
                 onChange={(e) => handleContentChange(e.target.value)}
                 placeholder="Write your study notes here... Use the quick format bar above or standard Markdown"
-                className="w-full h-auto min-h-[380px] sm:min-h-[480px] xl:h-full flex-1 bg-transparent outline-none leading-relaxed resize-y xl:resize-none custom-scrollbar p-3.5 sm:p-4 rounded-xl border border-transparent focus:border-black/10 dark:focus:border-white/10 overflow-y-auto"
-                style={{ color: "var(--m-text)", fontSize: "16px" }}
+                className="w-full h-auto min-h-[380px] sm:min-h-[480px] xl:h-full flex-1 bg-transparent outline-none leading-relaxed resize-y xl:resize-none custom-scrollbar p-3.5 sm:p-4 rounded-xl border border-transparent focus:border-black/10 dark:focus:border-white/10 overflow-y-auto font-ai-serif"
+                style={{ color: "var(--m-text)", fontSize: "16.5px" }}
               />
             ) : (
               <div
                 className="w-full h-auto xl:h-full min-h-[350px] flex-1 overflow-visible xl:overflow-y-auto custom-scrollbar p-3.5 sm:p-6 rounded-2xl select-text"
                 style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}
               >
-                <MarkdownRenderer content={noteDraft} />
+                <MarkdownRenderer content={noteDraft} serif />
               </div>
             )}
           </div>

@@ -5144,7 +5144,7 @@ ${taskSummaries || "No active tasks."}\n`;
                         <p className="text-xs font-medium" style={{ color: "var(--m-text-muted)" }}>Progress</p>
                         <h2 className="mt-0.5 text-base sm:text-lg font-semibold" style={{ color: "var(--m-text-heading)" }}>{completeCount} of {tasks.length} done</h2>
                       </div>
-                      <span className="rounded-lg px-2.5 py-0.5 text-xs font-medium minimal-inset" style={{ color: "var(--m-primary)" }}>{progress}%</span>
+                      <span className="rounded-lg px-2.5 py-0.5 text-xs font-medium font-[DM_Mono] minimal-inset" style={{ color: "var(--m-primary)" }}>{progress}%</span>
                     </div>
                     <div className="mt-4 sm:mt-5 flex items-center gap-2">
                       <div className="h-3 flex-1 overflow-hidden rounded-full" style={{ backgroundColor: "var(--m-surface-alt)" }}>
@@ -5155,7 +5155,7 @@ ${taskSummaries || "No active tasks."}\n`;
                     <div className="mt-5 sm:mt-6">
                       <div className="flex items-center justify-between text-[11px] mb-2" style={{ color: "var(--m-text-muted)" }}>
                         <span>This week</span>
-                        <span style={{ color: "var(--m-primary)" }}>{formatStudyTime(weeklyStudyMinutes)} total</span>
+                        <span className="font-[DM_Mono]" style={{ color: "var(--m-primary)" }}>{formatStudyTime(weeklyStudyMinutes)} total</span>
                       </div>
                       <div className="grid grid-cols-7 gap-1 sm:gap-2 items-end h-14 rounded-xl p-1.5 sm:p-2 w-full min-w-0 max-w-full" style={{ backgroundColor: "var(--m-surface-hover)", border: "1px solid var(--m-border-light)" }}>
                         {graphData.map((d) => {

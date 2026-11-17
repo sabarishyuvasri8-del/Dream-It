@@ -1245,3 +1245,24 @@ html, body {
   text-rendering: optimizeLegibility;
 }
 
+/* ─── Claude Editorial Typography Hierarchy (Local Preview) ───
+   • Source Serif 4: All headings, greetings, page titles, flashcards, notes, quizzes & AI responses
+   • DM Sans: UI chrome (buttons, pills, nav labels, inputs, badges)
+   • DM Mono: Timers (25:00), percentages, code blocks & financial figures
+*/
+.font-\[Roboto_Slab\],
+.dreamit-dash h1,
+.dreamit-dash h2,
+.dreamit-dash h3 {
+  font-family: "Source Serif 4", Georgia, Cambria, "Times New Roman", Times, serif !important;
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.font-\[DM_Mono\] {
+  font-variant-numeric: tabular-nums;
+}
+
