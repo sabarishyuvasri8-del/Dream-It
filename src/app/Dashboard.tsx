@@ -4016,7 +4016,7 @@ ${taskSummaries || "No active tasks."}\n`;
           const activeSubName = chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
           const extracted = extractPdfBlockFromRawText(
             fullContent,
-            userProfile.name || "Dream It AI",
+            userName || "Dream It AI",
             activeSubName
           );
           if (extracted.spec && extracted.spec.content) {
@@ -4178,7 +4178,7 @@ ${taskSummaries || "No active tasks."}\n`;
               subject: activeSubName || subMention?.name || undefined,
               theme: "academic",
               content: pdfBody,
-              author: userProfile.name || "Dream It AI",
+              author: userName || "Dream It AI",
             };
 
             fullContent = `${introMessage}\n\n${encodePdfSandboxToken(fallbackSpec)}`;
@@ -4279,7 +4279,7 @@ ${taskSummaries || "No active tasks."}\n`;
           subject: activeSubName || "Dream It Study",
           theme: "academic",
           content: cleanBody,
-          author: userProfile.name || "Dream It AI",
+          author: userName || "Dream It AI",
         };
       }
 
