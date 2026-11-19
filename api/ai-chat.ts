@@ -21,6 +21,9 @@ interface ImagePayload {
   base64Data: string;
 }
 
+// Maximum execution duration for Vercel Serverless Functions (prevents 10s cutoff on long prompts)
+export const maxDuration = 60;
+
 // Fallback API keys for zero-config production reliability
 const FALLBACK_GEMINI_KEY =
   typeof atob === "function"
@@ -30,13 +33,17 @@ const FALLBACK_NVIDIA_KEY = "nvapi-G6UnKKE8engbPsL_zS-GEsogYZQ1pVOqIb80iL5dclgPm
 
 // Provider candidate model lists
 const GEMINI_MODELS = [
-  "gemini-3-flash-preview",
+  "gemini-4-hydrogen", // Primary model requested by user
   "gemini-3.8-flash",
-  "gemini-3.1-flash-lite",
-  "gemini-3.5-flash",
+  "gemini-3.7-flash",
   "gemini-3.6-flash",
-  "gemini-flash-latest",
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.1-flash-lite-preview",
   "gemini-3.1-pro-preview",
+  "gemini-3-flash-preview",
+  "gemini-flash-latest",
   "gemini-flash-lite-latest",
 ];
 
@@ -185,6 +192,7 @@ export default async function handler(req: any, res?: any) {
     let finalThought = "";
     let finalProvider = "";
     let finalModel = "";
+    let finalAttempts: string[] = [];
     let lastErrorStatus = 0;
     let lastErrorMessage = "";
 
@@ -214,6 +222,10 @@ export default async function handler(req: any, res?: any) {
             enableThinking,
           });
 
+          if (result.attempts) {
+            finalAttempts.push(...result.attempts);
+          }
+
           if (result.success && (result.content || result.thought)) {
             finalContent = result.content || "";
             finalThought = result.thought || "";
@@ -226,12 +238,13 @@ export default async function handler(req: any, res?: any) {
             console.warn(`[ai-orchestrator] NVIDIA failed (${lastErrorMessage}). Failing over to next provider...`);
           }
         } else if (currentProvider === "gemini" && geminiKey) {
-          // Resolve Gemini models
+          // Resolve Gemini models with Gemini 4 Hydrogen as primary
           let candidateGeminiModels = [...GEMINI_MODELS];
           if (enableThinking) {
             candidateGeminiModels = [
+              "gemini-4-hydrogen",
               "gemini-3.8-flash",
-              ...candidateGeminiModels.filter((m) => m !== "gemini-3.8-flash"),
+              ...candidateGeminiModels.filter((m) => m !== "gemini-4-hydrogen" && m !== "gemini-3.8-flash"),
             ];
           }
           if (model && model.startsWith("gemini-")) {
@@ -250,6 +263,10 @@ export default async function handler(req: any, res?: any) {
             enableThinking,
             thinkingBudget,
           });
+
+          if (result.attempts) {
+            finalAttempts.push(...result.attempts);
+          }
 
           if (result.success && (result.content || result.thought)) {
             finalContent = result.content || "";
@@ -320,6 +337,7 @@ export default async function handler(req: any, res?: any) {
       model: finalModel,
       task: normalizedTask,
       routedVia: provider,
+      attempts: finalAttempts,
     };
 
     if (res && typeof res.status === "function") {
@@ -413,10 +431,11 @@ async function executeNvidiaRequest(opts: {
 
   let lastStatus = 0;
   let lastError = "";
+  const attempts: string[] = [];
 
   for (const currentModel of opts.candidateModels) {
-    // Fast failover: 4.5s for normal, 12s for extended thinking reasoning
-    const perModelTimeoutMs = opts.enableThinking ? 12000 : 4500;
+    // Fast failover: 3.5s for normal, 7s for extended thinking reasoning
+    const perModelTimeoutMs = opts.enableThinking ? 7000 : 3500;
     const modelCtrl = new AbortController();
     const modelTimer = setTimeout(() => modelCtrl.abort(), perModelTimeoutMs);
 
@@ -449,11 +468,13 @@ async function executeNvidiaRequest(opts: {
         const { content, thought } = extractThoughtAndContent(rawContent, explicitThought);
 
         if (content || thought) {
+          attempts.push(`${currentModel} (200 OK)`);
           return {
             success: true,
             content: content || thought || "",
             thought,
             model: currentModel,
+            attempts,
           };
         }
       }
@@ -461,15 +482,17 @@ async function executeNvidiaRequest(opts: {
       lastStatus = nvidiaRes.status;
       const errJson = await nvidiaRes.json().catch(() => ({}));
       lastError = errJson?.error?.message || errJson?.detail || `NVIDIA status ${lastStatus}`;
+      attempts.push(`${currentModel} (${lastStatus || lastError || "failed"})`);
       console.warn(`[NVIDIA NIM] ${currentModel} returned ${lastStatus}: ${lastError}`);
     } catch (netErr: any) {
       clearTimeout(modelTimer);
       lastError = netErr?.message || "Network timeout";
+      attempts.push(`${currentModel} (timeout/network)`);
       console.warn(`[NVIDIA NIM] ${currentModel} network error: ${lastError}`);
     }
   }
 
-  return { success: false, status: lastStatus, error: lastError };
+  return { success: false, status: lastStatus, error: lastError, attempts };
 }
 
 /**
@@ -486,7 +509,7 @@ async function executeGeminiRequest(opts: {
   top_p?: number;
   enableThinking?: boolean;
   thinkingBudget?: number;
-}): Promise<{ success: boolean; content?: string; thought?: string; model?: string; status?: number; error?: string }> {
+}): Promise<{ success: boolean; content?: string; thought?: string; model?: string; status?: number; error?: string; attempts?: string[] }> {
   const systemParts: Array<{ text: string }> = [];
   const contents: Array<{ role: "user" | "model"; parts: Array<any> }> = [];
 
@@ -548,11 +571,12 @@ async function executeGeminiRequest(opts: {
 
   let lastStatus = 0;
   let lastError = "";
+  const attempts: string[] = [];
 
   for (const currentModel of opts.candidateModels) {
     const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${opts.apiKey.trim()}`;
-    // Fast failover: 4s timeout for normal, 12s for extended thinking reasoning
-    const perModelTimeoutMs = opts.enableThinking ? 12000 : 4000;
+    // Lightning-fast failover: 2.5s timeout for normal, 6s for extended thinking reasoning
+    const perModelTimeoutMs = opts.enableThinking ? 6000 : 2500;
     const modelCtrl = new AbortController();
     const modelTimer = setTimeout(() => modelCtrl.abort(), perModelTimeoutMs);
 
@@ -586,11 +610,13 @@ async function executeGeminiRequest(opts: {
         const { content, thought } = extractThoughtAndContent(rawContent, rawThought);
 
         if (content || thought) {
+          attempts.push(`${currentModel} (200 OK)`);
           return {
             success: true,
             content: content || thought || "",
             thought,
             model: currentModel,
+            attempts,
           };
         }
       }
@@ -598,15 +624,17 @@ async function executeGeminiRequest(opts: {
       lastStatus = googleRes.status;
       const errJson = await googleRes.json().catch(() => ({}));
       lastError = errJson?.error?.message || `Google API status ${lastStatus}`;
+      attempts.push(`${currentModel} (${lastStatus || lastError || "failed"})`);
       console.warn(`[Google Gemini] ${currentModel} returned ${lastStatus}: ${lastError}`);
     } catch (netErr: any) {
       clearTimeout(modelTimer);
       lastError = netErr?.message || "Network timeout";
+      attempts.push(`${currentModel} (timeout/network)`);
       console.warn(`[Google Gemini] ${currentModel} network error: ${lastError}`);
     }
   }
 
-  return { success: false, status: lastStatus, error: lastError };
+  return { success: false, status: lastStatus, error: lastError, attempts };
 }
 
 /**

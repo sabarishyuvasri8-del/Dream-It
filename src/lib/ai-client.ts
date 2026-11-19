@@ -47,6 +47,7 @@ export interface AIResponse {
   provider?: string;
   model?: string;
   task?: string;
+  attempts?: string[];
 }
 
 // In-memory cache for 0ms responses on repeated prompts (3 min TTL)
@@ -146,6 +147,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
           provider: data.provider,
           model: data.model,
           task: data.task || effectiveTask,
+          attempts: data.attempts,
         };
       }
     }
@@ -277,7 +279,7 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
 
       const geminiModel = requestedModel && requestedModel.startsWith("gemini-")
         ? requestedModel
-        : "gemini-3.1-flash-lite";
+        : "gemini-4-hydrogen";
 
       const gUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${localGeminiKey}`;
       const gRes = await fetch(gUrl, {
