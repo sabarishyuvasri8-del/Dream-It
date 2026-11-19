@@ -30,22 +30,22 @@ const FALLBACK_NVIDIA_KEY = "nvapi-G6UnKKE8engbPsL_zS-GEsogYZQ1pVOqIb80iL5dclgPm
 
 // Provider candidate model lists
 const GEMINI_MODELS = [
-  "gemini-3.1-flash-lite",
-  "gemini-3.6-flash",
-  "gemini-3.5-flash",
-  "gemini-flash-latest",
-  "gemini-3.7-flash",
+  "gemini-3-flash-preview",
   "gemini-3.8-flash",
-  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.6-flash",
+  "gemini-flash-latest",
+  "gemini-3.1-pro-preview",
   "gemini-flash-lite-latest",
 ];
 
 const NVIDIA_MODELS = [
+  "nvidia/nemotron-3.5-bolt-e4b",
   "nvidia/nemotron-3.5-super-vl-120b-a12b",
   "nvidia/nemotron-3.5-lightning-30b-a3b",
-  "nvidia/nemotron-3.5-bolt-e4b",
-  "nvidia/nemotron-3-ultra-550b-a55b",
   "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+  "nvidia/nemotron-3-ultra-550b-a55b",
 ];
 
 const NEBIUS_MODELS = [
@@ -123,6 +123,8 @@ export default async function handler(req: any, res?: any) {
       responseMimeType,
       response_mime_type,
       top_p,
+      enableThinking = false,
+      thinkingBudget = 2048,
     } = body || {};
 
     if (!Array.isArray(messages) || messages.length === 0) {
@@ -148,13 +150,16 @@ export default async function handler(req: any, res?: any) {
       providerChain = ["nebius", "gemini", "nvidia"];
     } else {
       // "auto" Task-based routing:
-      if (hasImage || normalizedTask === "vision" || normalizedTask === "snap-solve" || normalizedTask === "grader") {
+      if (enableThinking || normalizedTask === "reasoning") {
+        // Deep Extended Thinking: Gemini (with thinkingConfig) or NVIDIA reasoning
+        providerChain = geminiKey ? ["gemini", "nvidia", "nebius"] : ["nvidia", "gemini", "nebius"];
+      } else if (hasImage || normalizedTask === "vision" || normalizedTask === "snap-solve" || normalizedTask === "grader") {
         // NVIDIA Nemotron 3.5 Super VL is superior for complex visual inspection & diagram analysis
         providerChain = nvidiaKey ? ["nvidia", "gemini", "nebius"] : ["gemini", "nvidia", "nebius"];
-      } else if (normalizedTask === "coding" || normalizedTask === "math" || normalizedTask === "reasoning") {
+      } else if (normalizedTask === "coding" || normalizedTask === "math") {
         providerChain = nvidiaKey ? ["nvidia", "gemini", "nebius"] : ["gemini", "nvidia", "nebius"];
       } else {
-        // Fast study chat, flashcards, summarization: Gemini 3.1 Flash Lite is ultra low-latency
+        // Fast study chat, flashcards, summarization: ultra low-latency
         providerChain = geminiKey ? ["gemini", "nvidia", "nebius"] : ["nvidia", "gemini", "nebius"];
       }
     }
@@ -177,6 +182,7 @@ export default async function handler(req: any, res?: any) {
 
     // 4. Execute with Cross-Provider Failover
     let finalContent = "";
+    let finalThought = "";
     let finalProvider = "";
     let finalModel = "";
     let lastErrorStatus = 0;
@@ -187,6 +193,12 @@ export default async function handler(req: any, res?: any) {
         if (currentProvider === "nvidia" && nvidiaKey) {
           // Resolve NVIDIA models
           let candidateNvidiaModels = [...NVIDIA_MODELS];
+          if (enableThinking) {
+            candidateNvidiaModels = [
+              "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning",
+              ...candidateNvidiaModels.filter((m) => m !== "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"),
+            ];
+          }
           if (model && (model.startsWith("nvidia/") || model.startsWith("meta/") || model.startsWith("mistralai/"))) {
             candidateNvidiaModels = Array.from(new Set([model, ...candidateNvidiaModels]));
           }
@@ -199,12 +211,14 @@ export default async function handler(req: any, res?: any) {
             temperature,
             max_tokens,
             top_p,
+            enableThinking,
           });
 
-          if (result.success && result.content) {
-            finalContent = result.content;
+          if (result.success && (result.content || result.thought)) {
+            finalContent = result.content || "";
+            finalThought = result.thought || "";
             finalProvider = "nvidia";
-            finalModel = result.model;
+            finalModel = result.model || "";
             break;
           } else {
             lastErrorStatus = result.status || 500;
@@ -214,6 +228,12 @@ export default async function handler(req: any, res?: any) {
         } else if (currentProvider === "gemini" && geminiKey) {
           // Resolve Gemini models
           let candidateGeminiModels = [...GEMINI_MODELS];
+          if (enableThinking) {
+            candidateGeminiModels = [
+              "gemini-3.8-flash",
+              ...candidateGeminiModels.filter((m) => m !== "gemini-3.8-flash"),
+            ];
+          }
           if (model && model.startsWith("gemini-")) {
             candidateGeminiModels = Array.from(new Set([model, ...candidateGeminiModels]));
           }
@@ -227,12 +247,15 @@ export default async function handler(req: any, res?: any) {
             max_tokens,
             responseMimeType: responseMimeType || response_mime_type,
             top_p,
+            enableThinking,
+            thinkingBudget,
           });
 
-          if (result.success && result.content) {
-            finalContent = result.content;
+          if (result.success && (result.content || result.thought)) {
+            finalContent = result.content || "";
+            finalThought = result.thought || "";
             finalProvider = "gemini";
-            finalModel = result.model;
+            finalModel = result.model || "";
             break;
           } else {
             lastErrorStatus = result.status || 500;
@@ -249,10 +272,11 @@ export default async function handler(req: any, res?: any) {
             top_p,
           });
 
-          if (result.success && result.content) {
-            finalContent = result.content;
+          if (result.success && (result.content || result.thought)) {
+            finalContent = result.content || "";
+            finalThought = result.thought || "";
             finalProvider = "nebius";
-            finalModel = result.model;
+            finalModel = result.model || "";
             break;
           } else {
             lastErrorStatus = result.status || 500;
@@ -267,7 +291,7 @@ export default async function handler(req: any, res?: any) {
     }
 
     // 5. Check if all providers exhausted
-    if (!finalContent) {
+    if (!finalContent && !finalThought) {
       console.error("[ai-orchestrator] All providers exhausted without success. Last error:", lastErrorMessage);
       if (lastErrorStatus === 429) {
         const payload = {
@@ -291,6 +315,7 @@ export default async function handler(req: any, res?: any) {
     // 6. Return response with routing telemetry
     const successPayload = {
       content: finalContent,
+      thought: finalThought || undefined,
       provider: finalProvider,
       model: finalModel,
       task: normalizedTask,
@@ -312,8 +337,37 @@ export default async function handler(req: any, res?: any) {
 }
 
 // ============================================================================
-// PROVIDER ADAPTERS
+// PROVIDER ADAPTERS & THINKING EXTRACTION
 // ============================================================================
+
+/**
+ * Extracts and cleans thought reasoning chains (e.g. from <thought> tags or reasoning fields).
+ */
+function extractThoughtAndContent(
+  rawContent: string,
+  explicitThought?: string
+): { content: string; thought?: string } {
+  let thought = (explicitThought || "").trim();
+  let content = (rawContent || "").trim();
+
+  // Extract <thought>...</thought>
+  const thoughtTagMatch = content.match(/<thought>([\s\S]*?)<\/thought>/i);
+  if (thoughtTagMatch) {
+    const extracted = thoughtTagMatch[1].trim();
+    thought = thought ? `${thought}\n\n${extracted}` : extracted;
+    content = content.replace(/<thought>[\s\S]*?<\/thought>/gi, "").trim();
+  }
+
+  // Extract ```thought ... ``` blocks
+  const thoughtBlockMatch = content.match(/```thought\s*([\s\S]*?)\s*```/i);
+  if (thoughtBlockMatch) {
+    const extracted = thoughtBlockMatch[1].trim();
+    thought = thought ? `${thought}\n\n${extracted}` : extracted;
+    content = content.replace(/```thought\s*[\s\S]*?\s*```/gi, "").trim();
+  }
+
+  return { content, thought: thought || undefined };
+}
 
 /**
  * Executes a request against NVIDIA NIM (OpenAI-compatible) endpoint.
@@ -326,7 +380,8 @@ async function executeNvidiaRequest(opts: {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
-}): Promise<{ success: boolean; content?: string; model?: string; status?: number; error?: string }> {
+  enableThinking?: boolean;
+}): Promise<{ success: boolean; content?: string; thought?: string; model?: string; status?: number; error?: string }> {
   const nvidiaUrl = "https://integrate.api.nvidia.com/v1/chat/completions";
 
   // Format messages
@@ -360,8 +415,10 @@ async function executeNvidiaRequest(opts: {
   let lastError = "";
 
   for (const currentModel of opts.candidateModels) {
+    // Fast failover: 4.5s for normal, 12s for extended thinking reasoning
+    const perModelTimeoutMs = opts.enableThinking ? 12000 : 4500;
     const modelCtrl = new AbortController();
-    const modelTimer = setTimeout(() => modelCtrl.abort(), 90000);
+    const modelTimer = setTimeout(() => modelCtrl.abort(), perModelTimeoutMs);
 
     try {
       const payload: any = {
@@ -387,9 +444,17 @@ async function executeNvidiaRequest(opts: {
       if (nvidiaRes.ok) {
         const resData = await nvidiaRes.json();
         const choiceMsg = resData.choices?.[0]?.message;
-        const text = choiceMsg?.content || choiceMsg?.reasoning_content || "";
-        if (text) {
-          return { success: true, content: text, model: currentModel };
+        const rawContent = choiceMsg?.content || "";
+        const explicitThought = choiceMsg?.reasoning_content || "";
+        const { content, thought } = extractThoughtAndContent(rawContent, explicitThought);
+
+        if (content || thought) {
+          return {
+            success: true,
+            content: content || thought || "",
+            thought,
+            model: currentModel,
+          };
         }
       }
 
@@ -419,7 +484,9 @@ async function executeGeminiRequest(opts: {
   max_tokens?: number;
   responseMimeType?: string;
   top_p?: number;
-}): Promise<{ success: boolean; content?: string; model?: string; status?: number; error?: string }> {
+  enableThinking?: boolean;
+  thinkingBudget?: number;
+}): Promise<{ success: boolean; content?: string; thought?: string; model?: string; status?: number; error?: string }> {
   const systemParts: Array<{ text: string }> = [];
   const contents: Array<{ role: "user" | "model"; parts: Array<any> }> = [];
 
@@ -456,14 +523,23 @@ async function executeGeminiRequest(opts: {
     }
   }
 
+  const generationConfig: any = {
+    temperature: typeof opts.temperature === "number" ? opts.temperature : 0.2,
+    maxOutputTokens: typeof opts.max_tokens === "number" ? Math.min(65536, Math.max(512, opts.max_tokens)) : 32768,
+    ...(opts.responseMimeType ? { responseMimeType: opts.responseMimeType } : {}),
+    topP: opts.top_p,
+  };
+
+  // Configure Google Gemini extended thinking if requested
+  if (opts.enableThinking) {
+    generationConfig.thinkingConfig = {
+      thinkingBudget: typeof opts.thinkingBudget === "number" ? opts.thinkingBudget : 2048,
+    };
+  }
+
   const baseRequestBody: any = {
     contents,
-    generationConfig: {
-      temperature: typeof opts.temperature === "number" ? opts.temperature : 0.2,
-      maxOutputTokens: typeof opts.max_tokens === "number" ? Math.min(65536, Math.max(512, opts.max_tokens)) : 32768,
-      ...(opts.responseMimeType ? { responseMimeType: opts.responseMimeType } : {}),
-      topP: opts.top_p,
-    },
+    generationConfig,
   };
 
   if (systemParts.length > 0) {
@@ -475,8 +551,10 @@ async function executeGeminiRequest(opts: {
 
   for (const currentModel of opts.candidateModels) {
     const googleUrl = `https://generativelanguage.googleapis.com/v1beta/models/${currentModel}:generateContent?key=${opts.apiKey.trim()}`;
+    // Fast failover: 4s timeout for normal, 12s for extended thinking reasoning
+    const perModelTimeoutMs = opts.enableThinking ? 12000 : 4000;
     const modelCtrl = new AbortController();
-    const modelTimer = setTimeout(() => modelCtrl.abort(), 60000);
+    const modelTimer = setTimeout(() => modelCtrl.abort(), perModelTimeoutMs);
 
     try {
       const googleRes = await fetch(googleUrl, {
@@ -490,9 +568,30 @@ async function executeGeminiRequest(opts: {
 
       if (googleRes.ok) {
         const data = await googleRes.json();
-        const content = data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        if (content) {
-          return { success: true, content, model: currentModel };
+        const candidate = data.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+        const textParts: string[] = [];
+        const thoughtParts: string[] = [];
+
+        for (const p of parts) {
+          if (p.thought) {
+            thoughtParts.push(p.text || "");
+          } else if (p.text) {
+            textParts.push(p.text);
+          }
+        }
+
+        const rawContent = textParts.join("\n\n").trim();
+        const rawThought = thoughtParts.join("\n\n").trim();
+        const { content, thought } = extractThoughtAndContent(rawContent, rawThought);
+
+        if (content || thought) {
+          return {
+            success: true,
+            content: content || thought || "",
+            thought,
+            model: currentModel,
+          };
         }
       }
 
@@ -520,7 +619,7 @@ async function executeNebiusRequest(opts: {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
-}): Promise<{ success: boolean; content?: string; model?: string; status?: number; error?: string }> {
+}): Promise<{ success: boolean; content?: string; thought?: string; model?: string; status?: number; error?: string }> {
   const nebiusUrl = "https://api.studio.nebius.ai/v1/chat/completions";
 
   const formattedMessages = opts.messages.map((m) => ({
@@ -533,7 +632,7 @@ async function executeNebiusRequest(opts: {
 
   for (const currentModel of opts.candidateModels) {
     const modelCtrl = new AbortController();
-    const modelTimer = setTimeout(() => modelCtrl.abort(), 60000);
+    const modelTimer = setTimeout(() => modelCtrl.abort(), 6000);
 
     try {
       const payload: any = {
@@ -558,9 +657,10 @@ async function executeNebiusRequest(opts: {
 
       if (res.ok) {
         const resData = await res.json();
-        const text = resData.choices?.[0]?.message?.content || "";
-        if (text) {
-          return { success: true, content: text, model: currentModel };
+        const rawContent = resData.choices?.[0]?.message?.content || "";
+        const { content, thought } = extractThoughtAndContent(rawContent);
+        if (content || thought) {
+          return { success: true, content: content || thought || "", thought, model: currentModel };
         }
       }
 

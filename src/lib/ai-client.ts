@@ -34,11 +34,14 @@ export interface AIChatRequest {
   responseMimeType?: string;
   top_p?: number;
   timeoutMs?: number;
+  enableThinking?: boolean;
+  thinkingBudget?: number;
   onChunk?: (text: string) => void;
 }
 
 export interface AIResponse {
   content: string;
+  thought?: string;
   error?: string;
   isRateLimited?: boolean;
   provider?: string;
@@ -47,18 +50,11 @@ export interface AIResponse {
 }
 
 // In-memory cache for 0ms responses on repeated prompts (3 min TTL)
-const aiCache = new Map<string, { content: string; provider?: string; model?: string; expiry: number }>();
+const aiCache = new Map<string, { content: string; thought?: string; provider?: string; model?: string; expiry: number }>();
 const CACHE_TTL = 3 * 60 * 1000;
 
 function normalizeModelName(m?: string): string {
   if (!m) return "";
-  if (
-    m === "gemini-2.5-flash" ||
-    m === "gemini-2.5-flash-lite" ||
-    m === "gemini-2.0-flash"
-  ) {
-    return "gemini-3.1-flash-lite";
-  }
   return m;
 }
 
@@ -122,6 +118,8 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
         max_tokens: params.max_tokens || 32768,
         responseMimeType: params.responseMimeType,
         top_p: params.top_p,
+        enableThinking: params.enableThinking,
+        thinkingBudget: params.thinkingBudget,
       }),
     });
 
@@ -130,18 +128,21 @@ export async function fetchAI(params: AIChatRequest): Promise<AIResponse> {
     if (res.ok) {
       const data = await res.json();
       const content = data.content || "";
-      if (content) {
+      const thought = data.thought || undefined;
+      if (content || thought) {
         aiCache.set(cacheKey, {
           content,
+          thought,
           provider: data.provider,
           model: data.model,
           expiry: Date.now() + CACHE_TTL,
         });
-        if (params.onChunk) {
+        if (params.onChunk && content) {
           params.onChunk(content);
         }
         return {
-          content,
+          content: content || thought || "",
+          thought,
           provider: data.provider,
           model: data.model,
           task: data.task || effectiveTask,

@@ -18,6 +18,7 @@ import {
   Camera,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Circle,
@@ -178,7 +179,7 @@ import {
   parseInteractiveQuizBlock,
   parseNaturalMarkdownMcqs,
 } from "../lib/quizParser";
-type Message = { role: "user" | "assistant"; content: string };
+type Message = { role: "user" | "assistant"; content: string; thought?: string; isError?: boolean };
 
 export interface AIChatSession {
   id: string;
@@ -363,6 +364,46 @@ function extractPdfSandboxFromContent(content: string): { spec: PdfDocumentSpec 
   return { spec: null, remainingText: content };
 }
 
+/** Collapsible Thinking / Reasoning Process accordion for Gemini & NVIDIA extended thinking */
+function AIThinkingAccordion({ thought }: { thought?: string }) {
+  const [isOpen, setIsOpen] = useState(false);
+  if (!thought || !thought.trim()) return null;
+
+  return (
+    <div className="mb-2.5 w-full">
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="group flex items-center gap-2 px-3 py-1.5 rounded-xl border text-[11px] font-medium transition select-none hover:opacity-100 opacity-80"
+        style={{
+          backgroundColor: "var(--m-surface-alt)",
+          borderColor: "var(--m-border)",
+          color: "var(--m-text-sub)",
+        }}
+        title="Toggle AI Extended Thinking Process"
+      >
+        <Brain size={13} className="text-indigo-400 group-hover:scale-110 transition-transform" />
+        <span className="font-sans font-medium">Thinking Process</span>
+        {isOpen ? <ChevronDown size={12} className="opacity-70" /> : <ChevronRight size={12} className="opacity-70" />}
+      </button>
+      {isOpen && (
+        <div
+          className="mt-2 p-3.5 rounded-2xl border text-xs leading-relaxed space-y-2 border-indigo-500/20 bg-indigo-500/5 transition-all"
+          style={{ color: "var(--m-text-sub)" }}
+        >
+          <div className="text-[10px] uppercase font-mono tracking-wider opacity-60 flex items-center gap-1.5">
+            <Sparkles size={11} className="text-indigo-400" />
+            <span>Internal Reasoning Chain</span>
+          </div>
+          <div className="font-sans text-[11.5px] leading-relaxed max-h-80 overflow-y-auto pr-1">
+            {renderSimpleMarkdown(thought, false)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** Render chat message content with support for embedded interactive PDF Sandbox & Quiz cards */
 function renderChatMessageContent(
   text: string,
@@ -374,19 +415,38 @@ function renderChatMessageContent(
     onComplete?: (score: number, total: number) => void;
     onSaveToFlashcards?: (subject: string | undefined, cards: Array<{ front: string; back: string }>) => void;
     onRequestMoreQuestions?: (prompt: string) => void;
-  }
+  },
+  thought?: string
 ) {
   if (!text || !text.trim()) {
     return <p className="text-xs italic py-8 text-center opacity-60">Nothing written yet.</p>;
   }
 
+  // Extract inline <thought> or ```thought tags if thought wasn't explicitly passed
+  let resolvedThought = (thought || "").trim();
+  let cleanText = text;
+
+  if (!isUserMessage) {
+    const thoughtTagMatch = cleanText.match(/<thought>([\s\S]*?)<\/thought>/i);
+    if (thoughtTagMatch) {
+      resolvedThought = resolvedThought ? `${resolvedThought}\n\n${thoughtTagMatch[1].trim()}` : thoughtTagMatch[1].trim();
+      cleanText = cleanText.replace(/<thought>[\s\S]*?<\/thought>/gi, "").trim();
+    }
+    const thoughtBlockMatch = cleanText.match(/```thought\s*([\s\S]*?)\s*```/i);
+    if (thoughtBlockMatch) {
+      resolvedThought = resolvedThought ? `${resolvedThought}\n\n${thoughtBlockMatch[1].trim()}` : thoughtBlockMatch[1].trim();
+      cleanText = cleanText.replace(/```thought\s*[\s\S]*?\s*```/gi, "").trim();
+    }
+  }
+
   // Only show the compiling progress pill while actively streaming an incomplete PDF block
-  const hasRawPdfBlock = !isUserMessage && (text.includes("```pdf_document") || text.includes("```action:create_pdf"));
+  const hasRawPdfBlock = !isUserMessage && (cleanText.includes("```pdf_document") || cleanText.includes("```action:create_pdf"));
   if (hasRawPdfBlock && isStreaming) {
-    const splitMarker = text.includes("```pdf_document") ? "```pdf_document" : "```action:create_pdf";
-    const beforeFence = text.split(splitMarker)[0].trim();
+    const splitMarker = cleanText.includes("```pdf_document") ? "```pdf_document" : "```action:create_pdf";
+    const beforeFence = cleanText.split(splitMarker)[0].trim();
     return (
       <div className="space-y-3 w-full">
+        {resolvedThought && <AIThinkingAccordion thought={resolvedThought} />}
         {beforeFence && renderSimpleMarkdown(beforeFence, false)}
         <div
           className="flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium"
@@ -404,11 +464,12 @@ function renderChatMessageContent(
   }
 
   // Only show the quiz building pill while actively streaming an incomplete interactive_quiz block
-  const hasRawQuizBlock = !isUserMessage && text.includes("```interactive_quiz");
+  const hasRawQuizBlock = !isUserMessage && cleanText.includes("```interactive_quiz");
   if (hasRawQuizBlock && isStreaming) {
-    const beforeFence = text.split("```interactive_quiz")[0].trim();
+    const beforeFence = cleanText.split("```interactive_quiz")[0].trim();
     return (
       <div className="space-y-3 w-full">
+        {resolvedThought && <AIThinkingAccordion thought={resolvedThought} />}
         {beforeFence && renderSimpleMarkdown(beforeFence, false)}
         <div
           className="flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium"
@@ -426,11 +487,12 @@ function renderChatMessageContent(
   }
 
   // Render finalized Interactive Quiz artifact (also auto-heals any saved raw ```interactive_quiz blocks)
-  if (!isUserMessage && (text.includes(QUIZ_TOKEN_START) || hasRawQuizBlock)) {
-    const { spec, remainingText } = extractQuizFromContent(text);
+  if (!isUserMessage && (cleanText.includes(QUIZ_TOKEN_START) || hasRawQuizBlock)) {
+    const { spec, remainingText } = extractQuizFromContent(cleanText);
     if (spec) {
       return (
         <div className="space-y-3 w-full">
+          {resolvedThought && <AIThinkingAccordion thought={resolvedThought} />}
           {remainingText && renderSimpleMarkdown(remainingText, false)}
           <Suspense
             fallback={
@@ -457,11 +519,12 @@ function renderChatMessageContent(
   }
 
   // Render finalized PDF Sandbox artifact (also auto-heals any saved raw pdf_document / action:create_pdf blocks!)
-  if (!isUserMessage && (text.includes(PDF_SANDBOX_START) || hasRawPdfBlock)) {
-    const { spec, remainingText } = extractPdfSandboxFromContent(text);
+  if (!isUserMessage && (cleanText.includes(PDF_SANDBOX_START) || hasRawPdfBlock)) {
+    const { spec, remainingText } = extractPdfSandboxFromContent(cleanText);
     if (spec) {
       return (
         <div className="space-y-3 w-full">
+          {resolvedThought && <AIThinkingAccordion thought={resolvedThought} />}
           {remainingText && renderSimpleMarkdown(remainingText, false)}
           <Suspense
             fallback={
@@ -485,7 +548,12 @@ function renderChatMessageContent(
     }
   }
 
-  return renderSimpleMarkdown(text, isUserMessage);
+  return (
+    <div className="space-y-2 w-full">
+      {resolvedThought && <AIThinkingAccordion thought={resolvedThought} />}
+      {renderSimpleMarkdown(cleanText, isUserMessage)}
+    </div>
+  );
 }
 function getLast7Days(): string[] {
   const days: string[] = [];
@@ -827,6 +895,23 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   const [isAsking, setIsAsking] = useState(false);
   const [chatSubjectId, setChatSubjectId] = useState<number | null>(null);
   const [isChatMaximized, setIsChatMaximized] = useState(false);
+  const [extendedThinking, setExtendedThinking] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem("dreamit_extended_thinking") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleExtendedThinking = () => {
+    setExtendedThinking((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("dreamit_extended_thinking", String(next));
+      } catch {}
+      return next;
+    });
+  };
   const [themeSelectorOpen, setThemeSelectorOpen] = useState(false);
   const chatContainerRef = useRef<HTMLDivElement>(null);
   const chatMaxContainerRef = useRef<HTMLDivElement>(null);
@@ -3857,6 +3942,8 @@ ${taskSummaries || "No active tasks."}\n`;
         } : undefined,
         max_tokens: 32768,
         temperature: chatSubjectId ? 0.2 : 0.4,
+        enableThinking: extendedThinking,
+        thinkingBudget: 2048,
         onChunk: (chunk: string) => {
           accumulatedStreamedText += chunk;
           if (activeChatSessionIdRef.current === currentSessionId) {
@@ -4116,7 +4203,11 @@ ${taskSummaries || "No active tasks."}\n`;
         // Update messages with the final cleaned content and persist session
         const finalMessages: Message[] = [
           ...nextUserMessages,
-          { role: "assistant", content: fullContent },
+          {
+            role: "assistant",
+            content: fullContent,
+            thought: response.thought || undefined,
+          },
         ];
         if (activeChatSessionIdRef.current === currentSessionId) {
           setMessages(finalMessages);
@@ -4142,7 +4233,9 @@ ${taskSummaries || "No active tasks."}\n`;
 
   // ─── AI Message Action Handlers (Copy, Share, Edit, Regenerate, PDF Export) ───
   const getCleanMessageText = (content: string) => {
-    let text = content;
+    let text = (content || "")
+      .replace(/<thought>[\s\S]*?<\/thought>/gi, "")
+      .replace(/```thought\s*[\s\S]*?\s*```/gi, "");
     if (text.includes(PDF_SANDBOX_START)) {
       const { spec, remainingText } = extractPdfSandboxFromContent(text);
       if (spec) {
@@ -6373,7 +6466,8 @@ Mathematics:
                               onRequestMoreQuestions: (followUpPrompt) => {
                                 if (!isAsking) askCoach(undefined, followUpPrompt);
                               },
-                            }
+                            },
+                            m.thought
                           )
                         ) : (
                           <AIThinkingStatus size="sm" />
@@ -6448,7 +6542,21 @@ Mathematics:
                   ))) }
                   {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
                     <div className="flex w-fit items-center gap-2 py-1.5 pl-0.5">
-                      <AIThinkingStatus size="sm" />
+                      {extendedThinking ? (
+                        <div
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium animate-pulse"
+                          style={{
+                            backgroundColor: "rgba(99, 102, 241, 0.12)",
+                            borderColor: "rgba(99, 102, 241, 0.35)",
+                            color: "#818cf8",
+                          }}
+                        >
+                          <Brain size={13} className="text-indigo-400" />
+                          <span>Thinking deeply with extended reasoning...</span>
+                        </div>
+                      ) : (
+                        <AIThinkingStatus size="sm" />
+                      )}
                     </div>
                   )}
                 </div>
@@ -6504,8 +6612,23 @@ Mathematics:
                     <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
                       <Camera size={17} />
                     </button>
+                    <button
+                      type="button"
+                      onClick={toggleExtendedThinking}
+                      className={`flex items-center justify-center size-9 rounded-xl transition shrink-0 ${
+                        extendedThinking ? "shadow-xs border border-indigo-500/40" : "hover:opacity-75"
+                      }`}
+                      style={{
+                        backgroundColor: extendedThinking ? "rgba(99, 102, 241, 0.16)" : "transparent",
+                        color: extendedThinking ? "#818cf8" : "var(--m-text-sub)",
+                      }}
+                      title={extendedThinking ? "Extended Thinking ON (Gemini & Nemotron deep reasoning enabled)" : "Enable Extended Thinking (Deep reasoning mode)"}
+                      aria-label="Toggle Extended Thinking"
+                    >
+                      <Brain size={17} className={extendedThinking ? "text-indigo-400" : ""} />
+                    </button>
 
-                    <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder="How can I help you today?" />
+                    <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder={extendedThinking ? "Ask anything (Extended Thinking ON)..." : "How can I help you today?"} />
                     <VoiceInputButton
                       value={chatDraft}
                       onChange={setChatDraft}
@@ -8650,6 +8773,22 @@ Mathematics:
                           <Camera size={16} className="sm:hidden" />
                           <Camera size={18} className="hidden sm:block" />
                         </button>
+                        <button
+                          type="button"
+                          onClick={toggleExtendedThinking}
+                          className={`flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 ${
+                            extendedThinking ? "shadow-xs border border-indigo-500/40" : "hover:opacity-75"
+                          }`}
+                          style={{
+                            backgroundColor: extendedThinking ? "rgba(99, 102, 241, 0.16)" : "transparent",
+                            color: extendedThinking ? "#818cf8" : "var(--m-text-sub)",
+                          }}
+                          title={extendedThinking ? "Extended Thinking ON (Gemini & Nemotron deep reasoning enabled)" : "Enable Extended Thinking (Deep reasoning mode)"}
+                          aria-label="Toggle Extended Thinking"
+                        >
+                          <Brain size={16} className={extendedThinking ? "text-indigo-400 sm:hidden" : "sm:hidden"} />
+                          <Brain size={18} className={extendedThinking ? "text-indigo-400 hidden sm:block" : "hidden sm:block"} />
+                        </button>
 
                         <input
                           value={chatDraft}
@@ -8663,7 +8802,7 @@ Mathematics:
                           }}
                           className="flex-1 bg-transparent py-1.5 sm:py-2 text-xs sm:text-sm outline-none min-w-0"
                           style={{ color: "var(--m-text)" }}
-                          placeholder="How can I help you today?"
+                          placeholder={extendedThinking ? "Ask anything (Extended Thinking ON)..." : "How can I help you today?"}
                           autoFocus
                         />
                         <VoiceInputButton
@@ -8798,7 +8937,8 @@ Mathematics:
                                   onRequestMoreQuestions: (followUpPrompt) => {
                                     if (!isAsking) askCoach(undefined, followUpPrompt);
                                   },
-                                }
+                                },
+                                m.thought
                               )
                             ) : (
                               <AIThinkingStatus size="lg" />
@@ -8873,7 +9013,21 @@ Mathematics:
                       ))}
                       {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
                         <div className="flex w-fit items-center gap-3 py-2 pl-1">
-                          <AIThinkingStatus size="lg" />
+                          {extendedThinking ? (
+                            <div
+                              className="flex items-center gap-2 px-3.5 py-2 rounded-full border text-xs sm:text-sm font-medium animate-pulse"
+                              style={{
+                                backgroundColor: "rgba(99, 102, 241, 0.12)",
+                                borderColor: "rgba(99, 102, 241, 0.35)",
+                                color: "#818cf8",
+                              }}
+                            >
+                              <Brain size={15} className="text-indigo-400" />
+                              <span>Thinking deeply with extended reasoning...</span>
+                            </div>
+                          ) : (
+                            <AIThinkingStatus size="lg" />
+                          )}
                         </div>
                       )}
                     </div>
@@ -8917,6 +9071,22 @@ Mathematics:
                         <Camera size={16} className="sm:hidden" />
                         <Camera size={18} className="hidden sm:block" />
                       </button>
+                      <button
+                        type="button"
+                        onClick={toggleExtendedThinking}
+                        className={`flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 ${
+                          extendedThinking ? "shadow-xs border border-indigo-500/40" : "hover:opacity-75"
+                        }`}
+                        style={{
+                          backgroundColor: extendedThinking ? "rgba(99, 102, 241, 0.16)" : "transparent",
+                          color: extendedThinking ? "#818cf8" : "var(--m-text-sub)",
+                        }}
+                        title={extendedThinking ? "Extended Thinking ON (Gemini & Nemotron deep reasoning enabled)" : "Enable Extended Thinking (Deep reasoning mode)"}
+                        aria-label="Toggle Extended Thinking"
+                      >
+                        <Brain size={16} className={extendedThinking ? "text-indigo-400 sm:hidden" : "sm:hidden"} />
+                        <Brain size={18} className={extendedThinking ? "text-indigo-400 hidden sm:block" : "hidden sm:block"} />
+                      </button>
 
                       <input
                         value={chatDraft}
@@ -8930,7 +9100,7 @@ Mathematics:
                         }}
                         className="flex-1 bg-transparent py-1.5 sm:py-2 text-xs sm:text-sm outline-none min-w-0"
                         style={{ color: "var(--m-text)" }}
-                        placeholder="How can I help you today?"
+                        placeholder={extendedThinking ? "Ask anything (Extended Thinking ON)..." : "How can I help you today?"}
                       />
                       <VoiceInputButton
                         value={chatDraft}

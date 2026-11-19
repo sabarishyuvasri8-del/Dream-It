@@ -24,22 +24,22 @@ function figmaAssetResolver() {
  */
 function localAiProxyPlugin(env: Record<string, string>) {
   const GEMINI_MODELS = [
-    'gemini-3.1-flash-lite',
-    'gemini-3.6-flash',
-    'gemini-3.5-flash',
-    'gemini-flash-latest',
-    'gemini-3.7-flash',
+    'gemini-3-flash-preview',
     'gemini-3.8-flash',
-    'gemini-3.5-flash-lite',
+    'gemini-3.1-flash-lite',
+    'gemini-3.5-flash',
+    'gemini-3.6-flash',
+    'gemini-flash-latest',
+    'gemini-3.1-pro-preview',
     'gemini-flash-lite-latest',
   ];
 
   const NVIDIA_MODELS = [
+    'nvidia/nemotron-3.5-bolt-e4b',
     'nvidia/nemotron-3.5-super-vl-120b-a12b',
     'nvidia/nemotron-3.5-lightning-30b-a3b',
-    'nvidia/nemotron-3.5-bolt-e4b',
-    'nvidia/nemotron-3-ultra-550b-a55b',
     'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+    'nvidia/nemotron-3-ultra-550b-a55b',
   ];
 
   const NEBIUS_MODELS = [
@@ -47,6 +47,27 @@ function localAiProxyPlugin(env: Record<string, string>) {
     'meta-llama/Meta-Llama-3.1-8B-Instruct',
     'Qwen/Qwen2.5-Coder-32B-Instruct',
   ];
+
+  function extractThoughtAndContent(rawContent: string, explicitThought?: string): { content: string; thought?: string } {
+    let thought = (explicitThought || '').trim();
+    let content = (rawContent || '').trim();
+
+    const thoughtTagMatch = content.match(/<thought>([\s\S]*?)<\/thought>/i);
+    if (thoughtTagMatch) {
+      const extracted = thoughtTagMatch[1].trim();
+      thought = thought ? `${thought}\n\n${extracted}` : extracted;
+      content = content.replace(/<thought>[\s\S]*?<\/thought>/gi, '').trim();
+    }
+
+    const thoughtBlockMatch = content.match(/```thought\s*([\s\S]*?)\s*```/i);
+    if (thoughtBlockMatch) {
+      const extracted = thoughtBlockMatch[1].trim();
+      thought = thought ? `${thought}\n\n${extracted}` : extracted;
+      content = content.replace(/```thought\s*[\s\S]*?\s*```/gi, '').trim();
+    }
+
+    return { content, thought: thought || undefined };
+  }
 
   return {
     name: 'local-ai-proxy',
@@ -96,6 +117,8 @@ function localAiProxyPlugin(env: Record<string, string>) {
                 responseMimeType,
                 response_mime_type,
                 top_p,
+                enableThinking = false,
+                thinkingBudget = 2048,
               } = parsedBody;
 
               const hasImage = !!(image && image.base64Data);
@@ -112,9 +135,11 @@ function localAiProxyPlugin(env: Record<string, string>) {
                 providerChain = ['nebius', 'gemini', 'nvidia'];
               } else {
                 // 'auto' routing:
-                if (hasImage || normalizedTask === 'vision' || normalizedTask === 'snap-solve' || normalizedTask === 'grader') {
+                if (enableThinking || normalizedTask === 'reasoning') {
+                  providerChain = geminiKey ? ['gemini', 'nvidia', 'nebius'] : ['nvidia', 'gemini', 'nebius'];
+                } else if (hasImage || normalizedTask === 'vision' || normalizedTask === 'snap-solve' || normalizedTask === 'grader') {
                   providerChain = nvidiaKey ? ['nvidia', 'gemini', 'nebius'] : ['gemini', 'nvidia', 'nebius'];
-                } else if (normalizedTask === 'coding' || normalizedTask === 'math' || normalizedTask === 'reasoning') {
+                } else if (normalizedTask === 'coding' || normalizedTask === 'math') {
                   providerChain = nvidiaKey ? ['nvidia', 'gemini', 'nebius'] : ['gemini', 'nvidia', 'nebius'];
                 } else {
                   providerChain = geminiKey ? ['gemini', 'nvidia', 'nebius'] : ['nvidia', 'gemini', 'nebius'];
@@ -136,6 +161,7 @@ function localAiProxyPlugin(env: Record<string, string>) {
               }
 
               let finalContent = '';
+              let finalThought = '';
               let finalProvider = '';
               let finalModel = '';
               let lastStatus = 0;
@@ -144,6 +170,12 @@ function localAiProxyPlugin(env: Record<string, string>) {
               for (const currentProvider of providerChain) {
                 if (currentProvider === 'nvidia' && nvidiaKey) {
                   let candidates = [...NVIDIA_MODELS];
+                  if (enableThinking) {
+                    candidates = [
+                      'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning',
+                      ...candidates.filter((m) => m !== 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning'),
+                    ];
+                  }
                   if (model && (model.startsWith('nvidia/') || model.startsWith('meta/') || model.startsWith('mistralai/'))) {
                     candidates = Array.from(new Set([model, ...candidates]));
                   }
@@ -169,9 +201,14 @@ function localAiProxyPlugin(env: Record<string, string>) {
                   }
 
                   for (const mId of candidates) {
+                    const perModelTimeoutMs = enableThinking ? 12000 : 4500;
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), perModelTimeoutMs);
+
                     try {
                       const nvRes = await fetch('https://integrate.api.nvidia.com/v1/chat/completions', {
                         method: 'POST',
+                        signal: ctrl.signal,
                         headers: {
                           'Content-Type': 'application/json',
                           Authorization: `Bearer ${nvidiaKey}`,
@@ -185,12 +222,17 @@ function localAiProxyPlugin(env: Record<string, string>) {
                         }),
                       });
 
+                      clearTimeout(timer);
+
                       if (nvRes.ok) {
                         const json = await nvRes.json();
                         const choice = json.choices?.[0]?.message;
-                        const text = choice?.content || choice?.reasoning_content || '';
-                        if (text) {
-                          finalContent = text;
+                        const rawContent = choice?.content || '';
+                        const explicitThought = choice?.reasoning_content || '';
+                        const { content, thought } = extractThoughtAndContent(rawContent, explicitThought);
+                        if (content || thought) {
+                          finalContent = content || thought || '';
+                          finalThought = thought || '';
                           finalProvider = 'nvidia';
                           finalModel = mId;
                           break;
@@ -200,12 +242,19 @@ function localAiProxyPlugin(env: Record<string, string>) {
                       const errJson = await nvRes.json().catch(() => ({}));
                       lastErrMsg = errJson?.error?.message || errJson?.detail || `NVIDIA status ${lastStatus}`;
                     } catch (e: any) {
+                      clearTimeout(timer);
                       lastErrMsg = e?.message || 'NVIDIA connection error';
                     }
                   }
-                  if (finalContent) break;
+                  if (finalContent || finalThought) break;
                 } else if (currentProvider === 'gemini' && geminiKey) {
                   let candidates = [...GEMINI_MODELS];
+                  if (enableThinking) {
+                    candidates = [
+                      'gemini-3.8-flash',
+                      ...candidates.filter((m) => m !== 'gemini-3.8-flash'),
+                    ];
+                  }
                   if (model && model.startsWith('gemini-')) {
                     candidates = Array.from(new Set([model, ...candidates]));
                   }
@@ -247,14 +296,22 @@ function localAiProxyPlugin(env: Record<string, string>) {
                   }
 
                   const chosenMimeType = responseMimeType || response_mime_type;
+                  const generationConfig: any = {
+                    temperature: typeof temperature === 'number' ? temperature : 0.2,
+                    maxOutputTokens: typeof max_tokens === 'number' ? Math.min(65536, Math.max(512, max_tokens)) : 32768,
+                    ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
+                    topP: top_p,
+                  };
+
+                  if (enableThinking) {
+                    generationConfig.thinkingConfig = {
+                      thinkingBudget: typeof thinkingBudget === 'number' ? thinkingBudget : 2048,
+                    };
+                  }
+
                   const baseRequestBody: any = {
                     contents,
-                    generationConfig: {
-                      temperature: typeof temperature === 'number' ? temperature : 0.2,
-                      maxOutputTokens: typeof max_tokens === 'number' ? Math.min(65536, Math.max(512, max_tokens)) : 32768,
-                      ...(chosenMimeType ? { responseMimeType: chosenMimeType } : {}),
-                      topP: top_p,
-                    },
+                    generationConfig,
                   };
 
                   if (systemParts.length > 0) {
@@ -262,18 +319,41 @@ function localAiProxyPlugin(env: Record<string, string>) {
                   }
 
                   for (const mId of candidates) {
+                    const perModelTimeoutMs = enableThinking ? 12000 : 4000;
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), perModelTimeoutMs);
+
                     try {
                       const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mId}:generateContent?key=${geminiKey}`, {
                         method: 'POST',
+                        signal: ctrl.signal,
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(baseRequestBody),
                       });
 
+                      clearTimeout(timer);
+
                       if (gRes.ok) {
                         const json = await gRes.json();
-                        const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '';
-                        if (text) {
-                          finalContent = text;
+                        const parts = json.candidates?.[0]?.content?.parts || [];
+                        const textParts: string[] = [];
+                        const thoughtParts: string[] = [];
+
+                        for (const p of parts) {
+                          if (p.thought) {
+                            thoughtParts.push(p.text || '');
+                          } else if (p.text) {
+                            textParts.push(p.text);
+                          }
+                        }
+
+                        const rawContent = textParts.join('\n\n').trim();
+                        const rawThought = thoughtParts.join('\n\n').trim();
+                        const { content, thought } = extractThoughtAndContent(rawContent, rawThought);
+
+                        if (content || thought) {
+                          finalContent = content || thought || '';
+                          finalThought = thought || '';
                           finalProvider = 'gemini';
                           finalModel = mId;
                           break;
@@ -283,10 +363,11 @@ function localAiProxyPlugin(env: Record<string, string>) {
                       const errJson = await gRes.json().catch(() => ({}));
                       lastErrMsg = errJson?.error?.message || `Gemini status ${lastStatus}`;
                     } catch (e: any) {
+                      clearTimeout(timer);
                       lastErrMsg = e?.message || 'Gemini connection error';
                     }
                   }
-                  if (finalContent) break;
+                  if (finalContent || finalThought) break;
                 } else if (currentProvider === 'nebius' && nebiusKey) {
                   const formattedMessages = messages.map((m: any) => ({
                     role: m.role === 'assistant' ? 'assistant' : m.role === 'system' ? 'system' : 'user',
@@ -294,9 +375,13 @@ function localAiProxyPlugin(env: Record<string, string>) {
                   }));
 
                   for (const mId of NEBIUS_MODELS) {
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), 6000);
+
                     try {
                       const nebRes = await fetch('https://api.studio.nebius.ai/v1/chat/completions', {
                         method: 'POST',
+                        signal: ctrl.signal,
                         headers: {
                           'Content-Type': 'application/json',
                           Authorization: `Bearer ${nebiusKey}`,
@@ -310,11 +395,15 @@ function localAiProxyPlugin(env: Record<string, string>) {
                         }),
                       });
 
+                      clearTimeout(timer);
+
                       if (nebRes.ok) {
                         const json = await nebRes.json();
-                        const text = json.choices?.[0]?.message?.content || '';
-                        if (text) {
-                          finalContent = text;
+                        const rawText = json.choices?.[0]?.message?.content || '';
+                        const { content, thought } = extractThoughtAndContent(rawText);
+                        if (content || thought) {
+                          finalContent = content || thought || '';
+                          finalThought = thought || '';
                           finalProvider = 'nebius';
                           finalModel = mId;
                           break;
@@ -324,19 +413,33 @@ function localAiProxyPlugin(env: Record<string, string>) {
                       const errJson = await nebRes.json().catch(() => ({}));
                       lastErrMsg = errJson?.error?.message || `Nebius status ${lastStatus}`;
                     } catch (e: any) {
+                      clearTimeout(timer);
                       lastErrMsg = e?.message || 'Nebius connection error';
                     }
                   }
-                  if (finalContent) break;
+                  if (finalContent || finalThought) break;
                 }
               }
 
-              if (!finalContent) {
+              if (!finalContent && !finalThought) {
                 res.statusCode = lastStatus || 500;
                 res.setHeader('Content-Type', 'application/json');
                 res.end(JSON.stringify({ content: '', error: lastErrMsg || 'All AI providers exhausted' }));
                 return;
               }
+
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(
+                JSON.stringify({
+                  content: finalContent,
+                  thought: finalThought || undefined,
+                  provider: finalProvider,
+                  model: finalModel,
+                  task: normalizedTask,
+                  routedVia: provider,
+                })
+              );
 
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
