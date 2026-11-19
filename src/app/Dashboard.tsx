@@ -153,7 +153,7 @@ import { registerPushNotifications, isPushSupported } from "../lib/pushNotificat
 import { useWebRTCCall } from "./components/calls/useWebRTCCall";
 import IncomingCallModal from "./components/calls/IncomingCallModal";
 import ActiveCallOverlay from "./components/calls/ActiveCallOverlay";
-import { AIThinkingStatus, AIBackgroundTelemetryHUD } from "./components/AIThinkingStatus";
+import { AIThinkingStatus } from "./components/AIThinkingStatus";
 import { PWAInstallBanner } from "./components/PWAInstallBanner";
 import { OfflineSyncIndicator } from "./components/OfflineSyncIndicator";
 import { subscribePWAInstall, promptPWAInstall, isPWAInstalled } from "../lib/pwa";
@@ -439,7 +439,7 @@ function renderChatMessageContent(
     }
   }
 
-  // Show the real-time background telemetry HUD while actively streaming a PDF block
+  // Only show the compiling progress pill while actively streaming an incomplete PDF block
   const hasRawPdfBlock = !isUserMessage && (cleanText.includes("```pdf_document") || cleanText.includes("```action:create_pdf"));
   if (hasRawPdfBlock && isStreaming) {
     const splitMarker = cleanText.includes("```pdf_document") ? "```pdf_document" : "```action:create_pdf";
@@ -448,15 +448,22 @@ function renderChatMessageContent(
       <div className="space-y-3 w-full">
         {resolvedThought && <AIThinkingAccordion thought={resolvedThought} />}
         {beforeFence && renderSimpleMarkdown(beforeFence, false)}
-        <AIBackgroundTelemetryHUD
-          isPdfIntent={true}
-          queryPrompt="Compiling live publication-grade A4 PDF document in sandbox..."
-        />
+        <div
+          className="flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium"
+          style={{
+            backgroundColor: "var(--m-surface-alt)",
+            borderColor: "var(--m-border)",
+            color: "var(--m-text)",
+          }}
+        >
+          <Loader2 size={15} className="animate-spin text-rose-500 shrink-0" />
+          <span>Building &amp; formatting your PDF document inside the sandbox...</span>
+        </div>
       </div>
     );
   }
 
-  // Show the real-time background telemetry HUD while actively streaming an interactive_quiz block
+  // Only show the quiz building pill while actively streaming an incomplete interactive_quiz block
   const hasRawQuizBlock = !isUserMessage && cleanText.includes("```interactive_quiz");
   if (hasRawQuizBlock && isStreaming) {
     const beforeFence = cleanText.split("```interactive_quiz")[0].trim();
@@ -464,10 +471,17 @@ function renderChatMessageContent(
       <div className="space-y-3 w-full">
         {resolvedThought && <AIThinkingAccordion thought={resolvedThought} />}
         {beforeFence && renderSimpleMarkdown(beforeFence, false)}
-        <AIBackgroundTelemetryHUD
-          isQuizIntent={true}
-          queryPrompt="Synthesizing interactive practice assessment in chat..."
-        />
+        <div
+          className="flex items-center gap-2.5 px-4 py-3 rounded-2xl border text-xs font-medium"
+          style={{
+            backgroundColor: "var(--m-surface-alt)",
+            borderColor: "var(--m-border)",
+            color: "var(--m-text)",
+          }}
+        >
+          <Loader2 size={15} className="animate-spin text-indigo-400 shrink-0" />
+          <span>Preparing your interactive quiz...</span>
+        </div>
       </div>
     );
   }
@@ -909,31 +923,6 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
   activeChatSessionIdRef.current = activeChatSessionId;
   const messagesRef = useRef<Message[]>([]);
   messagesRef.current = messages;
-
-  // Memoized query intent and telemetry metadata for real-time background HUD
-  const lastUserQueryPrompt = useMemo(() => {
-    return (
-      [...messages].reverse().find((m) => m.role === "user")?.content ||
-      chatDraft ||
-      "Studying"
-    );
-  }, [messages, chatDraft]);
-
-  const isPdfIntentPromptActive = useMemo(() => {
-    return (
-      /^\/pdf\b/i.test(lastUserQueryPrompt) ||
-      (/\bpdf\b/i.test(lastUserQueryPrompt) &&
-        !/(?:read|analyze|summarize|explain|upload|attached|what is in|from this|from the)\s+(?:this\s+|the\s+|my\s+)?pdf\b/i.test(lastUserQueryPrompt))
-    );
-  }, [lastUserQueryPrompt]);
-
-  const isQuizIntentPromptActive = useMemo(() => {
-    return isExplicitQuizRequest(lastUserQueryPrompt);
-  }, [lastUserQueryPrompt]);
-
-  const activeChatSubjectName = useMemo(() => {
-    return chatSubjectId !== null ? subjects.find((s) => s.id === chatSubjectId)?.name : undefined;
-  }, [chatSubjectId, subjects]);
   const [showPastChatsDrawer, setShowPastChatsDrawer] = useState(false);
   const [wideSidebarOpen, setWideSidebarOpen] = useState(() => {
     if (typeof window !== "undefined") {
@@ -6482,14 +6471,7 @@ Mathematics:
                             m.thought
                           )
                         ) : (
-                          <AIBackgroundTelemetryHUD
-                            isPdfIntent={isPdfIntentPromptActive}
-                            isQuizIntent={isQuizIntentPromptActive}
-                            isThinkingMode={extendedThinking}
-                            queryPrompt={lastUserQueryPrompt}
-                            subjectName={activeChatSubjectName}
-                            size="sm"
-                          />
+                          <AIThinkingStatus size="sm" />
                         )}
                       </div>
 
@@ -6560,15 +6542,22 @@ Mathematics:
                     </div>
                   ))) }
                   {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
-                    <div className="w-full max-w-2xl py-1.5 pl-0.5">
-                      <AIBackgroundTelemetryHUD
-                        isPdfIntent={isPdfIntentPromptActive}
-                        isQuizIntent={isQuizIntentPromptActive}
-                        isThinkingMode={extendedThinking}
-                        queryPrompt={lastUserQueryPrompt}
-                        subjectName={activeChatSubjectName}
-                        size="sm"
-                      />
+                    <div className="flex w-fit items-center gap-2 py-1.5 pl-0.5">
+                      {extendedThinking ? (
+                        <div
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-full border text-xs font-medium animate-pulse"
+                          style={{
+                            backgroundColor: "rgba(99, 102, 241, 0.12)",
+                            borderColor: "rgba(99, 102, 241, 0.35)",
+                            color: "#818cf8",
+                          }}
+                        >
+                          <Brain size={13} className="text-indigo-400" />
+                          <span>Thinking deeply with extended reasoning...</span>
+                        </div>
+                      ) : (
+                        <AIThinkingStatus size="sm" />
+                      )}
                     </div>
                   )}
                 </div>
@@ -8953,14 +8942,7 @@ Mathematics:
                                 m.thought
                               )
                             ) : (
-                              <AIBackgroundTelemetryHUD
-                                isPdfIntent={isPdfIntentPromptActive}
-                                isQuizIntent={isQuizIntentPromptActive}
-                                isThinkingMode={extendedThinking}
-                                queryPrompt={lastUserQueryPrompt}
-                                subjectName={activeChatSubjectName}
-                                size="lg"
-                              />
+                              <AIThinkingStatus size="lg" />
                             )}
                           </div>
 
@@ -9031,15 +9013,22 @@ Mathematics:
                         </div>
                       ))}
                       {isAsking && messages[messages.length - 1]?.role !== "assistant" && (
-                        <div className="w-full max-w-3xl py-2 pl-1">
-                          <AIBackgroundTelemetryHUD
-                            isPdfIntent={isPdfIntentPromptActive}
-                            isQuizIntent={isQuizIntentPromptActive}
-                            isThinkingMode={extendedThinking}
-                            queryPrompt={lastUserQueryPrompt}
-                            subjectName={activeChatSubjectName}
-                            size="lg"
-                          />
+                        <div className="flex w-fit items-center gap-3 py-2 pl-1">
+                          {extendedThinking ? (
+                            <div
+                              className="flex items-center gap-2 px-3.5 py-2 rounded-full border text-xs sm:text-sm font-medium animate-pulse"
+                              style={{
+                                backgroundColor: "rgba(99, 102, 241, 0.12)",
+                                borderColor: "rgba(99, 102, 241, 0.35)",
+                                color: "#818cf8",
+                              }}
+                            >
+                              <Brain size={15} className="text-indigo-400" />
+                              <span>Thinking deeply with extended reasoning...</span>
+                            </div>
+                          ) : (
+                            <AIThinkingStatus size="lg" />
+                          )}
                         </div>
                       )}
                     </div>
