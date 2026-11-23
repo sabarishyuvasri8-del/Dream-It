@@ -5,12 +5,10 @@ import { saveWorkspaceOffline, getWorkspaceOffline, recordOfflineMutation } from
 export { saveWorkspaceOffline, getWorkspaceOffline } from "./offline-storage";
 import { dispatchChatPushNotification } from "./pushNotifications";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+import { projectId as defaultProjectId, publicAnonKey as defaultAnonKey } from "../../utils/supabase/info";
 
-if (!supabaseUrl || !publicAnonKey) {
-  throw new Error("Local Supabase environment variables are missing.");
-}
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || `https://${defaultProjectId}.supabase.co`;
+const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || defaultAnonKey;
 
 let tokenProvider: (() => Promise<string | null>) | null = null;
 let clerkAccessToken: string | null = null;
