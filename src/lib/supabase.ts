@@ -5,10 +5,11 @@ import { saveWorkspaceOffline, getWorkspaceOffline, recordOfflineMutation } from
 export { saveWorkspaceOffline, getWorkspaceOffline } from "./offline-storage";
 import { dispatchChatPushNotification } from "./pushNotifications";
 
-import { projectId as defaultProjectId, publicAnonKey as defaultAnonKey } from "../../utils/supabase/info";
+const LOCAL_SUPABASE_URL = "http://192.168.31.119:8001";
+const LOCAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzk1MzMxMzc5LCJleHAiOjE5NTMwMTEzNzl9.KGjgxlQess-gSWdIREOfYsRJHGfMUU3KdcWghwnNsqQ";
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || `https://${defaultProjectId}.supabase.co`;
-const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || defaultAnonKey;
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || LOCAL_SUPABASE_URL;
+const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || LOCAL_SUPABASE_ANON_KEY;
 
 let tokenProvider: (() => Promise<string | null>) | null = null;
 let clerkAccessToken: string | null = null;
