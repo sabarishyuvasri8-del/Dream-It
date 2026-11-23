@@ -41,6 +41,15 @@ export const supabase = createClient(
 export function setSupabaseAuthToken(token: string | null) {
   clerkAccessToken = token;
 
+  try {
+    const authHeader = token ? `Bearer ${token}` : `Bearer ${publicAnonKey}`;
+    (supabase as any).rest.headers = {
+      ...((supabase as any).rest.headers || {}),
+      apikey: publicAnonKey,
+      Authorization: authHeader,
+    };
+  } catch {}
+
   if (token) {
     try {
       supabase.realtime.setAuth(token);
