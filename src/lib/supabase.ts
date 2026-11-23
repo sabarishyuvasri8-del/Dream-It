@@ -1,22 +1,55 @@
 import { createClient } from "@supabase/supabase-js";
-import { projectId, publicAnonKey } from "../../utils/supabase/info";
+
 import type { FinanceData } from "./finance-types";
 import { saveWorkspaceOffline, getWorkspaceOffline, recordOfflineMutation } from "./offline-storage";
 export { saveWorkspaceOffline, getWorkspaceOffline } from "./offline-storage";
 import { dispatchChatPushNotification } from "./pushNotifications";
 
-export const supabase = createClient(`https://${projectId}.supabase.co`, publicAnonKey);
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const publicAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-/** Configure or update the active Clerk user authorization token for Supabase RLS */
+if (!supabaseUrl || !publicAnonKey) {
+  throw new Error("Local Supabase environment variables are missing.");
+}
+
+let tokenProvider: (() => Promise<string | null>) | null = null;
+let clerkAccessToken: string | null = null;
+
+export function setSupabaseTokenProvider(provider: (() => Promise<string | null>) | null) {
+  tokenProvider = provider;
+}
+
+export const supabase = createClient(
+  supabaseUrl,
+  publicAnonKey,
+  {
+    accessToken: async () => {
+      if (tokenProvider) {
+        try {
+          const freshToken = await tokenProvider();
+          clerkAccessToken = freshToken;
+          return freshToken;
+        } catch (error) {
+          console.error("[Supabase] Clerk token refresh failed:", error);
+          return null;
+        }
+      }
+
+      return clerkAccessToken;
+    },
+  }
+);
+
 export function setSupabaseAuthToken(token: string | null) {
-  try {
-    const authHeader = token ? `Bearer ${token}` : `Bearer ${publicAnonKey}`;
-    (supabase as any).rest.headers = {
-      ...((supabase as any).rest.headers || {}),
-      apikey: publicAnonKey,
-      Authorization: authHeader,
-    };
-  } catch {}
+  clerkAccessToken = token;
+
+  if (token) {
+    try {
+      supabase.realtime.setAuth(token);
+    } catch (error) {
+      console.warn("[Supabase] Realtime setAuth error:", error);
+    }
+  }
 }
 
 /* ─────────────── Data Types ─────────────── */
@@ -203,7 +236,7 @@ export async function fetchUserWorkspace(accessToken: string, userId: string): P
       .maybeSingle();
     if (dbData && dbData.data && typeof dbData.data === "object") {
       // Asynchronously update IndexedDB cache
-      saveWorkspaceOffline(userId, dbData.data as UserWorkspace).catch(() => {});
+      saveWorkspaceOffline(userId, dbData.data as UserWorkspace).catch(() => { });
       return dbData.data as UserWorkspace;
     }
   } catch (e) {
@@ -224,7 +257,7 @@ export async function fetchUserWorkspace(accessToken: string, userId: string): P
     if (altId) {
       const { data: altDb } = await supabase.from("workspaces").select("data").eq("user_id", altId).maybeSingle();
       if (altDb && altDb.data && typeof altDb.data === "object") {
-        saveWorkspaceOffline(userId, altDb.data as UserWorkspace).catch(() => {});
+        saveWorkspaceOffline(userId, altDb.data as UserWorkspace).catch(() => { });
         return altDb.data as UserWorkspace;
       }
       const altCached = await getWorkspaceOffline(altId);
@@ -252,7 +285,7 @@ export async function saveUserWorkspace(accessToken: string, userId: string, wor
 
   // If currently offline, queue mutation for background sync upon reconnection
   if (typeof navigator !== "undefined" && !navigator.onLine) {
-    recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => {});
+    recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => { });
     return true;
   }
 
@@ -270,15 +303,15 @@ export async function saveUserWorkspace(accessToken: string, userId: string, wor
       savedRemote = true;
     } else {
       console.warn("Supabase database workspace save error:", error);
-      recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => {});
+      recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => { });
     }
   } catch (e) {
     console.warn("Supabase database workspace save failed:", e);
-    recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => {});
+    recordOfflineMutation(userId, "workspace_update", workspaceData).catch(() => { });
   }
 
   // Trigger non-blocking incremental relational sync to normalized tables
-  syncWorkspaceRelational(userId, workspaceData).catch(() => {});
+  syncWorkspaceRelational(userId, workspaceData).catch(() => { });
 
   return savedRemote;
 }
@@ -522,22 +555,27 @@ export async function uploadAttachedFile(
   return meta;
 }
 
-/** Get short-lived signed download URL for file */
+/** Get authenticated signed download URL for private storage */
 export async function getFileDownloadUrl(
   accessToken: string,
   userId: string,
   fileId: string,
-  storagePath: string
+  storagePath: string,
+  expiresInSeconds: number = 86400
 ): Promise<string> {
   try {
     const { data, error } = await supabase.storage
       .from("chat_attachments")
-      .createSignedUrl(storagePath, 3600);
+      .createSignedUrl(storagePath, expiresInSeconds);
     if (!error && data?.signedUrl) return data.signedUrl;
-  } catch {}
+    if (error) {
+      console.error("[Storage] Failed creating signed URL:", error);
+    }
+  } catch (err) {
+    console.error("[Storage] Exception creating signed URL:", err);
+  }
 
-  const { data: pub } = supabase.storage.from("chat_attachments").getPublicUrl(storagePath);
-  return pub.publicUrl;
+  throw new Error("Failed to generate authenticated signed download URL for private storage.");
 }
 
 /** Delete attached file */
@@ -674,7 +712,7 @@ export async function respondToShare(
       .from('shared_notes')
       .update({ status: response })
       .eq('id', shareId);
-      
+
     if (error) {
       console.error(`Error updating shared note to ${response}:`, error);
       return false;
@@ -692,42 +730,153 @@ export async function sendFriendRequest(
   requesterId: string,
   requesterIdentifier: string,
   targetIdentifier: string
-): Promise<boolean> {
-  if (!requesterId || !targetIdentifier) return false;
+): Promise<{ success: boolean; message?: string }> {
+  if (!requesterId || !targetIdentifier) {
+    return { success: false, message: "Missing user information or friend username." };
+  }
+  const cleanTarget = targetIdentifier.trim();
+
   try {
-    const { error } = await supabase.from('friendships').insert({
+    // 1. Look up target profile securely through RPC
+    let targetId: string | null = null;
+    let targetActualIdentifier: string | null = null;
+
+    const { data: targetProfiles, error: profileError } = await supabase
+      .rpc('lookup_friend_profile', {
+        p_username: cleanTarget,
+      });
+
+    if (profileError) {
+      console.error("[Friends] Profile lookup failed:", profileError);
+      return {
+        success: false,
+        message: "Could not look up this username. Please try again.",
+      };
+    }
+
+    const targetProfile = targetProfiles?.[0] ?? null;
+
+    if (!targetProfile) {
+      return {
+        success: false,
+        message: "Username not found or is ambiguous. Ask your friend to choose a unique username.",
+      };
+    }
+
+    if (targetProfile.id === requesterId) {
+      return {
+        success: false,
+        message: "You cannot add yourself as a friend.",
+      };
+    }
+
+    targetId = targetProfile.id;
+    targetActualIdentifier = targetProfile.username;
+
+    // 2. Check if a friendship or request already exists between these users
+    try {
+      const orConditions: string[] = [
+        `and(requester_id.eq.${requesterId},target_identifier.ilike.${cleanTarget})`,
+      ];
+      if (targetId) {
+        orConditions.push(`and(requester_id.eq.${requesterId},target_id.eq.${targetId})`);
+        orConditions.push(`and(requester_id.eq.${targetId},target_id.eq.${requesterId})`);
+        orConditions.push(`and(requester_id.eq.${targetId},target_identifier.ilike.${requesterIdentifier})`);
+      }
+
+      const { data: existing } = await supabase
+        .from('friendships')
+        .select('id, status, requester_id, target_id, target_identifier')
+        .or(orConditions.join(','))
+        .limit(1)
+        .maybeSingle();
+
+      if (existing) {
+        if (existing.status === 'accepted') {
+          return { success: false, message: `You are already friends with ${cleanTarget}.` };
+        }
+        if (existing.status === 'pending') {
+          if (existing.requester_id === requesterId) {
+            return { success: false, message: `A friend request to ${cleanTarget} is already pending.` };
+          } else {
+            return { success: false, message: `${cleanTarget} already sent you a friend request. Accept it in your pending requests!` };
+          }
+        }
+      }
+    } catch (checkErr) {
+      console.warn("[Friends] Existing friendship check skipped:", checkErr);
+    }
+
+    // 3. Insert friendship request
+    const insertPayload: any = {
       requester_id: requesterId,
       requester_identifier: requesterIdentifier,
-      target_identifier: targetIdentifier.trim(),
+      target_identifier: cleanTarget,
       status: 'pending',
-    });
-    if (error) {
-      console.error("Error sending friend request:", error);
-      return false;
+    };
+    if (targetId) {
+      insertPayload.target_id = targetId;
     }
-    return true;
-  } catch (err) {
-    console.error("Exception sending friend request:", err);
-    return false;
+    if (targetActualIdentifier) {
+      insertPayload.target_actual_identifier = targetActualIdentifier;
+    }
+
+    const { error } = await supabase.from('friendships').insert(insertPayload);
+    if (error) {
+      console.error("[Friends] Error sending friend request:", error);
+      if (error.code === '23505') {
+        return { success: false, message: `A friend request to ${cleanTarget} is already pending.` };
+      }
+      if (error.message?.includes('row-level security')) {
+        try {
+          const res = await supabase.rpc('current_app_user_id');
+          const dbUser = res?.data;
+          console.warn("[Friends] RLS violation diagnosis:", {
+            clientRequesterId: requesterId,
+            dbCurrentUserId: dbUser,
+          });
+          if (!dbUser) {
+            return {
+              success: false,
+              message: "Security policy error: Database cannot resolve user session. Please update current_app_user_id() on your server.",
+            };
+          }
+        } catch (diagErr) {
+          console.warn("[Friends] Could not query current_app_user_id:", diagErr);
+        }
+      }
+      return { success: false, message: error.message || "Failed to send friend request. Check database permissions." };
+    }
+    return { success: true };
+  } catch (err: any) {
+    console.error("[Friends] Exception sending friend request:", err);
+    return { success: false, message: err?.message || "Failed to send friend request." };
   }
 }
 
 export async function fetchPendingFriendRequests(
   username?: string | null,
-  email?: string | null
+  email?: string | null,
+  userId?: string | null
 ): Promise<Friendship[]> {
-  const identifiers = [];
+  const identifiers: string[] = [];
   if (username) identifiers.push(username);
   if (email) identifiers.push(email);
-  if (identifiers.length === 0) return [];
+  if (identifiers.length === 0 && !userId) return [];
 
   try {
-    const { data, error } = await supabase
-      .from('friendships')
-      .select('*')
-      .in('target_identifier', identifiers)
-      .eq('status', 'pending')
-      .order('created_at', { ascending: false });
+    let query = supabase.from('friendships').select('*').eq('status', 'pending');
+
+    if (userId && identifiers.length > 0) {
+      const inClause = identifiers.map((i) => `"${i}"`).join(',');
+      query = query.or(`target_id.eq.${userId},target_identifier.in.(${inClause})`);
+    } else if (userId) {
+      query = query.eq('target_id', userId);
+    } else {
+      query = query.in('target_identifier', identifiers);
+    }
+
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.error("Error fetching friend requests:", error);
@@ -756,7 +905,7 @@ export async function respondToFriendRequest(
       .from('friendships')
       .update(updateData)
       .eq('id', friendshipId);
-      
+
     if (error) {
       console.error(`Error updating friendship to ${response}:`, error);
       return false;
@@ -979,7 +1128,7 @@ export async function sendDirectMessage(
       senderName: senderName || "Friend",
       content: content.trim(),
       fileMeta,
-    }).catch(() => {});
+    }).catch(() => { });
 
     return data;
   } catch (err) {
@@ -1003,14 +1152,28 @@ export async function fetchDirectMessages(
       console.error("Error fetching messages:", error);
       return [];
     }
-    
-    // Filter out messages hidden by the current user
-    const visibleMessages = (data || []).filter(msg => {
+
+    // Filter out messages hidden by the current user and refresh private attachment signed URLs
+    const filtered = (data || []).filter(msg => {
       if (msg.sender_id === userId1 && msg.deleted_by_sender) return false;
       if (msg.receiver_id === userId1 && msg.deleted_by_receiver) return false;
       return true;
     });
-    
+
+    const visibleMessages = await Promise.all(
+      filtered.map(async (msg) => {
+        if (msg.file_url) {
+          try {
+            const freshUrl = await resolveChatAttachmentSignedUrl(msg.file_url);
+            return { ...msg, file_url: freshUrl };
+          } catch {
+            return msg;
+          }
+        }
+        return msg;
+      })
+    );
+
     return visibleMessages;
   } catch (err) {
     console.error("Exception fetching messages:", err);
@@ -1024,26 +1187,47 @@ export async function deleteDirectMessage(messageId: string): Promise<boolean> {
       .from('direct_messages')
       .delete()
       .eq('id', messageId);
-    return !error;
+
+    if (error) {
+      console.error("[Chat] Error permanently deleting message:", error);
+      return false;
+    }
+    return true;
   } catch (err) {
-    console.error("Error deleting message:", err);
+    console.error("[Chat] Exception deleting message:", err);
     return false;
   }
 }
 
 export async function hideDirectMessage(messageId: string, isSender: boolean): Promise<boolean> {
   try {
-    const updatePayload = isSender 
-      ? { deleted_by_sender: true } 
+    const updatePayload = isSender
+      ? { deleted_by_sender: true }
       : { deleted_by_receiver: true };
-      
-    const { error } = await supabase
+
+    const { data, error } = await supabase
       .from('direct_messages')
       .update(updatePayload)
-      .eq('id', messageId);
-    return !error;
+      .eq('id', messageId)
+      .select('id, deleted_by_sender, deleted_by_receiver')
+      .maybeSingle();
+
+    if (error) {
+      console.error("[Chat] Error hiding message:", error);
+      return false;
+    }
+
+    // If both parties have hidden/deleted the message, permanently purge it from DB
+    if (data && data.deleted_by_sender && data.deleted_by_receiver) {
+      await supabase
+        .from('direct_messages')
+        .delete()
+        .eq('id', messageId);
+    }
+
+    return true;
   } catch (err) {
-    console.error("Error hiding message:", err);
+    console.error("[Chat] Exception hiding message:", err);
     return false;
   }
 }
@@ -1064,27 +1248,117 @@ export function subscribeToDirectMessages(
       (payload) => {
         if (payload.eventType === 'INSERT') {
           const newMsg = payload.new as DirectMessage;
-          if (newMsg.sender_id === userId || newMsg.receiver_id === userId) {
+          if (newMsg && (newMsg.sender_id === userId || newMsg.receiver_id === userId)) {
             onNewMessage(newMsg);
           }
         } else if (payload.eventType === 'DELETE') {
           const oldMsg = payload.old as { id: string };
-          if (onMessageDeleted && oldMsg.id) {
+          if (onMessageDeleted && oldMsg?.id) {
             onMessageDeleted(oldMsg.id);
           }
         } else if (payload.eventType === 'UPDATE') {
           const updatedMsg = payload.new as DirectMessage;
-          if (onMessageHidden && (updatedMsg.sender_id === userId || updatedMsg.receiver_id === userId)) {
+          if (onMessageHidden && (updatedMsg?.sender_id === userId || updatedMsg?.receiver_id === userId)) {
             onMessageHidden(updatedMsg);
           }
         }
       }
     )
-    .subscribe();
+    .subscribe((status, err) => {
+      if (status === 'SUBSCRIBED') {
+        console.log(`[Realtime] Subscribed to direct_messages for ${userId}`);
+      } else if (status === 'CHANNEL_ERROR') {
+        console.warn(`[Realtime] direct_messages channel error:`, err);
+      }
+    });
 
   return () => {
     supabase.removeChannel(channel);
   };
+}
+
+/**
+ * Ephemeral Realtime Broadcast for Live Typing Indicator (Zero DB queries/table bloat)
+ */
+const activeTypingChannels: Record<string, ReturnType<typeof supabase.channel>> = {};
+
+function getOrCreateTypingChannel(userA: string, userB: string) {
+  const channelName = `typing:${[userA, userB].sort().join('-')}`;
+  if (!activeTypingChannels[channelName]) {
+    activeTypingChannels[channelName] = supabase.channel(channelName, {
+      config: { broadcast: { ack: false } },
+    });
+    activeTypingChannels[channelName].subscribe();
+  }
+  return activeTypingChannels[channelName];
+}
+
+export function sendTypingStatus(senderId: string, receiverId: string, isTyping: boolean) {
+  try {
+    const channel = getOrCreateTypingChannel(senderId, receiverId);
+    channel.send({
+      type: 'broadcast',
+      event: 'typing',
+      payload: { senderId, receiverId, isTyping },
+    });
+  } catch (err) {
+    console.warn("[Typing] Failed to broadcast typing status:", err);
+  }
+}
+
+export function subscribeToTypingStatus(
+  currentUserId: string,
+  targetUserId: string,
+  onTypingChange: (isTyping: boolean) => void
+) {
+  const channel = getOrCreateTypingChannel(currentUserId, targetUserId);
+  const handler = (payload: any) => {
+    const data = payload?.payload;
+    if (data && data.senderId === targetUserId && data.receiverId === currentUserId) {
+      onTypingChange(Boolean(data.isTyping));
+    }
+  };
+
+  channel.on('broadcast', { event: 'typing' }, handler);
+
+  return () => {
+    // Keep channel open or remove handler
+  };
+}
+
+/**
+ * Resolves an authenticated signed URL for a chat attachment given a raw path or legacy URL.
+ */
+export async function resolveChatAttachmentSignedUrl(urlOrPath: string): Promise<string> {
+  if (!urlOrPath) return "";
+  if (urlOrPath.startsWith("data:") || urlOrPath.startsWith("blob:")) return urlOrPath;
+
+  let path = urlOrPath;
+  const match = urlOrPath.match(/chat_attachments\/(.+?)(\?|$)/);
+  if (match) {
+    path = decodeURIComponent(match[1]);
+  } else if (urlOrPath.startsWith("http://") || urlOrPath.startsWith("https://")) {
+    try {
+      const parsed = new URL(urlOrPath);
+      const parts = parsed.pathname.split("/chat_attachments/");
+      if (parts.length > 1) {
+        path = decodeURIComponent(parts[1]);
+      }
+    } catch { }
+  }
+
+  try {
+    const { data, error } = await supabase.storage
+      .from("chat_attachments")
+      .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days
+    if (!error && data?.signedUrl) {
+      return data.signedUrl;
+    }
+  } catch (err) {
+    console.warn("[Storage] Failed creating signed URL for chat attachment:", path, err);
+  }
+
+  return urlOrPath;
 }
 
 export async function uploadChatFile(
@@ -1110,12 +1384,17 @@ export async function uploadChatFile(
     throw new Error(uploadError.message || "Failed to upload file");
   }
 
-  const { data } = supabase.storage
+  // Generate authenticated signed URL (7 days validity for private chat attachments)
+  const { data, error: signError } = await supabase.storage
     .from('chat_attachments')
-    .getPublicUrl(filePath);
+    .createSignedUrl(filePath, 60 * 60 * 24 * 7);
+
+  if (signError || !data?.signedUrl) {
+    throw new Error(signError?.message || "Failed to generate signed URL for uploaded attachment");
+  }
 
   return {
-    url: data.publicUrl,
+    url: data.signedUrl,
     name: rawName,
     type: file.type || 'application/octet-stream',
     size: file.size,
@@ -1138,23 +1417,64 @@ export async function upsertUserProfile(id: string, username: string, imageUrl?:
   if (error) console.error("Error upserting user profile:", error);
 }
 
-export async function fetchUserProfiles(userIds: string[]): Promise<Record<string, UserProfileData>> {
-  if (userIds.length === 0) return {};
-  const { data, error } = await supabase
-    .from('user_profiles')
-    .select('id, username, image_url')
-    .in('id', userIds);
-    
-  if (error) {
-    console.error("Error fetching user profiles:", error);
+export async function fetchUserProfiles(identifiersOrIds: string[]): Promise<Record<string, UserProfileData>> {
+  if (!identifiersOrIds || identifiersOrIds.length === 0) return {};
+  const cleanList = Array.from(new Set(identifiersOrIds.filter(Boolean).map((s) => s.trim())));
+  if (cleanList.length === 0) return {};
+
+  try {
+    const profileMap: Record<string, UserProfileData> = {};
+    const queryList = Array.from(new Set([
+      ...cleanList,
+      ...cleanList.map((s) => s.toLowerCase()),
+    ]));
+
+    // Query both by id and by username in parallel
+    const [{ data: byId }, { data: byUsername }] = await Promise.all([
+      supabase.from('user_profiles').select('id, username, image_url').in('id', cleanList),
+      supabase.from('user_profiles').select('id, username, image_url').in('username', queryList),
+    ]);
+
+    [...(byId || []), ...(byUsername || [])].forEach((profile) => {
+      if (profile.id) profileMap[profile.id] = profile;
+      if (profile.username) {
+        profileMap[profile.username] = profile;
+        profileMap[profile.username.toLowerCase()] = profile;
+      }
+    });
+
+    // Check if any username identifiers are still missing and try case-insensitive ilike
+    const missing = cleanList.filter(
+      (item) => !profileMap[item] && !profileMap[item.toLowerCase()] && !item.startsWith("user_")
+    );
+    if (missing.length > 0) {
+      await Promise.all(
+        missing.map(async (name) => {
+          try {
+            const { data } = await supabase
+              .from('user_profiles')
+              .select('id, username, image_url')
+              .ilike('username', name)
+              .maybeSingle();
+            if (data) {
+              if (data.id) profileMap[data.id] = data;
+              if (data.username) {
+                profileMap[data.username] = data;
+                profileMap[data.username.toLowerCase()] = data;
+              }
+              profileMap[name] = data;
+              profileMap[name.toLowerCase()] = data;
+            }
+          } catch { }
+        })
+      );
+    }
+
+    return profileMap;
+  } catch (err) {
+    console.error("Exception fetching user profiles:", err);
     return {};
   }
-  
-  const profileMap: Record<string, UserProfileData> = {};
-  data?.forEach(profile => {
-    profileMap[profile.id] = profile;
-  });
-  return profileMap;
 }
 
 /* ─────────────── Parent Monitoring System ─────────────── */
@@ -1215,7 +1535,22 @@ export async function fetchChildChatMessages(childUserId: string): Promise<Direc
       console.error("Error fetching child messages:", error);
       return [];
     }
-    return data || [];
+
+    const messages = await Promise.all(
+      (data || []).map(async (msg) => {
+        if (msg.file_url) {
+          try {
+            const freshUrl = await resolveChatAttachmentSignedUrl(msg.file_url);
+            return { ...msg, file_url: freshUrl };
+          } catch {
+            return msg;
+          }
+        }
+        return msg;
+      })
+    );
+
+    return messages;
   } catch (err) {
     console.error("Exception fetching child messages:", err);
     return [];

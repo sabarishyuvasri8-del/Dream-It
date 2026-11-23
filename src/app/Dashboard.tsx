@@ -1294,7 +1294,7 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
     if (!userNameDisplay && !userEmail) return;
     const [shares, requests, unreadCount] = await Promise.all([
       fetchPendingShares(userNameDisplay, userEmail),
-      fetchPendingFriendRequests(userNameDisplay, userEmail),
+      fetchPendingFriendRequests(userNameDisplay, userEmail, userId),
       userId ? fetchUnreadMessageCount(userId) : Promise.resolve(0)
     ]);
     setPendingShares(shares);
@@ -2241,13 +2241,14 @@ export default function Dashboard({ accessToken, userId, userEmail, userName, us
       return;
     }
     setIsAddingFriend(true);
-    const success = await sendFriendRequest(userId, userNameDisplay, target);
+    const result = await sendFriendRequest(userId, userNameDisplay, target);
     setIsAddingFriend(false);
-    if (success) {
+    if (result.success) {
       showToast(`Friend request sent to ${target}!`);
       setAddFriendDraft("");
+      loadFriends();
     } else {
-      showToast("Failed to send friend request. Check username or database permissions.", "error");
+      showToast(result.message || "Failed to send friend request. Check username or database permissions.", "error");
     }
   };
 
@@ -6613,21 +6614,6 @@ Mathematics:
                     <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-9 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
                       <Camera size={17} />
                     </button>
-                    <button
-                      type="button"
-                      onClick={toggleExtendedThinking}
-                      className={`flex items-center justify-center size-9 rounded-xl transition shrink-0 ${
-                        extendedThinking ? "shadow-xs border border-indigo-500/40" : "hover:opacity-75"
-                      }`}
-                      style={{
-                        backgroundColor: extendedThinking ? "rgba(99, 102, 241, 0.16)" : "transparent",
-                        color: extendedThinking ? "#818cf8" : "var(--m-text-sub)",
-                      }}
-                      title={extendedThinking ? "Extended Thinking ON (Gemini & Nemotron deep reasoning enabled)" : "Enable Extended Thinking (Deep reasoning mode)"}
-                      aria-label="Toggle Extended Thinking"
-                    >
-                      <Brain size={17} className={extendedThinking ? "text-indigo-400" : ""} />
-                    </button>
 
                     <input value={chatDraft} onChange={(e) => setChatDraft(e.target.value)} onPaste={handleChatPaste} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); askCoach(); } }} className="flex-1 bg-transparent py-1.5 text-xs outline-none" style={{ color: "var(--m-text)" }} placeholder={extendedThinking ? "Ask anything (Extended Thinking ON)..." : "How can I help you today?"} />
                     <VoiceInputButton
@@ -8774,22 +8760,6 @@ Mathematics:
                           <Camera size={16} className="sm:hidden" />
                           <Camera size={18} className="hidden sm:block" />
                         </button>
-                        <button
-                          type="button"
-                          onClick={toggleExtendedThinking}
-                          className={`flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 ${
-                            extendedThinking ? "shadow-xs border border-indigo-500/40" : "hover:opacity-75"
-                          }`}
-                          style={{
-                            backgroundColor: extendedThinking ? "rgba(99, 102, 241, 0.16)" : "transparent",
-                            color: extendedThinking ? "#818cf8" : "var(--m-text-sub)",
-                          }}
-                          title={extendedThinking ? "Extended Thinking ON (Gemini & Nemotron deep reasoning enabled)" : "Enable Extended Thinking (Deep reasoning mode)"}
-                          aria-label="Toggle Extended Thinking"
-                        >
-                          <Brain size={16} className={extendedThinking ? "text-indigo-400 sm:hidden" : "sm:hidden"} />
-                          <Brain size={18} className={extendedThinking ? "text-indigo-400 hidden sm:block" : "hidden sm:block"} />
-                        </button>
 
                         <input
                           value={chatDraft}
@@ -9071,22 +9041,6 @@ Mathematics:
                       <button type="button" onClick={() => setSnapModalOpen(true)} className="flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 hover:opacity-75" style={{ color: "var(--m-primary)" }} title="Snap & Solve with Camera">
                         <Camera size={16} className="sm:hidden" />
                         <Camera size={18} className="hidden sm:block" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={toggleExtendedThinking}
-                        className={`flex items-center justify-center size-8 sm:size-10 rounded-xl transition shrink-0 ${
-                          extendedThinking ? "shadow-xs border border-indigo-500/40" : "hover:opacity-75"
-                        }`}
-                        style={{
-                          backgroundColor: extendedThinking ? "rgba(99, 102, 241, 0.16)" : "transparent",
-                          color: extendedThinking ? "#818cf8" : "var(--m-text-sub)",
-                        }}
-                        title={extendedThinking ? "Extended Thinking ON (Gemini & Nemotron deep reasoning enabled)" : "Enable Extended Thinking (Deep reasoning mode)"}
-                        aria-label="Toggle Extended Thinking"
-                      >
-                        <Brain size={16} className={extendedThinking ? "text-indigo-400 sm:hidden" : "sm:hidden"} />
-                        <Brain size={18} className={extendedThinking ? "text-indigo-400 hidden sm:block" : "hidden sm:block"} />
                       </button>
 
                       <input

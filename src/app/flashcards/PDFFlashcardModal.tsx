@@ -20,7 +20,7 @@ import {
   File
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Subject, NoteEntry, AttachedFile } from '../../lib/supabase';
+import { Subject, NoteEntry, AttachedFile, getFileDownloadUrl } from '../../lib/supabase';
 import { generateFlashcardsAndSummary, GeneratedCard, ChapterSummary, FlashcardGenerationResult } from './flashcardAIGenerator';
 import { cleanLatexToReadable } from '../../lib/flashcardDistiller';
 
@@ -137,10 +137,11 @@ export function PDFFlashcardModal({
         docTitle = docTitle || fileObj.fileName;
         setStatusMessage(`Retrieving workspace file: ${fileObj.fileName}...`);
         
-        // If storage URL or file data available
+        // If storage URL or file data available (obtain authenticated signed URL from private storage)
         if (fileObj.storagePath) {
           try {
-            const res = await fetch(fileObj.storagePath);
+            const downloadUrl = await getFileDownloadUrl("", "", fileObj.id, fileObj.storagePath);
+            const res = await fetch(downloadUrl);
             if (res.ok) {
               const blob = await res.blob();
               const fileInstance = new window.File([blob], fileObj.fileName, { type: fileObj.mimeType });

@@ -22,7 +22,7 @@ const RoleSelectionScreen = lazy(() => import("./components/RoleSelectionScreen"
 const ParentLoginForm = lazy(() => import("./components/ParentLoginForm"));
 import { useTheme } from "../lib/ThemeContext";
 import ThemeSelector from "./components/ThemeSelector";
-import { fetchParentLinks, upsertUserProfile, setSupabaseAuthToken } from "../lib/supabase";
+import { fetchParentLinks, upsertUserProfile, setSupabaseAuthToken, setSupabaseTokenProvider } from "../lib/supabase";
 import { setUserContext, clearUserContext } from "../lib/monitoring";
 import { getSavedAccounts, popPendingSwitchAccount, peekPendingSwitchAccount, removeSavedAccount, saveAccount, SavedAccount } from "../lib/account-vault";
 const CadenceApp = lazy(() => import("./cadence/CadenceApp"));
@@ -589,20 +589,36 @@ function Root() {
 
   const [authorizedChildIds, setAuthorizedChildIds] = useState<Set<string>>(new Set());
 
-  // Sync active Clerk session token to Supabase client if custom template exists
+  // Sync active Clerk session token & register dynamic refresh provider for Supabase
   useEffect(() => {
     if (session) {
-      session
-        .getToken({ template: "supabase" })
+      const getFreshClerkToken = async (): Promise<string | null> => {
+        // First try the 'supabase' JWT template (configured for Supabase RLS with role: authenticated)
+        try {
+          const t = await session.getToken({ template: "supabase" });
+          if (t) return t;
+        } catch {
+          // Template might not be named 'supabase' or custom template error; proceed to default session token
+        }
+        try {
+          return await session.getToken();
+        } catch {
+          return null;
+        }
+      };
+
+      // Register dynamic token provider so every Supabase query transparently uses a fresh, unexpired Clerk JWT
+      setSupabaseTokenProvider(getFreshClerkToken);
+
+      getFreshClerkToken()
         .then((token) => {
-          if (token) setSupabaseAuthToken(token);
-          else setSupabaseAuthToken(null);
+          setSupabaseAuthToken(token);
         })
         .catch(() => {
-          // Fallback to default anon key; do not set standard Clerk token as Supabase rejects it with 401
           setSupabaseAuthToken(null);
         });
     } else {
+      setSupabaseTokenProvider(null);
       setSupabaseAuthToken(null);
     }
   }, [session]);

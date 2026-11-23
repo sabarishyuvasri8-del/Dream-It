@@ -8,13 +8,16 @@
 import webpush from "web-push";
 import { createClient } from "@supabase/supabase-js";
 
-// Supabase project constants
-const SUPABASE_PROJECT_ID = process.env.SUPABASE_PROJECT_ID || "ogukrtsucsnxvrudvobv";
-const SUPABASE_URL = process.env.SUPABASE_URL || `https://${SUPABASE_PROJECT_ID}.supabase.co`;
+// Supabase self-hosted endpoint & credentials
+const SUPABASE_URL =
+  process.env.VITE_SUPABASE_URL ||
+  process.env.SUPABASE_URL ||
+  "http://192.168.31.119:8001";
 const SUPABASE_KEY =
   process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
   process.env.SUPABASE_ANON_KEY ||
-  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndWtydHN1Y3NueHZydWR2b2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2MDQ2MTksImV4cCI6MjEwMTE4MDYxOX0.cI7kzHbsSOYbiO3izp-sXhDinBMTCV5vmQXcllAfqy0";
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzk1MzMxMzc5LCJleHAiOjE5NTMwMTEzNzl9.KGjgxlQess-gSWdIREOfYsRJHGfMUU3KdcWghwnNsqQ";
 
 // VAPID Credentials
 const VAPID_PUBLIC_KEY =

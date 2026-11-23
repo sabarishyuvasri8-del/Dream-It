@@ -599,12 +599,15 @@ function localAiProxyPlugin(env: Record<string, string>) {
               const parsed = JSON.parse(body || '{}');
               const { recipientId, senderId, senderName, bodySnippet } = parsed;
 
-              const SUPABASE_PROJECT_ID = env.SUPABASE_PROJECT_ID || 'ogukrtsucsnxvrudvobv';
-              const SUPABASE_URL = env.SUPABASE_URL || `https://${SUPABASE_PROJECT_ID}.supabase.co`;
+              const SUPABASE_URL =
+                env.VITE_SUPABASE_URL ||
+                env.SUPABASE_URL ||
+                'http://192.168.31.119:8001';
               const SUPABASE_KEY =
                 env.SUPABASE_SERVICE_ROLE_KEY ||
+                env.VITE_SUPABASE_ANON_KEY ||
                 env.SUPABASE_ANON_KEY ||
-                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ndWtydHN1Y3NueHZydWR2b2J2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU2MDQ2MTksImV4cCI6MjEwMTE4MDYxOX0.cI7kzHbsSOYbiO3izp-sXhDinBMTCV5vmQXcllAfqy0';
+                'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzk1MzMxMzc5LCJleHAiOjE5NTMwMTEzNzl9.KGjgxlQess-gSWdIREOfYsRJHGfMUU3KdcWghwnNsqQ';
 
               const VAPID_PUBLIC_KEY =
                 env.VAPID_PUBLIC_KEY ||

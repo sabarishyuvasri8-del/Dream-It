@@ -25,14 +25,57 @@ ALTER TABLE IF EXISTS public.grades ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.focus_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE IF EXISTS public.exam_results ENABLE ROW LEVEL SECURITY;
 
+-- ═══════════════════════════════════════════════════════════════════════════════
+-- MANDATORY TABLE PRIVILEGES FOR POSTGREST (ANON & AUTHENTICATED)
+-- PostgreSQL requires table-level privileges before RLS policies are evaluated.
+-- The RLS policies below strictly enforce data isolation per Clerk user.
+-- ═══════════════════════════════════════════════════════════════════════════════
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO anon, authenticated;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON ROUTINES TO anon, authenticated;
+
+-- Storage schema privileges (tables only; internal storage routines are owned by storage admin)
+GRANT USAGE ON SCHEMA storage TO anon, authenticated;
+GRANT ALL ON storage.objects TO anon, authenticated;
+GRANT ALL ON storage.buckets TO anon, authenticated;
+
 -- Helper function to safely extract the authenticated Clerk / Supabase user ID
 CREATE OR REPLACE FUNCTION public.current_app_user_id()
 RETURNS TEXT AS $$
+DECLARE
+  claims_str TEXT;
 BEGIN
-  RETURN COALESCE(
-    NULLIF(current_setting('request.jwt.claim.sub', true), ''),
-    NULLIF(auth.uid()::text, '')
-  );
+  -- 1. Try reading request.jwt.claims JSON object (Standard in PostgREST 10, 11, 12)
+  BEGIN
+    claims_str := current_setting('request.jwt.claims', true);
+    IF claims_str IS NOT NULL AND claims_str <> '' THEN
+      RETURN (claims_str::jsonb ->> 'sub');
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+    -- Fall through if JSON parsing fails
+  END;
+
+  -- 2. Fallback to individual claim setting (Legacy PostgREST < 10)
+  BEGIN
+    IF NULLIF(current_setting('request.jwt.claim.sub', true), '') IS NOT NULL THEN
+      RETURN current_setting('request.jwt.claim.sub', true);
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+  END;
+
+  -- 3. Fallback to auth.uid() if present
+  BEGIN
+    IF auth.uid() IS NOT NULL THEN
+      RETURN auth.uid()::text;
+    END IF;
+  EXCEPTION WHEN OTHERS THEN
+  END;
+
+  RETURN NULL;
 END;
 $$ LANGUAGE plpgsql STABLE SECURITY DEFINER;
 

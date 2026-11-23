@@ -14,7 +14,9 @@ import {
   UserProfileData,
   fetchFriendsConversationMeta,
   FriendConversationMeta,
-  formatMessageSnippet
+  formatMessageSnippet,
+  sendTypingStatus,
+  subscribeToTypingStatus
 } from "../../lib/supabase";
 import {
   getNotificationPermission,
@@ -241,6 +243,9 @@ export default function ChatModal({
   const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [emojiSearch, setEmojiSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("smileys");
+  const [isFriendTyping, setIsFriendTyping] = useState(false);
+  const typingTimeoutRef = useRef<any>(null);
+  const friendTypingTimerRef = useRef<any>(null);
 
   const filteredEmojis = useMemo(() => {
     const q = emojiSearch.trim().toLowerCase();
@@ -403,20 +408,48 @@ export default function ChatModal({
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   
   const handleDeleteForEveryone = async (msgId: string) => {
+    // Save original for rollback if network/policy fails
+    const originalMessages = [...messages];
     setMessages(prev => prev.filter(m => m.id !== msgId));
     setMenuOpenId(null);
-    await deleteDirectMessage(msgId);
+    const success = await deleteDirectMessage(msgId);
+    if (!success) {
+      console.warn("[Chat] Failed to delete message from server, rolling back");
+      setMessages(originalMessages);
+      alert("Failed to delete message. Please check permissions or network.");
+    }
   };
   
   const handleDeleteForMe = async (msgId: string, isSender: boolean) => {
+    const originalMessages = [...messages];
     setMessages(prev => prev.filter(m => m.id !== msgId));
     setMenuOpenId(null);
-    await hideDirectMessage(msgId, isSender);
+    const success = await hideDirectMessage(msgId, isSender);
+    if (!success) {
+      console.warn("[Chat] Failed to hide message from server, rolling back");
+      setMessages(originalMessages);
+      alert("Failed to delete message for you. Please check permissions or network.");
+    }
   };
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const isInitialLoadRef = useRef(true);
+  const isNearBottomRef = useRef(true);
+  const initialFriendHandledRef = useRef<string | null>(null);
+
+  // Keep stable refs to avoid tearing down subscriptions or re-running effects
+  const onRefreshUnreadCountRef = useRef(onRefreshUnreadCount);
+  onRefreshUnreadCountRef.current = onRefreshUnreadCount;
+
+  const activeFriendRef = useRef(activeFriend);
+  activeFriendRef.current = activeFriend;
+
+  const friendsRef = useRef(friends);
+  friendsRef.current = friends;
+
+  const profilesRef = useRef(profiles);
+  profilesRef.current = profiles;
 
   // Instant or smooth scroll to bottom
   const scrollToBottom = (smooth = false) => {
@@ -434,17 +467,93 @@ export default function ChatModal({
     }
   };
 
+  // Track whether the user is scrolled near the bottom (within 120px)
+  const handleContainerScroll = () => {
+    if (!messagesContainerRef.current) return;
+    const c = messagesContainerRef.current;
+    const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 120;
+    isNearBottomRef.current = nearBottom;
+  };
+
   // Reset initial load flag when switching friends to force instant positioning at latest messages
+  const activeFriendId = activeFriend
+    ? activeFriend.requester_id === userId
+      ? activeFriend.target_id
+      : activeFriend.requester_id
+    : null;
+
   useEffect(() => {
     isInitialLoadRef.current = true;
-  }, [activeFriend]);
+    isNearBottomRef.current = true;
+    setIsFriendTyping(false);
+  }, [activeFriendId]);
+
+  // Subscribe to friend's typing broadcast indicator
+  useEffect(() => {
+    if (!userId || !activeFriendId) return;
+
+    setIsFriendTyping(false);
+    const unsubscribe = subscribeToTypingStatus(userId, activeFriendId, (isTyping) => {
+      setIsFriendTyping(isTyping);
+
+      if (friendTypingTimerRef.current) {
+        clearTimeout(friendTypingTimerRef.current);
+      }
+
+      if (isTyping) {
+        // Auto-dismiss indicator if no new typing ping arrives within 4 seconds
+        friendTypingTimerRef.current = setTimeout(() => {
+          setIsFriendTyping(false);
+        }, 4000);
+
+        // Keep view pinned to bottom if user is near bottom
+        if (messagesContainerRef.current && isNearBottomRef.current) {
+          requestAnimationFrame(() => {
+            if (messagesContainerRef.current && isNearBottomRef.current) {
+              messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+            }
+          });
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe();
+      if (friendTypingTimerRef.current) {
+        clearTimeout(friendTypingTimerRef.current);
+      }
+    };
+  }, [userId, activeFriendId]);
+
+  // Handle typing ping when current user types in the input box
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setDraft(val);
+
+    if (!userId || !activeFriendId) return;
+
+    // Send typing: true
+    sendTypingStatus(userId, activeFriendId, true);
+
+    // Debounce typing: false after 1.8 seconds of inactivity
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      if (userId && activeFriendId) {
+        sendTypingStatus(userId, activeFriendId, false);
+      }
+    }, 1800);
+  };
 
   // Instantly position at recent chats before browser paint (eliminating top-to-bottom scroll animations)
   useLayoutEffect(() => {
-    if (!messagesContainerRef.current) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
 
     if (isInitialLoadRef.current) {
-      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+      container.scrollTop = container.scrollHeight;
       const raf = requestAnimationFrame(() => {
         if (messagesContainerRef.current) {
           messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
@@ -452,22 +561,27 @@ export default function ChatModal({
       });
       if (!loadingMessages && messages.length > 0) {
         isInitialLoadRef.current = false;
+        isNearBottomRef.current = true;
       }
       return () => cancelAnimationFrame(raf);
-    } else {
-      // Keep view pinned to bottom if user is already near bottom
-      const container = messagesContainerRef.current;
-      const isNearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 150;
-      if (isNearBottom) {
-        container.scrollTop = container.scrollHeight;
-      }
+    } else if (isNearBottomRef.current) {
+      container.scrollTop = container.scrollHeight;
     }
-  }, [messages, activeFriend, loadingMessages]);
+  }, [messages, loadingMessages]);
 
   useEffect(() => {
-    if (friends.length > 0) {
-      const friendIds = friends.map(f => f.requester_id === userId ? f.target_id : f.requester_id).filter(Boolean) as string[];
-      fetchUserProfiles(friendIds).then(setProfiles);
+    if (friends.length > 0 && userId) {
+      const identifiers: string[] = [];
+      friends.forEach((f) => {
+        const isRequester = f.requester_id === userId;
+        const friendId = isRequester ? f.target_id : f.requester_id;
+        const friendName = isRequester ? (f.target_actual_identifier || f.target_identifier) : f.requester_identifier;
+        if (friendId && friendId !== userId) identifiers.push(friendId);
+        if (friendName) identifiers.push(friendName);
+      });
+      if (identifiers.length > 0) {
+        fetchUserProfiles(identifiers).then(setProfiles);
+      }
     }
   }, [friends, userId]);
 
@@ -477,11 +591,29 @@ export default function ChatModal({
     fetchFriendsConversationMeta(userId).then(setConvoMeta);
 
     const interval = setInterval(() => {
-      fetchFriendsConversationMeta(userId).then(setConvoMeta);
-    }, 4000);
+      fetchFriendsConversationMeta(userId).then((newMeta) => {
+        setConvoMeta((prev) => {
+          const prevKeys = Object.keys(prev);
+          const newKeys = Object.keys(newMeta);
+          if (prevKeys.length !== newKeys.length) return newMeta;
+          let changed = false;
+          for (const k of newKeys) {
+            if (
+              prev[k]?.lastMessageAt !== newMeta[k]?.lastMessageAt ||
+              prev[k]?.unreadCount !== newMeta[k]?.unreadCount ||
+              prev[k]?.lastMessageText !== newMeta[k]?.lastMessageText
+            ) {
+              changed = true;
+              break;
+            }
+          }
+          return changed ? newMeta : prev;
+        });
+      });
+    }, 15000);
 
     return () => clearInterval(interval);
-  }, [userId, friends]);
+  }, [userId]);
 
   const getFriendName = React.useCallback((f: Friendship) => {
     return f.requester_id === userId
@@ -489,9 +621,46 @@ export default function ChatModal({
       : f.requester_identifier;
   }, [userId]);
 
+  const getFriendProfile = React.useCallback((f: Friendship): UserProfileData | null => {
+    const isRequester = f.requester_id === userId;
+    const friendId = isRequester ? f.target_id : f.requester_id;
+    const friendName = isRequester ? (f.target_actual_identifier || f.target_identifier) : f.requester_identifier;
+
+    // Strictly ensure the current logged-in user is never returned as friend profile
+    if (friendId && friendId !== userId) {
+      const p = profiles[friendId];
+      if (p && p.id !== userId) return p;
+    }
+
+    if (friendName) {
+      const p = profiles[friendName] || profiles[friendName.toLowerCase()];
+      if (p && p.id !== userId) return p;
+    }
+
+    return null;
+  }, [userId, profiles]);
+
+  const getFriendNameRef = useRef(getFriendName);
+  getFriendNameRef.current = getFriendName;
+
+  const getFriendProfileRef = useRef(getFriendProfile);
+  getFriendProfileRef.current = getFriendProfile;
+
   // Sort friends so that friends with the most recent messages appear at the very top
   const sortedFriends = React.useMemo(() => {
-    return [...friends].sort((a, b) => {
+    // Deduplicate friends by other user's identity to prevent duplicate rows in the UI
+    const seen = new Set<string>();
+    const deduplicated = friends.filter((f) => {
+      const isRequester = f.requester_id === userId;
+      const otherId = isRequester ? f.target_id : f.requester_id;
+      const otherName = isRequester ? (f.target_actual_identifier || f.target_identifier) : f.requester_identifier;
+      const key = (otherId || otherName || f.id).toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    return deduplicated.sort((a, b) => {
       const friendIdA = a.requester_id === userId ? a.target_id : a.requester_id;
       const friendIdB = b.requester_id === userId ? b.target_id : b.requester_id;
 
@@ -510,17 +679,21 @@ export default function ChatModal({
 
   const handleSelectFriend = async (friend: Friendship) => {
     const friendId = friend.requester_id === userId ? friend.target_id : friend.requester_id;
-    const currentFriendId = activeFriend
-      ? activeFriend.requester_id === userId
-        ? activeFriend.target_id
-        : activeFriend.requester_id
+    const currentFriendId = activeFriendRef.current
+      ? activeFriendRef.current.requester_id === userId
+        ? activeFriendRef.current.target_id
+        : activeFriendRef.current.requester_id
       : null;
 
-    if (friendId !== currentFriendId) {
-      setMessages([]);
-      setLoadingMessages(true);
-      isInitialLoadRef.current = true;
+    if (friendId === currentFriendId) {
+      // Already selected, do not wipe state or reload
+      return;
     }
+
+    setMessages([]);
+    setLoadingMessages(true);
+    isInitialLoadRef.current = true;
+    isNearBottomRef.current = true;
 
     setActiveFriend(friend);
     if (friendId) {
@@ -536,18 +709,20 @@ export default function ChatModal({
         };
       });
       await markMessagesAsRead(userId, friendId);
-      onRefreshUnreadCount?.();
+      onRefreshUnreadCountRef.current?.();
     }
   };
 
-  // Select initial friend if provided as prop
+  // Select initial friend if provided as prop (only once per initialFriendId)
   useEffect(() => {
     if (initialFriendId && friends.length > 0) {
+      if (initialFriendHandledRef.current === initialFriendId) return;
       const match = friends.find((f) => {
         const fId = f.requester_id === userId ? f.target_id : f.requester_id;
         return fId === initialFriendId;
       });
       if (match) {
+        initialFriendHandledRef.current = initialFriendId;
         handleSelectFriend(match);
       }
     }
@@ -573,11 +748,12 @@ export default function ChatModal({
   // When user returns to tab, mark active friend messages as read
   useEffect(() => {
     const handleReturnToTab = () => {
-      if (!isTabInactive() && activeFriend) {
-        const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
+      if (!isTabInactive() && activeFriendRef.current) {
+        const curFriend = activeFriendRef.current;
+        const friendId = curFriend.requester_id === userId ? curFriend.target_id : curFriend.requester_id;
         if (friendId) {
           markMessagesAsRead(userId, friendId);
-          onRefreshUnreadCount?.();
+          onRefreshUnreadCountRef.current?.();
         }
       }
     };
@@ -587,44 +763,51 @@ export default function ChatModal({
       window.removeEventListener("focus", handleReturnToTab);
       window.removeEventListener("visibilitychange", handleReturnToTab);
     };
-  }, [activeFriend, userId, onRefreshUnreadCount]);
+  }, [userId]);
 
   // Load messages when active friend changes
   useEffect(() => {
-    if (!activeFriend) return;
-    
-    const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
-    if (!friendId) return;
+    if (!activeFriendId) return;
+
+    let isCancelled = false;
 
     const loadMessages = async () => {
       setLoadingMessages(true);
-      const msgs = await fetchDirectMessages(userId, friendId);
+      isInitialLoadRef.current = true;
+      const msgs = await fetchDirectMessages(userId, activeFriendId);
+      if (isCancelled) return;
       setMessages(msgs);
       setLoadingMessages(false);
-      scrollToBottom(false);
       
       // Mark as read when we open the chat (only if visible)
       if (!isTabInactive()) {
-        await markMessagesAsRead(userId, friendId);
-        onRefreshUnreadCount?.();
+        await markMessagesAsRead(userId, activeFriendId);
+        onRefreshUnreadCountRef.current?.();
       }
     };
     
     loadMessages();
-  }, [activeFriend, userId, onRefreshUnreadCount]);
 
-  // Subscribe to real-time messages across ALL friends
+    return () => {
+      isCancelled = true;
+    };
+  }, [activeFriendId, userId]);
+
+  // Subscribe to real-time messages across ALL friends once
   useEffect(() => {
+    if (!userId) return;
+
     const unsubscribe = subscribeToDirectMessages(
       userId,
       (newMsg) => {
         const otherUserId = newMsg.sender_id === userId ? newMsg.receiver_id : newMsg.sender_id;
         if (!otherUserId) return;
 
-        const currentActiveFriendId = activeFriend
-          ? activeFriend.requester_id === userId
-            ? activeFriend.target_id
-            : activeFriend.requester_id
+        const curActiveFriend = activeFriendRef.current;
+        const currentActiveFriendId = curActiveFriend
+          ? curActiveFriend.requester_id === userId
+            ? curActiveFriend.target_id
+            : curActiveFriend.requester_id
           : null;
 
         const isCurrentChatActive = currentActiveFriendId === otherUserId;
@@ -656,27 +839,28 @@ export default function ChatModal({
             // Only mark as read if the tab is visible and focused
             if (!inactive) {
               markMessagesAsRead(userId, otherUserId);
-              onRefreshUnreadCount?.();
+              onRefreshUnreadCountRef.current?.();
             }
           }
         } else if (isIncoming) {
-          onRefreshUnreadCount?.();
+          onRefreshUnreadCountRef.current?.();
         }
 
         // 3. PUSH OUTSIDE NOTIFICATION IF IN ANOTHER TAB OR LOOKING AT ANOTHER CHAT
         if (isIncoming && (inactive || !isCurrentChatActive)) {
-          const friendObj = friends.find(
+          const allFriends = friendsRef.current;
+          const friendObj = allFriends.find(
             (f) => (f.requester_id === userId ? f.target_id : f.requester_id) === otherUserId
           );
-          const friendName = friendObj ? getFriendName(friendObj) : (profiles[otherUserId]?.username || "Friend");
-          const friendAvatar = profiles[otherUserId]?.image_url;
+          const friendName = friendObj ? getFriendNameRef.current(friendObj) : (profilesRef.current[otherUserId]?.username || "Friend");
+          const friendAvatar = friendObj ? getFriendProfileRef.current(friendObj)?.image_url : (otherUserId !== userId ? profilesRef.current[otherUserId]?.image_url : undefined);
 
           pushMessageNotification({
             message: newMsg,
             senderName: friendName,
             senderAvatar: friendAvatar,
             onOpenChat: (fId) => {
-              const targetFriend = friends.find(
+              const targetFriend = friendsRef.current.find(
                 (f) => (f.requester_id === userId ? f.target_id : f.requester_id) === fId
               );
               if (targetFriend) {
@@ -703,7 +887,7 @@ export default function ChatModal({
     return () => {
       unsubscribe();
     };
-  }, [userId, activeFriend, friends, profiles, getFriendName, onRefreshUnreadCount]);
+  }, [userId]);
 
   // ─── Voice Message Recording System ───
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
@@ -906,8 +1090,14 @@ export default function ChatModal({
     setSelectedFile(null);
     setIsEmojiPickerOpen(false);
 
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    sendTypingStatus(userId, friendId, false);
+
     const newMsg = await sendDirectMessage(userId, friendId, content, fileMeta, userNameDisplay);
     if (newMsg) {
+      isNearBottomRef.current = true;
       setMessages((prev) => {
         if (prev.find((m) => m.id === newMsg.id)) return prev;
         return [...prev, newMsg];
@@ -1031,8 +1221,13 @@ export default function ChatModal({
             ) : (
               sortedFriends.map(f => {
                 const friendId = f.requester_id === userId ? f.target_id : f.requester_id;
-                const friendProfile = friendId ? profiles[friendId] : null;
                 const friendName = getFriendName(f);
+                const friendProfile = 
+                  (friendId && profiles[friendId]) || 
+                  (friendName && (profiles[friendName] || profiles[friendName.toLowerCase()])) ||
+                  (f.target_identifier && (profiles[f.target_identifier] || profiles[f.target_identifier.toLowerCase()])) ||
+                  (f.requester_identifier && (profiles[f.requester_identifier] || profiles[f.requester_identifier.toLowerCase()])) ||
+                  null;
                 const isActive = activeFriend?.id === f.id;
                 const meta = friendId ? convoMeta[friendId] : null;
                 const unreadCount = meta?.unreadCount || 0;
@@ -1154,7 +1349,12 @@ export default function ChatModal({
                   <>
                     {(() => {
                       const friendId = activeFriend.requester_id === userId ? activeFriend.target_id : activeFriend.requester_id;
-                      const friendProfile = friendId ? profiles[friendId] : null;
+                      const friendProfile = 
+                        (friendId && profiles[friendId]) || 
+                        (activeFriendName && (profiles[activeFriendName] || profiles[activeFriendName.toLowerCase()])) ||
+                        (activeFriend.target_identifier && (profiles[activeFriend.target_identifier] || profiles[activeFriend.target_identifier.toLowerCase()])) ||
+                        (activeFriend.requester_identifier && (profiles[activeFriend.requester_identifier] || profiles[activeFriend.requester_identifier.toLowerCase()])) ||
+                        null;
                       return friendProfile?.image_url ? (
                         <img src={friendProfile.image_url} alt={activeFriendName} className="size-9 sm:size-10 rounded-full object-cover shadow-xs shrink-0" style={{ border: "1px solid var(--m-border-light)" }} />
                       ) : (
@@ -1238,6 +1438,7 @@ export default function ChatModal({
           {/* Chat Messages */}
           <div 
             ref={messagesContainerRef}
+            onScroll={handleContainerScroll}
             className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 sm:p-4 flex flex-col gap-2 sm:gap-2.5 min-h-0 min-w-0 relative select-text"
             style={{
               WebkitOverflowScrolling: "touch",
@@ -1409,7 +1610,7 @@ export default function ChatModal({
                                     alt="Attachment" 
                                     className="max-w-full rounded-xl object-contain max-h-60 sm:max-h-72 cursor-pointer transition hover:opacity-95"
                                     onLoad={() => {
-                                      if (isInitialLoadRef.current && messagesContainerRef.current) {
+                                      if (messagesContainerRef.current && (isNearBottomRef.current || isInitialLoadRef.current)) {
                                         messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
                                       }
                                     }} 
@@ -1501,6 +1702,46 @@ export default function ChatModal({
                 );
               })
             )}
+
+            {/* Instagram-style 3-dots Typing Indicator */}
+            {isFriendTyping && (
+              <div className="w-full flex justify-start items-end gap-1.5 sm:gap-2 animate-in fade-in slide-in-from-bottom-1 duration-200">
+                {(() => {
+                  const friendProfile = activeFriend ? getFriendProfile(activeFriend) : null;
+                  return (
+                    <div 
+                      className="size-7 sm:size-8 rounded-full border flex items-center justify-center font-bold text-xs shrink-0 overflow-hidden shadow-xs select-none" 
+                      style={{ 
+                        backgroundColor: "var(--m-surface-alt)", 
+                        color: "var(--m-text)", 
+                        borderColor: "var(--m-border-light)" 
+                      }}
+                      title={activeFriendName}
+                    >
+                      {friendProfile?.image_url ? (
+                        <img src={friendProfile.image_url} alt={activeFriendName} className="size-full object-cover" />
+                      ) : (
+                        activeFriendName?.charAt(0).toUpperCase()
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div 
+                  className="rounded-2xl rounded-bl-xs px-3.5 py-2.5 sm:px-4 sm:py-3 shadow-xs flex items-center gap-1.5 w-fit border"
+                  style={{ 
+                    backgroundColor: "var(--m-surface-solid)", 
+                    borderColor: "var(--m-border)" 
+                  }}
+                  title={`${activeFriendName} is typing...`}
+                >
+                  <span className="size-1.5 sm:size-2 rounded-full bg-current opacity-70 animate-bounce [animation-delay:-0.32s]" style={{ color: "var(--m-text)" }} />
+                  <span className="size-1.5 sm:size-2 rounded-full bg-current opacity-70 animate-bounce [animation-delay:-0.16s]" style={{ color: "var(--m-text)" }} />
+                  <span className="size-1.5 sm:size-2 rounded-full bg-current opacity-70 animate-bounce" style={{ color: "var(--m-text)" }} />
+                </div>
+              </div>
+            )}
+
             <div ref={messagesEndRef} />
           </div>
 
@@ -1785,7 +2026,7 @@ export default function ChatModal({
                       ref={chatInputRef}
                       type="text"
                       value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
+                      onChange={handleInputChange}
                       onFocus={() => {
                         setTimeout(() => scrollToBottom(true), 150);
                       }}

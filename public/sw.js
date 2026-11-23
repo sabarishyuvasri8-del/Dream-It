@@ -55,13 +55,24 @@ self.addEventListener('fetch', (event) => {
   }
 
   // Never intercept local development server requests (prevents stale dev bundle crashes)
-  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname.endsWith('.local')) {
+  if (
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.hostname.endsWith('.local') ||
+    url.port === '8001' ||
+    url.hostname === '192.168.31.119'
+  ) {
     return;
   }
 
-  // 1. External APIs (Supabase, Clerk, Google AI) -> Network First / Only
+  // 1. External & Backend APIs (Supabase, Clerk, Google AI) -> Network First / Only
   if (
     url.hostname.includes('supabase.co') ||
+    url.port === '8001' ||
+    url.hostname === '192.168.31.119' ||
+    url.pathname.startsWith('/rest/') ||
+    url.pathname.startsWith('/storage/') ||
+    url.pathname.startsWith('/realtime/') ||
     url.hostname.includes('clerk.accounts.dev') ||
     url.hostname.includes('googleapis.com')
   ) {

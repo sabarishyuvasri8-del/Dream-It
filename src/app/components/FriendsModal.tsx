@@ -31,8 +31,15 @@ export default function FriendsModal({
 
   useEffect(() => {
     if (isOpen && friends.length > 0) {
-      const friendIds = friends.map(f => f.requester_id === userId ? f.target_id : f.requester_id).filter(Boolean) as string[];
-      fetchUserProfiles(friendIds).then(setProfiles);
+      const identifiers: string[] = [];
+      friends.forEach((f) => {
+        if (f.requester_id) identifiers.push(f.requester_id);
+        if (f.target_id) identifiers.push(f.target_id);
+        if (f.requester_identifier) identifiers.push(f.requester_identifier);
+        if (f.target_identifier) identifiers.push(f.target_identifier);
+        if (f.target_actual_identifier) identifiers.push(f.target_actual_identifier);
+      });
+      fetchUserProfiles(identifiers).then(setProfiles);
     }
   }, [isOpen, friends, userId]);
 
@@ -80,11 +87,15 @@ export default function FriendsModal({
           ) : (
             friends.map(f => {
               const friendId = f.requester_id === userId ? f.target_id : f.requester_id;
-              const friendProfile = friendId ? profiles[friendId] : null;
-              
               const friendName = f.requester_id === userId 
                 ? f.target_actual_identifier || f.target_identifier 
                 : f.requester_identifier;
+              const friendProfile = 
+                (friendId && profiles[friendId]) || 
+                (friendName && (profiles[friendName] || profiles[friendName.toLowerCase()])) ||
+                (f.target_identifier && (profiles[f.target_identifier] || profiles[f.target_identifier.toLowerCase()])) ||
+                (f.requester_identifier && (profiles[f.requester_identifier] || profiles[f.requester_identifier.toLowerCase()])) ||
+                null;
                 
               return (
                 <div key={f.id} className="p-3 rounded-2xl flex items-center justify-between gap-3 border transition hover:border-black/20 dark:hover:border-white/20" style={{ borderColor: "var(--m-border)", backgroundColor: "var(--m-surface-alt)" }}>
