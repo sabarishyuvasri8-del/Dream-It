@@ -5,7 +5,7 @@ import { saveWorkspaceOffline, getWorkspaceOffline, recordOfflineMutation } from
 export { saveWorkspaceOffline, getWorkspaceOffline } from "./offline-storage";
 import { dispatchChatPushNotification } from "./pushNotifications";
 
-const LOCAL_SUPABASE_URL = "https://yea-topic-consists-spec.trycloudflare.com";
+const LOCAL_SUPABASE_URL = "https://apply-broken-dover-comparison.trycloudflare.com";
 const LOCAL_SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzk1MzMxMzc5LCJleHAiOjE5NTMwMTEzNzl9.KGjgxlQess-gSWdIREOfYsRJHGfMUU3KdcWghwnNsqQ";
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || LOCAL_SUPABASE_URL;
